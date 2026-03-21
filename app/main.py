@@ -67,8 +67,6 @@ async def websocket_endpoint(websocket: WebSocket, order_id: int):
 # -----------------------------------------
 
 # Serve React static files
-# OLD STATIC → renamed
-app.mount("/admin-static", StaticFiles(directory="app/static"), name="admin-static")
 
 # REACT STATIC → correct
 app.mount("/static", StaticFiles(directory="build/static"), name="static")
