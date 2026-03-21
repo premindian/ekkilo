@@ -37,7 +37,7 @@ app.include_router(whatsapp_router, prefix="/whatsapp")
 # -----------------------------------------
 # ?? STATIC (OLD - keep if needed)
 # -----------------------------------------
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory="build/static"), name="static")
 
 # -----------------------------------------
 # ?? WEBSOCKETS
