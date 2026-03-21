@@ -67,8 +67,7 @@ async def websocket_endpoint(websocket: WebSocket, order_id: int):
 # -----------------------------------------
 
 # Serve React static files
-app.mount("/assets", StaticFiles(directory="build/static"), name="assets")
-
+app.mount("/static", StaticFiles(directory="build/static"), name="static")
 
 @app.get("/")
 async def serve_react():
