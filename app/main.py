@@ -1,6 +1,6 @@
 # imports
 from fastapi import FastAPI
-
+from fastapi.middleware.cors import CORSMiddleware
 # routers
 from app.api.routes import router
 from app.api.admin import router as admin_router
