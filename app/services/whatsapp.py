@@ -5,8 +5,9 @@ from fastapi import APIRouter, Request
 
 router = APIRouter()
 
-WHATSAPP_TOKEN = "EAAaPieVsX88BQw8suZBdkJRSCBEob6qLJYQxFoaYekeQZAJ0tVVXjAZCOBDqLGqyZAacUOOCRZBZCw4KuvzaFzUpR857c4caPUdu2SpcP9pZBghu5ZAIWZCb92SrZCWjDdmKgDZCYdegcZCI3gZCPIgNr2f7v0QrXLaz3idgoLnvBDj4t1gJxtZB9lat4ZAVw0qP8HmZBpGHJl7UMIenabQytl79SmcJvh7ZANWvabMmmXHdugQhSGSAAgOzmddl9ZBc8ZBMZADFpO4svC8j3ektQZAZBZChI97mxoH"
-PHONE_NUMBER_ID = "1004119959456848"
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+
 
 async def send_message(phone, message):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
