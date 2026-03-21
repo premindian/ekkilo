@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Store Dashboard</title>
+
+  <style>
+    body {
+      font-family: Inter, Arial;
+      background: #f6f7f9;
+      max-width: 650px;
+      margin: auto;
+      padding: 16px;
+    }
+
+    h2 {
+      margin-bottom: 10px;
+    }
+
+    .search {
+      width: 100%;
+      padding: 12px;
+      border-radius: 14px;
+      border: none;
+      margin-bottom: 12px;
+      background: white;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .toolbar {
+      background: white;
+      padding: 14px;
+      border-radius: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #ff4d4f, #ff7a18);
+      color: white;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-right: 6px;
+    }
+
+    .ghost {
+      background: #eee;
+      color: #333;
+    }
+
+    .card {
+      background: white;
+      padding: 14px;
+      margin-bottom: 12px;
+      border-radius: 16px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    }
+
+    .selected {
+      background: #e6fff2;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .meta {
+      font-size: 11px;
+      color: #777;
+    }
+
+    .price {
+      width: 80px;
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px solid #eee;
+    }
+
+    /* 🔥 STATUS BADGE */
+    .badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      margin-left: 6px;
+    }
+
+    .visible {
+      background: #dcfce7;
+      color: #16a34a;
+    }
+
+    .hidden {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    /* 🔥 TOGGLE BUTTONS */
+    .toggle {
+      margin-top: 8px;
+    }
+
+    .toggle button {
+      border: none;
+      padding: 6px 12px;
+      border-radius: 10px;
+      margin-right: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: 0.2s;
+    }
+
+    .active-show {
+      background: #22c55e;
+      color: white;
+      font-weight: bold;
+    }
+
+    .active-hide {
+      background: #ef4444;
+      color: white;
+      font-weight: bold;
+    }
+
+    .inactive {
+      background: #eee;
+      color: #555;
+    }
+
+    .status {
+      font-size: 11px;
+      color: #16a34a;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>🏪 My Store</h2>
+
+  <input placeholder="🔍 Search products..." id="search" class="search" oninput="filterProducts()" />
+
+  <div class="toolbar">
+    <button class="btn" onclick="selectAll()">Select All</button>
+    <button class="btn ghost" onclick="clearSelection()">Clear</button>
+
+    <br><br>
+
+    Change Price (%):
+    <input id="bulkPercent" type="number" step="0.01" style="width:70px;" placeholder="+10 / -5">
+    <button class="btn" onclick="applyBulkPrice()">Apply</button>
+  </div>
+
+  <div id="products"></div>
+
+  <script>
+    const STORE_ID = 1;
+
+    let allProducts = [];
+    let selected = new Set();
+
+    async function loadProducts() {
+      const res = await fetch(`/store/products?store_id=${STORE_ID}`);
+      allProducts = await res.json();
+      selected.clear();
+      render(allProducts);
+    }
+
+    function render(data) {
+      const container = document.getElementById("products");
+      container.innerHTML = "";
+
+      data.forEach(p => {
+        const isVisible = p.stock > 0;
+
+        const div = document.createElement("div");
+        div.className = "card";
+
+        if (selected.has(p.product_id)) div.classList.add("selected");
+
+        div.innerHTML = `
+      <div class="row">
+        <div>
+          <input type="checkbox"
+            ${selected.has(p.product_id) ? "checked" : ""}
+            onchange="toggleSelect(${p.product_id})">
+
+          <b>${p.name}</b>
+
+          <span class="badge ${isVisible ? 'visible' : 'hidden'}">
+            ${isVisible ? 'Visible' : 'Hidden'}
+          </span>
+
+          <div class="meta">${p.size}${p.unit}</div>
+        </div>
+
+        <div>
+          ₹ <input type="number"
+            value="${p.price}"
+            id="price-${p.product_id}"
+            class="price"
+            onchange='autoSave(${JSON.stringify(p)})'>
+        </div>
+      </div>
+
+      <div class="toggle">
+        <button 
+          class="${isVisible ? 'active-show' : 'inactive'}"
+          onclick="setVisibility(${p.product_id}, true)">
+          Show
+        </button>
+
+        <button 
+          class="${!isVisible ? 'active-hide' : 'inactive'}"
+          onclick="setVisibility(${p.product_id}, false)">
+          Hide
+        </button>
+      </div>
+
+      <div id="status-${p.product_id}" class="status"></div>
+    `;
+
+        container.appendChild(div);
+      });
+    }
+
+    function toggleSelect(id) {
+      if (selected.has(id)) selected.delete(id);
+      else selected.add(id);
+      render(allProducts);
+    }
+
+    function selectAll() {
+      allProducts.forEach(p => selected.add(p.product_id));
+      render(allProducts);
+    }
+
+    function clearSelection() {
+      selected.clear();
+      render(allProducts);
+    }
+
+    /* 🔥 FIXED VISIBILITY */
+    function setVisibility(id, visible) {
+      const p = allProducts.find(x => x.product_id === id);
+
+      // update local state FIRST
+      p.stock = visible ? 10 : 0;
+
+      render(allProducts); // 🔥 force UI refresh immediately
+
+      autoSave(p);
+    }
+
+    async function autoSave(p) {
+      const price = parseFloat(document.getElementById(`price-${p.product_id}`).value);
+
+      // 🔥 FIX: update local state FIRST
+      const product = allProducts.find(x => x.product_id === p.product_id);
+      if (product) {
+        product.price = price;
+      }
+
+      const el = document.getElementById(`status-${p.product_id}`);
+      el.innerText = "Saving...";
+
+      await fetch("/store/products/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: STORE_ID,
+          product_id: p.product_id,
+          brand: p.brand,
+          variant: p.variant,
+          size: p.size,
+          price: price,
+          stock: p.stock
+        })
+      });
+
+      el.innerText = "Saved ✓";
+    }
+
+    function applyBulkPrice() {
+      const percent = Number(document.getElementById("bulkPercent").value);
+
+      selected.forEach(id => {
+        const input = document.getElementById(`price-${id}`);
+        const p = allProducts.find(x => x.product_id === id);
+
+        const current = parseFloat(input.value);
+        const updated = current * (1 + percent / 100);
+
+        const updatedPrice = parseFloat(updated.toFixed(2));
+
+        input.value = updatedPrice;
+
+        // 🔥 UPDATE LOCAL STATE
+        p.price = updatedPrice;
+
+        autoSave(p);
+
+      });
+    }
+
+    function filterProducts() {
+      const q = document.getElementById("search").value.toLowerCase();
+
+      render(allProducts.filter(p =>
+        p.name.toLowerCase().includes(q)
+      ));
+    }
+
+    loadProducts();
+  </script>
+
+</body>
+
+</html>
