@@ -1,4 +1,5 @@
 import httpx
+import os
 
 from fastapi import APIRouter, Request
 
