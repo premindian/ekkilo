@@ -5,7 +5,7 @@ const API_BASE = "https://ekkilo.onrender.com";
 export default function OrderPage() {
   const [text, setText] = useState("");
   const [result, setResult] = useState(null);
-  const [mode, setMode] = useState("smart"); // smart | one
+  const [mode, setMode] = useState("smart");
   const [loading, setLoading] = useState(false);
 
   const [location, setLocation] = useState(null);
@@ -14,23 +14,21 @@ export default function OrderPage() {
   const [phone, setPhone] = useState("");
   const [showPhone, setShowPhone] = useState(true);
 
-  const formatPrice = (n) => Number(n || 0).toFixed(2);
-const format = (n) => Number(n || 0).toFixed(2);
+  const format = (n) => Number(n || 0).toFixed(2);
+
   // 📍 LOCATION
-  const getLocation = () => {
-    navigator.geolocation?.getCurrentPosition(
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocation({
           lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
+          lng: pos.coords.longitude
         });
       },
-      () => alert("Location denied")
+      () => console.log("GPS denied")
     );
-  };
-
-  useEffect(() => {
-    getLocation();
   }, []);
 
   // 🔍 SEARCH
@@ -55,56 +53,51 @@ const format = (n) => Number(n || 0).toFixed(2);
     setLoading(false);
   };
 
-  // 🧠 SINGLE STORE
   const stores = result?.stores || [];
 
-  // 🧠 SPLIT LOGIC (🔥 MAGIC)
-  const splitStores = {};
+  // 🧠 SPLIT LOGIC
+  const splitMap = {};
 
   if (result?.comparison) {
     Object.entries(result.comparison).forEach(([item, options]) => {
       const best = options.find(o => o.is_best);
       if (!best) return;
 
-      if (!splitStores[best.store]) {
-        splitStores[best.store] = {
-          store: best.store,
-          items: [],
-          total: 0
-        };
+      if (!splitMap[best.store]) {
+        splitMap[best.store] = { store: best.store, items: [], total: 0 };
       }
 
-      splitStores[best.store].items.push({
+      splitMap[best.store].items.push({
         name: item,
         price: best.price,
         size: best.size,
-        unit: best.unit
+        unit: best.unit,
+        packs: best.packs
       });
 
-      splitStores[best.store].total += best.price;
+      splitMap[best.store].total += best.price;
     });
   }
 
-  const splitList = Object.values(splitStores);
-  const splitTotal = splitList.reduce((sum, s) => sum + s.total, 0);
+  const splitStores = Object.values(splitMap);
+  const splitTotal = splitStores.reduce((s, x) => s + x.total, 0);
 
   // 📦 ORDER
   const placeOrder = async (storesPayload) => {
     if (!phone) return setShowPhone(true);
 
-    const formattedPhone = phone.startsWith("91") ? phone : "91" + phone;
+    const formatted = phone.startsWith("91") ? phone : "91" + phone;
 
     await fetch(`${API_BASE}/order`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        phone: formattedPhone,
+        phone: formatted,
         stores: storesPayload,
       }),
     });
 
     alert("✅ Order placed!");
-    setResult(null);
   };
 
   return (
@@ -115,19 +108,20 @@ const format = (n) => Number(n || 0).toFixed(2);
         <div style={popup}>
           <div style={popupBox}>
             <h3>Enter WhatsApp Number</h3>
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              style={input}
-            />
-            <button style={btn} onClick={() => setShowPhone(false)}>
-              Continue
-            </button>
+            <input value={phone} onChange={e => setPhone(e.target.value)} style={input}/>
+            <button style={btn} onClick={() => setShowPhone(false)}>Continue</button>
           </div>
         </div>
       )}
 
       <h2>🛒 Smart Kirana</h2>
+
+      {/* GPS */}
+      <div style={{ fontSize: 12, marginBottom: 8 }}>
+        📍 {location
+          ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
+          : "Fetching location..."}
+      </div>
 
       {/* SEARCH */}
       <div style={searchBox}>
@@ -142,217 +136,116 @@ const format = (n) => Number(n || 0).toFixed(2);
 
       {/* MODES */}
       <div style={{ marginTop: 10 }}>
-        <button onClick={() => setMode("smart")} style={mode === "smart" ? active : tab}>🧠 Smart</button>
-        <button onClick={() => setMode("one")} style={mode === "one" ? active : tab}>🏪 One Store</button>
+        <button onClick={() => setMode("smart")} style={mode==="smart"?active:tab}>🧠 Smart</button>
+        <button onClick={() => setMode("one")} style={mode==="one"?active:tab}>🏪 One Store</button>
       </div>
 
       {/* SAVINGS */}
       {result?.comparison && (
         <div style={{ color: "green", marginTop: 10 }}>
           💰 Save up to ₹
-          {formatPrice(Math.max(...Object.values(result.comparison).flat().map(o => o.savings || 0)))}
+          {format(Math.max(...Object.values(result.comparison).flat().map(o=>o.savings||0)))}
         </div>
       )}
 
-      {/* 🔥 SMART SPLIT */}
-      {mode === "smart" && splitList.length > 0 && (
-        <div>
+      {/* 🔥 SMART */}
+      {mode==="smart" && splitStores.map((s,i)=>(
+        <div key={i} style={card}>
+          <b>🏪 {s.store}</b>
 
-          <h3>⚡ Cheapest Combo (Split)</h3>
-
-          {splitList.map((store, idx) => (
-            <div key={idx} style={card}>
-              <b>🏪 {store.store}</b>
-
-              {store.items.map((item, i) => (
-                <div key={i} style={row}>
-                  <span>{item.name}</span>
-                  <span>₹{formatPrice(item.price)}</span>
-                </div>
-              ))}
-
-              <b>Subtotal: ₹{formatPrice(store.total)}</b>
+          {s.items.map((it,j)=>(
+            <div key={j} style={row}>
+              <span>
+                {it.name} ({it.packs || 1} × {it.size}{it.unit})
+              </span>
+              <span>₹{format(it.price)}</span>
             </div>
           ))}
 
-          <div style={totalBox}>
-            💰 Total: ₹{formatPrice(splitTotal)}
-          </div>
-
-          <button style={bigBtn} onClick={() => placeOrder(splitList)}>
-            🚀 Order Cheapest Combo
-          </button>
-
+          <b>Subtotal: ₹{format(s.total)}</b>
         </div>
-      )}
+      ))}
 
       {/* 🏪 ONE STORE */}
-     {stores.map((store, idx) => (
-  <div key={idx} style={premiumCard}>
+      {mode==="one" && stores.map((store, idx) => (
+        <div key={idx} style={premiumCard}>
 
-    {/* HEADER */}
-    <div style={headerRow}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 18 }}>🏪</span>
-        <b style={{ fontSize: 16 }}>{store.store}</b>
+          <div style={headerRow}>
+            <div>
+              <b>🏪 {store.store}</b>
+              {store.is_best && <span style={bestBadge}>⭐ Best</span>}
+            </div>
 
-        {store.is_best && (
-          <span style={bestBadge}>⭐ Best</span>
-        )}
-      </div>
-
-      <div style={{ textAlign: "right" }}>
-        <div style={{ color: "#16a34a", fontWeight: "bold" }}>
-          ₹{format(store.total)}
-        </div>
-        <div style={distance}>
-          📍 {store.distance} km
-        </div>
-      </div>
-    </div>
-
-    {/* REASONS */}
-    <div style={reasonText}>
-      {store.reason?.join(" • ")}
-    </div>
-
-    {/* ITEMS */}
-    <div style={{ marginTop: 12 }}>
-      {store.items.map((item, i) => (
-        <div key={i} style={itemBlock}>
-
-          <div>
-            <div style={itemName}>{item.name}</div>
-
-            <div style={itemMeta}>
-              {item.packs || 1} × {item.size}{item.unit}
+            <div>
+              ₹{format(store.total)}
+              <div style={distance}>📍 {store.distance} km</div>
             </div>
           </div>
 
-          <div style={itemPrice}>
-            ₹{format(item.price)}
+          <div style={reasonText}>
+            {store.reason?.join(" • ")}
           </div>
 
+          {store.items.map((item,i)=>(
+            <div key={i} style={itemBlock}>
+              <div>
+                <div>{item.name}</div>
+                <div style={itemMeta}>
+                  {item.packs || 1} × {item.size}{item.unit}
+                </div>
+              </div>
+              <div>₹{format(item.price)}</div>
+            </div>
+          ))}
+
+          <button style={orderButton} onClick={()=>placeOrder([store])}>
+            🛒 Place Order
+          </button>
         </div>
       ))}
-    </div>
 
-    {/* SUBTOTAL */}
-    <div style={divider}></div>
+      {/* 🔥 STICKY */}
+      {(mode==="smart" && splitStores.length>0) && (
+        <div style={bottom}>
+          <div>₹{format(splitTotal)}</div>
+          <button style={btn} onClick={()=>placeOrder(splitStores)}>
+            Place Order
+          </button>
+        </div>
+      )}
 
-    <div style={subtotalRow}>
-      <b>Subtotal</b>
-      <b>₹{format(store.total)}</b>
-    </div>
-
-    {/* CTA */}
-    <button
-      style={orderButton}
-      onClick={() => placeOrder([store])}
-    >
-      🛒 Place Order
-    </button>
-
-  </div>
-))}
     </div>
   );
 }
 
-// 🎨 styles
-const container = { maxWidth: 500, margin: "auto", padding: 16 };
-const searchBox = { display: "flex", gap: 8, background: "#fff", padding: 10, borderRadius: 10 };
-const card = { background: "#fff", padding: 12, marginTop: 10, borderRadius: 10 };
-const row = { display: "flex", justifyContent: "space-between" };
-const btn = { background: "#22c55e", color: "#fff", padding: 10, border: "none", borderRadius: 8 };
-const bigBtn = { ...btn, width: "100%", marginTop: 10 };
-const totalBox = { background: "#000", color: "#fff", padding: 10, marginTop: 10 };
-const tab = { marginRight: 10 };
-const active = { marginRight: 10, fontWeight: "bold" };
+// 🎨 styles (same as yours, slightly improved)
+const container={maxWidth:520,margin:"auto",padding:16,paddingBottom:80};
+const searchBox={display:"flex",gap:8,background:"#fff",padding:10,borderRadius:12};
+const card={background:"#fff",padding:12,marginTop:10,borderRadius:12};
+const row={display:"flex",justifyContent:"space-between"};
+const btn={background:"#22c55e",color:"#fff",border:"none",padding:10,borderRadius:10};
+const tab={marginRight:10};
+const active={marginRight:10,fontWeight:"bold"};
 
-const popup = {
-  position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-  background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center"
+const bottom={
+  position:"fixed",
+  bottom:0,left:0,right:0,
+  background:"#000",
+  color:"#fff",
+  display:"flex",
+  justifyContent:"space-between",
+  padding:12
 };
 
-const popupBox = {
-  background: "#fff", padding: 20, borderRadius: 10, width: 300
-};
+const popup={position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",justifyContent:"center",alignItems:"center"};
+const popupBox={background:"#fff",padding:20,borderRadius:10,width:300};
+const input={width:"100%",padding:10};
 
-const input = { width: "100%", padding: 10, marginBottom: 10 };
-const premiumCard = {
-  background: "#ffffff",
-  padding: 16,
-  borderRadius: 16,
-  marginTop: 14,
-  boxShadow: "0 6px 18px rgba(0,0,0,0.08)"
-};
-
-const headerRow = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center"
-};
-
-const bestBadge = {
-  background: "#22c55e",
-  color: "#fff",
-  padding: "3px 8px",
-  borderRadius: 8,
-  fontSize: 11
-};
-
-const distance = {
-  fontSize: 12,
-  color: "#666"
-};
-
-const reasonText = {
-  marginTop: 6,
-  fontSize: 12,
-  color: "#6b7280"
-};
-
-const itemBlock = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginTop: 10
-};
-
-const itemName = {
-  fontSize: 15,
-  fontWeight: 500
-};
-
-const itemMeta = {
-  fontSize: 12,
-  color: "#888"
-};
-
-const itemPrice = {
-  fontWeight: "bold"
-};
-
-const divider = {
-  height: 1,
-  background: "#eee",
-  marginTop: 12
-};
-
-const subtotalRow = {
-  display: "flex",
-  justifyContent: "space-between",
-  marginTop: 10
-};
-
-const orderButton = {
-  marginTop: 12,
-  width: "100%",
-  padding: 12,
-  background: "#22c55e",
-  color: "#fff",
-  border: "none",
-  borderRadius: 12,
-  fontWeight: "bold"
-};
+const premiumCard={background:"#fff",padding:16,borderRadius:16,marginTop:14,boxShadow:"0 4px 14px rgba(0,0,0,0.08)"};
+const headerRow={display:"flex",justifyContent:"space-between"};
+const bestBadge={marginLeft:8,background:"#22c55e",color:"#fff",padding:"2px 6px",borderRadius:6,fontSize:10};
+const distance={fontSize:12,color:"#666"};
+const reasonText={fontSize:12,color:"#666",marginTop:6};
+const itemBlock={display:"flex",justifyContent:"space-between",marginTop:10};
+const itemMeta={fontSize:12,color:"#888"};
+const orderButton={marginTop:12,width:"100%",padding:12,background:"#22c55e",color:"#fff",border:"none",borderRadius:12};
