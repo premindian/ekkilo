@@ -12,6 +12,7 @@ export default function OrderPage() {
 
   const [phone, setPhone] = useState("");
   const [showPhone, setShowPhone] = useState(true);
+
   // 📍 LOCATION
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
@@ -55,21 +56,18 @@ export default function OrderPage() {
     setLoading(false);
   };
 
-  // 🧠 BUILD STORE TOTALS FROM store_view
-  const buildStores = () => {
-    if (!result?.store_view) return [];
+  // 🧠 BUILD STORE TOTALS
+  const stores = result?.store_view
+    ? Object.entries(result.store_view)
+        .map(([store, items]) => {
+          const list = Object.values(items);
+          const total = list.reduce((sum, i) => sum + i.price, 0);
+          return { store, items: list, total };
+        })
+        .sort((a, b) => a.total - b.total)
+    : [];
 
-    return Object.entries(result.store_view).map(([store, items]) => {
-      const list = Object.values(items);
-      const total = list.reduce((sum, i) => sum + i.price, 0);
-
-      return { store, items: list, total };
-    }).sort((a, b) => a.total - b.total);
-  };
-
-  const stores = buildStores();
-
-  // 📦 PLACE ORDER
+  // 📦 PLACE ORDER + WHATSAPP
   const placeOrder = async (selectedStore) => {
     if (!phone) return setShowPhone(true);
 
@@ -82,13 +80,12 @@ export default function OrderPage() {
       }),
     });
 
-    alert("✅ Order sent!");
-  };
+    const message = `Hi, I want to order:\n${selectedStore.items
+      .map(i => `${i.name} - ₹${i.price}`)
+      .join("\n")}\nTotal: ₹${selectedStore.total}`;
 
-  useEffect(() => {
-    console.log("🚨 PHONE POPUP SHOULD SHOW");
-    setShowPhone(true);
-  }, []);
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`);
+  };
 
   return (
     <div style={{ maxWidth: 500, margin: "auto", padding: 16 }}>
@@ -100,15 +97,16 @@ export default function OrderPage() {
         <div style={popupStyle}>
           <div style={popupBox}>
             <h3>Enter WhatsApp Number</h3>
+
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="10 digit number"
               style={{ width: "100%", padding: 10 }}
             />
+
             <button onClick={() => {
               if (!phone) return alert("Enter phone");
-              localStorage.setItem("phone", phone);
               setShowPhone(false);
             }}>
               Continue
@@ -145,26 +143,57 @@ export default function OrderPage() {
 
       {!result && <div>Enter items to search</div>}
 
-      {/* 🧠 BEST STORE */}
+      {/* 💰 SAVINGS */}
+      {result?.comparison && (
+        <div style={{ marginTop: 10, color: "green" }}>
+          💰 You save up to ₹
+          {Math.max(
+            ...Object.values(result.comparison)
+              .flat()
+              .map(o => o.savings || 0)
+          )}
+        </div>
+      )}
+
+      {/* 🧠 STORE LIST */}
       {stores.length > 0 && (
         <div>
-          <h3>🏆 Best Store</h3>
+          <h3>🏆 Best Stores</h3>
 
           {stores.map((store, idx) => (
             <div key={idx} style={cardStyle}>
 
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <b>{store.store}</b>
+                <div>
+                  <b>🏪 {store.store}</b>
+                  {idx === 0 && (
+                    <div style={{ fontSize: 12, color: "green" }}>
+                      ⭐ Best Choice
+                    </div>
+                  )}
+                </div>
+
                 <b>₹{store.total}</b>
               </div>
 
               {store.items.map((item, i) => (
                 <div key={i}>
-                  {item.name} ({item.size}{item.unit}) - ₹{item.price}
+                  {item.name} ({item.size}{item.unit}) — ₹{item.price}
                 </div>
               ))}
 
-              <button onClick={() => placeOrder(store)}>
+              <button
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  padding: 10,
+                  background: "#22c55e",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8
+                }}
+                onClick={() => placeOrder(store)}
+              >
                 Order from this store
               </button>
 
@@ -173,7 +202,7 @@ export default function OrderPage() {
         </div>
       )}
 
-      {/* 🎛 COMPARISON */}
+      {/* 🔍 COMPARISON */}
       {result?.comparison && (
         <div>
           <h3>🔍 Compare Prices</h3>
