@@ -5,6 +5,7 @@ const API_BASE = "https://ekkilo.onrender.com";
 export default function OrderPage() {
   const [text, setText] = useState("");
   const [result, setResult] = useState(null);
+  const [mode, setMode] = useState("smart"); // smart | one
   const [loading, setLoading] = useState(false);
 
   const [location, setLocation] = useState(null);
@@ -24,7 +25,7 @@ export default function OrderPage() {
           lng: pos.coords.longitude,
         });
       },
-      () => alert("Location permission denied")
+      () => alert("Location denied")
     );
   };
 
@@ -38,320 +39,193 @@ export default function OrderPage() {
 
     setLoading(true);
 
-    try {
-      const res = await fetch(`${API_BASE}/search`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          lat: location?.lat,
-          lng: location?.lng,
-          radius,
-        }),
-      });
+    const res = await fetch(`${API_BASE}/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        lat: location?.lat,
+        lng: location?.lng,
+        radius,
+      }),
+    });
 
-      const data = await res.json();
-      setResult(data);
-
-    } catch (err) {
-      alert("Search failed");
-    }
-
+    const data = await res.json();
+    setResult(data);
     setLoading(false);
   };
 
+  // 🧠 SINGLE STORE
   const stores = result?.stores || [];
 
+  // 🧠 SPLIT LOGIC (🔥 MAGIC)
+  const splitStores = {};
+
+  if (result?.comparison) {
+    Object.entries(result.comparison).forEach(([item, options]) => {
+      const best = options.find(o => o.is_best);
+      if (!best) return;
+
+      if (!splitStores[best.store]) {
+        splitStores[best.store] = {
+          store: best.store,
+          items: [],
+          total: 0
+        };
+      }
+
+      splitStores[best.store].items.push({
+        name: item,
+        price: best.price,
+        size: best.size,
+        unit: best.unit
+      });
+
+      splitStores[best.store].total += best.price;
+    });
+  }
+
+  const splitList = Object.values(splitStores);
+  const splitTotal = splitList.reduce((sum, s) => sum + s.total, 0);
+
   // 📦 ORDER
-  const placeOrder = async (store) => {
+  const placeOrder = async (storesPayload) => {
     if (!phone) return setShowPhone(true);
 
     const formattedPhone = phone.startsWith("91") ? phone : "91" + phone;
 
-    try {
-      const res = await fetch(`${API_BASE}/order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: formattedPhone,
-          stores: [store],
-        }),
-      });
+    await fetch(`${API_BASE}/order`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone: formattedPhone,
+        stores: storesPayload,
+      }),
+    });
 
-      const data = await res.json();
-
-      alert(`✅ Order placed! ID: ${data.final_order_id}`);
-
-      setResult(null);
-      setText("");
-
-    } catch (err) {
-      alert("Order failed");
-    }
+    alert("✅ Order placed!");
+    setResult(null);
   };
 
   return (
     <div style={container}>
 
-      {/* 📱 PHONE MODAL */}
+      {/* PHONE */}
       {showPhone && (
-        <div style={popupStyle}>
+        <div style={popup}>
           <div style={popupBox}>
             <h3>Enter WhatsApp Number</h3>
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="10 digit number"
               style={input}
             />
-            <button
-              style={primaryBtn}
-              onClick={() => {
-                if (!phone) return alert("Enter phone");
-                setShowPhone(false);
-              }}
-            >
+            <button style={btn} onClick={() => setShowPhone(false)}>
               Continue
             </button>
           </div>
         </div>
       )}
 
-      {/* 🔝 HEADER */}
-      <div style={header}>
-        <h2 style={{ margin: 0 }}>🛒 Smart Kirana</h2>
+      <h2>🛒 Smart Kirana</h2>
 
-        <div style={locationBox}>
-          📍 {location
-            ? `${location.lat.toFixed(3)}, ${location.lng.toFixed(3)}`
-            : "Fetching location..."}
-          <button onClick={getLocation} style={smallBtn}>🔄</button>
-        </div>
-      </div>
-
-      {/* 🔍 SEARCH */}
+      {/* SEARCH */}
       <div style={searchBox}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="milk, oil..."
-          style={{ flex: 1, border: "none", outline: "none" }}
+          style={{ flex: 1, border: "none" }}
         />
-        <button style={primaryBtn} onClick={search}>Search</button>
+        <button style={btn} onClick={search}>Search</button>
       </div>
 
-      {/* 📍 RADIUS */}
+      {/* MODES */}
       <div style={{ marginTop: 10 }}>
-        Radius:
-        <select value={radius} onChange={(e) => setRadius(Number(e.target.value))}>
-          <option value={3}>3 km</option>
-          <option value={5}>5 km</option>
-          <option value={7}>7 km</option>
-        </select>
+        <button onClick={() => setMode("smart")} style={mode === "smart" ? active : tab}>🧠 Smart</button>
+        <button onClick={() => setMode("one")} style={mode === "one" ? active : tab}>🏪 One Store</button>
       </div>
 
-      {loading && <div style={{ marginTop: 10 }}>🔄 Searching...</div>}
-
-      {/* 💰 SAVINGS */}
+      {/* SAVINGS */}
       {result?.comparison && (
-        <div style={savings}>
+        <div style={{ color: "green", marginTop: 10 }}>
           💰 Save up to ₹
-          {formatPrice(
-            Math.max(...Object.values(result.comparison).flat().map(o => o.savings || 0))
-          )}
+          {formatPrice(Math.max(...Object.values(result.comparison).flat().map(o => o.savings || 0)))}
         </div>
       )}
 
-      {/* 🏪 STORE CARDS */}
-      <div style={{ marginTop: 10 }}>
-        {stores.map((store, idx) => (
-          <div key={idx} style={card}>
+      {/* 🔥 SMART SPLIT */}
+      {mode === "smart" && splitList.length > 0 && (
+        <div>
 
-            <div style={cardHeader}>
-              <div>
-                <b>{store.store}</b>
-                {store.is_best && <span style={badge}>Best</span>}
-              </div>
-              <b style={{ color: "#16a34a" }}>₹{formatPrice(store.total)}</b>
-            </div>
+          <h3>⚡ Cheapest Combo (Split)</h3>
 
-            <div style={subText}>
-              {store.reason?.join(" • ")} • {store.distance} km
-            </div>
+          {splitList.map((store, idx) => (
+            <div key={idx} style={card}>
+              <b>🏪 {store.store}</b>
 
-            <div style={{ marginTop: 8 }}>
               {store.items.map((item, i) => (
-                <div key={i} style={itemRow}>
-                  <span>{item.name} ({item.size}{item.unit})</span>
+                <div key={i} style={row}>
+                  <span>{item.name}</span>
                   <span>₹{formatPrice(item.price)}</span>
                 </div>
               ))}
+
+              <b>Subtotal: ₹{formatPrice(store.total)}</b>
             </div>
+          ))}
 
-            <button style={orderBtn} onClick={() => placeOrder(store)}>
-              Order from this store
-            </button>
-
-          </div>
-        ))}
-      </div>
-
-      {/* 🧾 STICKY TOTAL BAR */}
-      {stores.length > 0 && (
-        <div style={bottomBar}>
-          <div>
-            <div style={{ fontSize: 12 }}>Total</div>
-            <div style={{ fontWeight: "bold" }}>
-              ₹{formatPrice(stores[0]?.total)}
-            </div>
+          <div style={totalBox}>
+            💰 Total: ₹{formatPrice(splitTotal)}
           </div>
 
-          <button style={placeBtn} onClick={() => placeOrder(stores[0])}>
-            Place Order
+          <button style={bigBtn} onClick={() => placeOrder(splitList)}>
+            🚀 Order Cheapest Combo
           </button>
+
         </div>
       )}
+
+      {/* 🏪 ONE STORE */}
+      {mode === "one" && stores.map((store, idx) => (
+        <div key={idx} style={card}>
+          <b>{store.store}</b>
+
+          {store.items.map((item, i) => (
+            <div key={i} style={row}>
+              <span>{item.name}</span>
+              <span>₹{formatPrice(item.price)}</span>
+            </div>
+          ))}
+
+          <button style={btn} onClick={() => placeOrder([store])}>
+            Order from this store
+          </button>
+        </div>
+      ))}
 
     </div>
   );
 }
 
-// 🎨 STYLES
+// 🎨 styles
+const container = { maxWidth: 500, margin: "auto", padding: 16 };
+const searchBox = { display: "flex", gap: 8, background: "#fff", padding: 10, borderRadius: 10 };
+const card = { background: "#fff", padding: 12, marginTop: 10, borderRadius: 10 };
+const row = { display: "flex", justifyContent: "space-between" };
+const btn = { background: "#22c55e", color: "#fff", padding: 10, border: "none", borderRadius: 8 };
+const bigBtn = { ...btn, width: "100%", marginTop: 10 };
+const totalBox = { background: "#000", color: "#fff", padding: 10, marginTop: 10 };
+const tab = { marginRight: 10 };
+const active = { marginRight: 10, fontWeight: "bold" };
 
-const container = {
-  maxWidth: 520,
-  margin: "auto",
-  padding: 16,
-  paddingBottom: 100,
-  background: "#f8fafc"
-};
-
-const header = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center"
-};
-
-const locationBox = {
-  fontSize: 12,
-  color: "#666"
-};
-
-const searchBox = {
-  display: "flex",
-  gap: 8,
-  background: "#fff",
-  padding: 10,
-  borderRadius: 12,
-  marginTop: 10
-};
-
-const card = {
-  background: "#fff",
-  padding: 14,
-  borderRadius: 14,
-  marginTop: 12,
-  boxShadow: "0 2px 8px rgba(0,0,0,0.08)"
-};
-
-const cardHeader = {
-  display: "flex",
-  justifyContent: "space-between"
-};
-
-const subText = {
-  fontSize: 12,
-  color: "#666",
-  marginTop: 4
-};
-
-const itemRow = {
-  display: "flex",
-  justifyContent: "space-between",
-  marginTop: 4
-};
-
-const badge = {
-  marginLeft: 6,
-  background: "#22c55e",
-  color: "#fff",
-  padding: "2px 6px",
-  borderRadius: 6,
-  fontSize: 10
-};
-
-const orderBtn = {
-  marginTop: 10,
-  width: "100%",
-  padding: 10,
-  background: "#16a34a",
-  color: "#fff",
-  border: "none",
-  borderRadius: 10
-};
-
-const primaryBtn = {
-  padding: "8px 12px",
-  background: "#22c55e",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8
-};
-
-const smallBtn = {
-  marginLeft: 6,
-  fontSize: 10
-};
-
-const bottomBar = {
-  position: "fixed",
-  bottom: 0,
-  left: 0,
-  right: 0,
-  background: "#000",
-  color: "#fff",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "12px 20px"
-};
-
-const placeBtn = {
-  background: "#22c55e",
-  border: "none",
-  color: "#fff",
-  padding: "10px 16px",
-  borderRadius: 10
-};
-
-const savings = {
-  marginTop: 10,
-  color: "green",
-  fontWeight: "bold"
-};
-
-const popupStyle = {
-  position: "fixed",
-  top: 0, left: 0, right: 0, bottom: 0,
-  background: "rgba(0,0,0,0.5)",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  zIndex: 10
+const popup = {
+  position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+  background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center"
 };
 
 const popupBox = {
-  background: "#fff",
-  padding: 20,
-  borderRadius: 12,
-  width: 300
+  background: "#fff", padding: 20, borderRadius: 10, width: 300
 };
 
-const input = {
-  width: "100%",
-  padding: 10,
-  borderRadius: 8,
-  border: "1px solid #ccc",
-  marginTop: 10,
-  marginBottom: 10
-};
+const input = { width: "100%", padding: 10, marginBottom: 10 };
