@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kirana Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #f6f8fa;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 20px; }
+
+        .cards { display: flex; gap: 20px; margin-bottom: 20px; }
+        .card { flex: 1; padding: 20px; border-radius: 10px; color: white; font-size: 18px; }
+
+        .total { background: #333; }
+        .sent { background: #007bff; }
+        .accepted { background: #ff9800; }
+        .ready { background: #28a745; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+        }
+
+        .badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            color: white;
+            font-size: 12px;
+        }
+
+        .CREATED { background: gray; }
+        .SENT { background: blue; }
+        .ACCEPTED { background: orange; }
+        .READY { background: green; }
+        .COMPLETED { background: purple; }
+
+        button {
+            border: none;
+            padding: 6px 10px;
+            margin: 2px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .btn-accept { background: orange; color: white; }
+        .btn-ready { background: green; color: white; }
+        .btn-complete { background: purple; color: white; }
+
+        .new-row {
+            background: #fff3cd !important;
+            transition: background 2s ease;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>🛒 Kirana Admin Dashboard</h1>
+
+<div class="cards">
+    <div class="card total">Total: <span id="total">0</span></div>
+    <div class="card sent">Sent: <span id="sent">0</span></div>
+    <div class="card accepted">Accepted: <span id="accepted">0</span></div>
+    <div class="card ready">Ready: <span id="ready">0</span></div>
+</div>
+
+<table id="orders">
+    <thead>
+        <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+const API_BASE = "https://ekkilo.onrender.com";
+const WS_BASE = "wss://ekkilo.onrender.com";
+
+let allOrders = [];
+let knownOrderIds = new Set();
+
+// 🔥 CLEAN WEBSOCKET (single connection)
+function connectWS() {
+    const socket = new WebSocket(`${WS_BASE}/ws/admin`);
+
+    socket.onopen = () => {
+        console.log("✅ WS connected");
+    };
+
+    socket.onmessage = () => {
+        loadOrders();
+        loadStats();
+    };
+
+    socket.onclose = () => {
+        console.log("⚠️ reconnecting...");
+        setTimeout(connectWS, 2000);
+    };
+}
+
+connectWS();
+
+// 📊 Stats
+async function loadStats() {
+    const res = await fetch(`${API_BASE}/admin/stats`);
+    const data = await res.json();
+
+    document.getElementById("total").innerText = data.total || 0;
+    document.getElementById("sent").innerText = data.sent || 0;
+    document.getElementById("accepted").innerText = data.accepted || 0;
+    document.getElementById("ready").innerText = data.ready || 0;
+}
+
+// 📦 Orders
+async function loadOrders() {
+    const res = await fetch(`${API_BASE}/admin/store-orders`);
+    const data = await res.json();
+
+    const tbody = document.querySelector("#orders tbody");
+    tbody.innerHTML = "";
+
+    data.forEach(order => {
+        const row = document.createElement("tr");
+
+        row.innerHTML = `
+            <td>#${order.final_order_id} (${order.store})</td>
+            <td>${order.customer}</td>
+            <td><span class="badge ${order.status}">${order.status}</span></td>
+            <td>
+                <button class="btn-accept" onclick="updateStatus(${order.id}, 'ACCEPTED')">Accept</button>
+                <button class="btn-ready" onclick="updateStatus(${order.id}, 'READY')">Ready</button>
+                <button class="btn-complete" onclick="updateStatus(${order.id}, 'COMPLETED')">Complete</button>
+            </td>
+        `;
+
+        tbody.appendChild(row);
+    });
+}
+
+// 🔄 Update
+async function updateStatus(id, status) {
+    await fetch(`${API_BASE}/admin/store-orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+    });
+
+    loadOrders();
+    loadStats();
+}
+
+// 🚀 Init
+async function init() {
+    await loadOrders();
+    loadStats();
+}
+
+init();
+</script>
+
+</body>
+</html>

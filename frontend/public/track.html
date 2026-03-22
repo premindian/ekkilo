@@ -28,7 +28,6 @@
             margin-bottom: 20px;
         }
 
-        /* 🔥 PROGRESS BAR */
         .progress {
             display: flex;
             justify-content: space-between;
@@ -62,40 +61,35 @@
             font-size: 12px;
             margin-top: 5px;
         }
-
-        .line {
-            height: 3px;
-            background: #ddd;
-            flex: 1;
-            margin-top: 8px;
-        }
-
-        .line.active {
-            background: #28a745;
-        }
     </style>
 </head>
 
 <body>
+
 <div id="orderId"></div>
+
 <div class="card">
     <div class="title">🛒 Order Tracking</div>
     <div id="store"></div>
-
     <div id="progress"></div>
 </div>
 
-
 <script>
+const API_BASE = "https://ekkilo.onrender.com";
+const WS_BASE = "wss://ekkilo.onrender.com";
 
 const params = new URLSearchParams(window.location.search);
 const orderId = params.get("order_id");
+
 let socket;
 
-try {
-    socket = new WebSocket(`ws://${window.location.host}/ws/${orderId}`);
+document.getElementById("orderId").innerText = "Order #" + orderId;
 
-    socket.onmessage = function(event) {
+// 🔥 Try WebSocket first
+try {
+    socket = new WebSocket(`${WS_BASE}/ws/${orderId}`);
+
+    socket.onmessage = function () {
         loadOrder();
     };
 
@@ -108,44 +102,45 @@ try {
     startPolling();
 }
 
-document.getElementById("orderId").innerText = "Order #" + orderId;
-
+// 🔁 Fallback polling
 function startPolling() {
-    setInterval(loadOrder, 3000); // every 3 sec
+    setInterval(loadOrder, 3000);
 }
 
-socket.onmessage = function(event) {
-    loadOrder(); // simplest fix
-};
-
+// 📦 Load order from backend
 async function loadOrder() {
     if (!orderId) {
         alert("Invalid order ID");
         return;
     }
 
-    const res = await fetch(`/track/${orderId}`);
-    const data = await res.json();
+    try {
+        const res = await fetch(`${API_BASE}/track/${orderId}`);
+        const data = await res.json();
 
+        if (!data.stores || data.stores.length === 0) {
+            document.getElementById("store").innerHTML = "No stores found";
+            return;
+        }
 
-if (!data.stores || data.stores.length === 0) {
-    document.getElementById("store").innerHTML = "No stores found";
-    return;
+        // 🏪 Store display
+        const storeDiv = document.getElementById("store");
+        storeDiv.innerHTML = "<b>🏪 Stores:</b><br>";
+
+        data.stores.forEach(s => {
+            storeDiv.innerHTML += `• ${s.store} → <b>${s.status}</b><br>`;
+        });
+
+        // 📊 Progress
+        const overall = getOverallStatus(data.stores);
+        renderProgress(overall);
+
+    } catch (err) {
+        console.error("Error loading order:", err);
+    }
 }
-    // 🔥 SHOW STORES
-    const storeDiv = document.getElementById("store");
-    storeDiv.innerHTML = "<b>🏪 Stores:</b><br>";
 
-    data.stores.forEach(s => {
-        storeDiv.innerHTML += `• ${s.store} → <b>${s.status}</b><br>`;
-    });
-
-    // 🔥 OVERALL STATUS
-    const overall = getOverallStatus(data.stores);
-
-    renderProgress(overall);
-}
-
+// 📊 Compute overall status
 function getOverallStatus(stores) {
     const statuses = stores.map(s => s.status);
 
@@ -155,18 +150,13 @@ function getOverallStatus(stores) {
     return "PROCESSING";
 }
 
-
+// 🎯 Render progress UI
 function renderProgress(status) {
-    const steps = [
-	    "PROCESSING",
-	    "ACCEPTED",
-	    "PARTIAL_READY",
-	    "READY"
-	];
+    const steps = ["PROCESSING", "ACCEPTED", "PARTIAL_READY", "READY"];
 
     let html = '<div class="progress">';
 
-    steps.forEach((step, i) => {
+    steps.forEach(step => {
         let cls = "";
 
         if (steps.indexOf(step) <= steps.indexOf(status)) {
@@ -180,8 +170,8 @@ function renderProgress(status) {
         html += `
             <div class="step ${cls}">
                 <div class="circle"></div>
-				<div class="label">${formatLabel(step)}</div>
-		   </div>
+                <div class="label">${formatLabel(step)}</div>
+            </div>
         `;
     });
 
@@ -190,8 +180,7 @@ function renderProgress(status) {
     document.getElementById("progress").innerHTML = html;
 }
 
-
-
+// 🏷️ Label formatter
 function formatLabel(step) {
     const map = {
         PROCESSING: "⏳ Processing",
@@ -202,8 +191,8 @@ function formatLabel(step) {
     return map[step] || step;
 }
 
+// 🚀 Initial load
 loadOrder();
-
 </script>
 
 </body>
