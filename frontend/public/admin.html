@@ -93,8 +93,9 @@
 
 <script>
 const API_BASE = "https://ekkilo.onrender.com";
-const WS_BASE = "wss://ekkilo.onrender.com";
+const protocol = window.location.protocol === "https:" ? "wss" : "ws";
 
+const WS_BASE = new WebSocket(`${protocol}://ekkilo.onrender.com/ws/admin`);
 let allOrders = [];
 let knownOrderIds = new Set();
 
