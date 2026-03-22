@@ -93,23 +93,29 @@
 
 <script>
 const API_BASE = "https://ekkilo.onrender.com";
+
+// ✅ FIXED: WS BASE AS STRING
 const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+const WS_BASE = `${protocol}://ekkilo.onrender.com`;
 
-const WS_BASE = new WebSocket(`${protocol}://ekkilo.onrender.com/ws/admin`);
-let allOrders = [];
-let knownOrderIds = new Set();
+let socket;
 
-// 🔥 CLEAN WEBSOCKET (single connection)
+// 🔥 CLEAN WEBSOCKET
 function connectWS() {
-    const socket = new WebSocket(`${WS_BASE}/ws/admin`);
+    socket = new WebSocket(`${WS_BASE}/ws/admin`);
 
     socket.onopen = () => {
         console.log("✅ WS connected");
     };
 
-    socket.onmessage = () => {
+    socket.onmessage = (event) => {
+        console.log("📩 Update received:", event.data);
         loadOrders();
         loadStats();
+    };
+
+    socket.onerror = (err) => {
+        console.log("❌ WS error", err);
     };
 
     socket.onclose = () => {
@@ -122,39 +128,47 @@ connectWS();
 
 // 📊 Stats
 async function loadStats() {
-    const res = await fetch(`${API_BASE}/admin/stats`);
-    const data = await res.json();
+    try {
+        const res = await fetch(`${API_BASE}/admin/stats`);
+        const data = await res.json();
 
-    document.getElementById("total").innerText = data.total || 0;
-    document.getElementById("sent").innerText = data.sent || 0;
-    document.getElementById("accepted").innerText = data.accepted || 0;
-    document.getElementById("ready").innerText = data.ready || 0;
+        document.getElementById("total").innerText = data.total || 0;
+        document.getElementById("sent").innerText = data.sent || 0;
+        document.getElementById("accepted").innerText = data.accepted || 0;
+        document.getElementById("ready").innerText = data.ready || 0;
+    } catch (e) {
+        console.log("Stats error", e);
+    }
 }
 
 // 📦 Orders
 async function loadOrders() {
-    const res = await fetch(`${API_BASE}/admin/store-orders`);
-    const data = await res.json();
+    try {
+        const res = await fetch(`${API_BASE}/admin/store-orders`);
+        const data = await res.json();
 
-    const tbody = document.querySelector("#orders tbody");
-    tbody.innerHTML = "";
+        const tbody = document.querySelector("#orders tbody");
+        tbody.innerHTML = "";
 
-    data.forEach(order => {
-        const row = document.createElement("tr");
+        data.forEach(order => {
+            const row = document.createElement("tr");
 
-        row.innerHTML = `
-            <td>#${order.final_order_id} (${order.store})</td>
-            <td>${order.customer}</td>
-            <td><span class="badge ${order.status}">${order.status}</span></td>
-            <td>
-                <button class="btn-accept" onclick="updateStatus(${order.id}, 'ACCEPTED')">Accept</button>
-                <button class="btn-ready" onclick="updateStatus(${order.id}, 'READY')">Ready</button>
-                <button class="btn-complete" onclick="updateStatus(${order.id}, 'COMPLETED')">Complete</button>
-            </td>
-        `;
+            row.innerHTML = `
+                <td>#${order.final_order_id} (${order.store})</td>
+                <td>${order.customer}</td>
+                <td><span class="badge ${order.status}">${order.status}</span></td>
+                <td>
+                    <button class="btn-accept" onclick="updateStatus(${order.id}, 'ACCEPTED')">Accept</button>
+                    <button class="btn-ready" onclick="updateStatus(${order.id}, 'READY')">Ready</button>
+                    <button class="btn-complete" onclick="updateStatus(${order.id}, 'COMPLETED')">Complete</button>
+                </td>
+            `;
 
-        tbody.appendChild(row);
-    });
+            tbody.appendChild(row);
+        });
+    } catch (e) {
+        console.log("Orders error", e);
+    }
 }
 
 // 🔄 Update
@@ -172,7 +186,7 @@ async function updateStatus(id, status) {
 // 🚀 Init
 async function init() {
     await loadOrders();
-    loadStats();
+    await loadStats();
 }
 
 init();
