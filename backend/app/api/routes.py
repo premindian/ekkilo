@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from app.services.whatsapp import send_message
 from app.services.order_service import create_full_order
+
 
 router = APIRouter()
 
@@ -12,24 +13,37 @@ VERIFY_TOKEN = "Bookofkirana2026"
 # -----------------------------
 @router.post("/order")
 async def create_order(data: dict):
-    phone = data.get("phone", "917981728794")
-    stores = data.get("stores", [])
+    try:
+        # -----------------------------
+        # ✅ VALIDATION
+        # -----------------------------
+        phone = data.get("phone")
+        stores = data.get("stores", [])
 
-    if not stores:
-        return {"error": "No stores"}
+        if not phone:
+            raise HTTPException(status_code=400, detail="Phone is required")
 
-    final_order_id = await create_full_order(stores, phone)
+        if not stores:
+            raise HTTPException(status_code=400, detail="No stores provided")
 
-    # -----------------------------
-    # 📲 CUSTOMER MESSAGE
-    # -----------------------------
-    summary = []
-    for store in stores:
-        items = ", ".join([i["name"] for i in store.get("items", [])])
-        summary.append(f"{store['store']}: {items}")
+        # -----------------------------
+        # ✅ CREATE ORDER
+        # -----------------------------
+        final_order_id = await create_full_order(stores, phone)
 
-    summary_text = "\n".join(summary)
-    message = f"""🧾 Order Created
+        # -----------------------------
+        # 📲 CUSTOMER MESSAGE
+        # -----------------------------
+        summary = []
+        for store in stores:
+            items = ", ".join([
+                i.get("name", "item") for i in store.get("items", [])
+            ])
+            summary.append(f"{store.get('store', 'Store')}: {items}")
+
+        summary_text = "\n".join(summary)
+
+        message = f"""🧾 Order Created
 
 Order ID: {final_order_id}
 
@@ -37,10 +51,24 @@ Order ID: {final_order_id}
 
 💬 Reply CONFIRM#{final_order_id} to proceed
 """
-    await send_message(phone, message)
 
-    return {"final_order_id": final_order_id}
+        # -----------------------------
+        # ✅ SEND WHATSAPP
+        # -----------------------------
+        await send_message(phone, message)
 
+        # -----------------------------
+        # ✅ RESPONSE
+        # -----------------------------
+        return {
+            "status": "success",
+            "final_order_id": final_order_id
+        }
+
+    except Exception as e:
+        print("🔥 ORDER ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+    
 # -----------------------------
 # ?? ADMIN STORE ORDERS
 # -----------------------------
