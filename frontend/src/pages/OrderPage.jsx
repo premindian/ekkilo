@@ -74,13 +74,13 @@ export default function OrderPage() {
     if (!phone) return setShowPhone(true);
     const formattedPhone = phone.startsWith("91") ? phone : "91" + phone;
     try {
-      console.log("📲 Sending phone:", phone); // ✅ BEFORE CALL
+      console.log("📲 Sending phone:", formattedPhone); // ✅ BEFORE CALL
 
       const res = await fetch(`${API_BASE}/order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          formattedPhone,
+          phone: formattedPhone,
           stores: [selectedStore],
         }),
       });
