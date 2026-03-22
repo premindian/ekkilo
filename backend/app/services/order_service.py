@@ -21,14 +21,33 @@ async def create_full_order(stores, customer_phone):
     # 🏪 STORE ORDERS
     # -----------------------------
     for store in stores:
+
+        # 🔥 FIX: SAFE STORE PHONE EXTRACTION
+        store_phone = store.get("store_phone")
+
+        if not store_phone:
+            items = store.get("items", [])
+            if items:
+                store_phone = items[0].get("phone")
+
+        if not store_phone:
+            print("⚠️ No store phone found, skipping store:", store.get("store"))
+            continue
+
+        # -----------------------------
+        # 🏪 INSERT STORE ORDER
+        # -----------------------------
         so = await db.fetchrow("""
             INSERT INTO store_orders (final_order_id, store_name, store_phone)
             VALUES ($1, $2, $3)
             RETURNING id
-        """, final_order_id, store["store"], store["store_phone"])
+        """, final_order_id, store["store"], store_phone)
 
         store_order_id = so["id"]
 
+        # -----------------------------
+        # 📦 ITEMS
+        # -----------------------------
         for item in store.get("items", []):
             await db.execute("""
                 INSERT INTO order_items (store_order_id, product_name, quantity, price)
@@ -44,16 +63,17 @@ async def create_full_order(stores, customer_phone):
         """, store_order_id, "SENT")
 
         # -----------------------------
-        # 📲 SEND TO STORE (UPDATED)
+        # 📲 SEND TO STORE
         # -----------------------------
         item_text = "\n".join([
             f"{i['name']} x{i.get('qty',1)}"
             for i in store.get("items", [])
         ])
 
-        await send_message(
-            store["store_phone"],
-            f"""🆕 New Order
+        try:
+            await send_message(
+                store_phone,
+                f"""🆕 New Order
 
 Order ID: {final_order_id}
 
@@ -62,7 +82,9 @@ Order ID: {final_order_id}
 Reply:
 READY#{final_order_id}
 """
-        )
+            )
+        except Exception as e:
+            print("⚠️ WhatsApp send failed:", str(e))
 
         # -----------------------------
         # 🔴 ADMIN REALTIME
