@@ -15,7 +15,7 @@ export default function OrderPage() {
   const [showPhone, setShowPhone] = useState(true);
 
   const formatPrice = (n) => Number(n || 0).toFixed(2);
-
+const format = (n) => Number(n || 0).toFixed(2);
   // 📍 LOCATION
   const getLocation = () => {
     navigator.geolocation?.getCurrentPosition(
