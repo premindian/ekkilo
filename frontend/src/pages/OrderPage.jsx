@@ -14,37 +14,36 @@ export default function OrderPage() {
 
   const API_BASE = "https://ekkilo.onrender.com";
 
+  // ✅ PHONE POPUP STATE
   const [phone, setPhone] = useState(localStorage.getItem("phone") || "");
+  const [showPhonePopup, setShowPhonePopup] = useState(!phone);
 
-  const formatQty = (opt) => {
-    return `${opt?.packs ?? 1} × ${opt?.size ?? 1}${opt?.unit ?? ""}`;
-  };
+  const formatQty = (opt) =>
+    `${opt?.packs ?? 1} × ${opt?.size ?? 1}${opt?.unit ?? ""}`;
 
   // 📍 LOCATION
   useEffect(() => {
-    if (!navigator.geolocation) return;
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
+    navigator.geolocation?.getCurrentPosition(
+      (pos) =>
         setLocation({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-        });
-      },
-      () => console.log("⚠️ Location denied")
+        }),
+      () => console.log("Location denied")
     );
   }, []);
 
-  // 🔍 SEARCH (MANUAL ONLY — FIXED)
+  // 🔍 SEARCH (MANUAL ONLY)
   const search = async () => {
     if (!text) return;
 
     setLoading(true);
+    setResult(null);
 
     try {
       const res = await fetch(`${API_BASE}/search`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
           text,
           lat: location?.lat,
@@ -54,66 +53,55 @@ export default function OrderPage() {
       });
 
       const data = await res.json();
-
       console.log("RESULT:", data);
-
       setResult(data);
     } catch (err) {
       console.error(err);
-      alert("❌ Search failed");
+      alert("Search failed");
     }
 
     setLoading(false);
   };
 
-  // 🔧 SAFE DATA
-  const validStores = new Set(
-    (result?.stores || []).map((s) => s.store)
-  );
+  // 🔧 SAFE STORE FILTER
+  const validStores = new Set((result?.stores || []).map(s => s.store));
 
-  const filteredStoreView = Object.fromEntries(
-    Object.entries(result?.store_view || {}).filter(([store]) =>
-      validStores.has(store)
-    )
-  );
+  const filteredStoreView = result?.store_view
+    ? Object.fromEntries(
+        Object.entries(result.store_view).filter(([store]) =>
+          validStores.has(store)
+        )
+      )
+    : {};
+
+  const toggleStore = (item, store) => {
+    setSelectedStores(prev => ({ ...prev, [item]: store }));
+  };
 
   const getBestSingleStore = () => {
-    if (!filteredStoreView) return null;
-
-    let best = null;
-    let min = Infinity;
+    let best = null, min = Infinity;
 
     Object.entries(filteredStoreView).forEach(([store, items]) => {
-      const total = Object.values(items).reduce(
-        (sum, i) => sum + (i.price || 0),
-        0
-      );
-
-      if (total < min) {
-        min = total;
-        best = store;
-      }
+      const total = Object.values(items).reduce((a,b)=>a+(b.price||0),0);
+      if (total < min) { min = total; best = store; }
     });
 
     return best;
   };
 
   const calculateTotal = () => {
-    if (!result?.comparison) return 0;
-
-    return Object.entries(result.comparison).reduce((sum, [item, options]) => {
-      const selected = selectedStores[item];
-      const opt = options.find((o) => o.store === selected);
+    return Object.entries(result?.comparison || {}).reduce((sum,[item,opts])=>{
+      const sel = selectedStores[item];
+      const opt = opts.find(o=>o.store===sel);
       return sum + (opt?.price || 0);
-    }, 0);
+    },0);
   };
 
-  // 🔧 DEFAULT SELECTION
   useEffect(() => {
     if (result?.comparison) {
       const defaults = {};
       Object.entries(result.comparison).forEach(([item, options]) => {
-        const best = options.find((o) => o.is_best);
+        const best = options.find(o=>o.is_best);
         if (best) defaults[item] = best.store;
       });
       setSelectedStores(defaults);
@@ -126,15 +114,15 @@ export default function OrderPage() {
 
   // 📦 ORDER
   const placeOrder = async () => {
+    if (!phone) return setShowPhonePopup(true);
     if (!result) return alert("No result");
-    if (!phone) return alert("Enter phone");
 
     await fetch(`${API_BASE}/order`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         phone,
-        stores: result.stores || [],
+        stores: result.stores
       }),
     });
 
@@ -142,69 +130,59 @@ export default function OrderPage() {
   };
 
   return (
-    <div style={styles.container}>
+    <div style={{maxWidth:480, margin:"auto", padding:16}}>
+
       <h2>🛒 Smart Kirana</h2>
 
-      {/* TOP */}
-      <div style={styles.topBox}>
-        <input
-          placeholder="📱 WhatsApp number"
-          value={phone}
-          onChange={(e) => {
-            setPhone(e.target.value);
-            localStorage.setItem("phone", e.target.value);
-          }}
-          style={styles.phoneInput}
-        />
-
-        <div style={styles.searchRow}>
+      {/* 🔥 PHONE POPUP */}
+      {showPhonePopup && (
+        <div style={{background:"#fff", padding:20, borderRadius:12}}>
+          <h3>Enter WhatsApp Number</h3>
           <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Add items (milk, rice...)"
-            style={styles.input}
+            value={phone}
+            onChange={(e)=>setPhone(e.target.value)}
+            placeholder="10 digit number"
           />
-
-          <button onClick={search} style={styles.searchBtn}>
-            🔍
+          <button onClick={()=>{
+            if (!phone) return alert("Enter phone");
+            localStorage.setItem("phone", phone);
+            setShowPhonePopup(false);
+          }}>
+            Continue
           </button>
         </div>
-      </div>
+      )}
 
-      {loading && <div>🔄 Searching...</div>}
+      {/* 🔍 SEARCH */}
+      <input
+        value={text}
+        onChange={(e)=>setText(e.target.value)}
+        placeholder="milk, rice..."
+      />
+      <button onClick={search}>Search</button>
 
-      {!result && <div>👉 Enter items & click search</div>}
+      {loading && <div>🔄 Loading...</div>}
 
+      {!result && <div>Enter items to search</div>}
+
+      {/* RESULTS */}
       {result && (
         <>
-          {(result?.stores || []).map((store, idx) => (
-            <div key={idx} style={styles.card}>
-              <div style={styles.storeHeader}>
-                <div>🏪 {store.store}</div>
-                <div>₹{store.total}</div>
-              </div>
+          {(result.stores || []).map((store, idx)=>(
+            <div key={idx}>
+              <h4>{store.store} - ₹{store.total}</h4>
 
-              {store.items.map((item, i) => (
-                <div key={i} style={styles.itemRow}>
-                  <div>
-                    {item.name}
-                    <div style={styles.itemMeta}>
-                      {formatQty(item)}
-                    </div>
-                  </div>
-                  <div>₹{item.price}</div>
+              {(store.items || []).map((item,i)=>(
+                <div key={i}>
+                  {item.name} - ₹{item.price}
                 </div>
               ))}
             </div>
           ))}
 
-          <div style={styles.totalBox}>
-            💰 ₹{result?.total || 0}
-          </div>
+          <h3>💰 Total: ₹{result.total || 0}</h3>
 
-          <button onClick={placeOrder} style={styles.orderBtn}>
-            📲 Place Order
-          </button>
+          <button onClick={placeOrder}>Place Order</button>
         </>
       )}
     </div>
