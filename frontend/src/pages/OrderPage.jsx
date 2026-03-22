@@ -72,7 +72,7 @@ export default function OrderPage() {
 
   const placeOrder = async (selectedStore) => {
     if (!phone) return setShowPhone(true);
-
+    const formattedPhone = phone.startsWith("91") ? phone : "91" + phone;
     try {
       console.log("📲 Sending phone:", phone); // ✅ BEFORE CALL
 
@@ -80,7 +80,7 @@ export default function OrderPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone,
+          formattedPhone,
           stores: [selectedStore],
         }),
       });
