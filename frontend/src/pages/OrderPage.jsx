@@ -60,7 +60,6 @@ export default function OrderPage() {
     setLoading(false);
   };
 
-  // 🧠 STORE LIST (SMART)
   const stores = result?.stores || [];
 
   // 📦 ORDER
@@ -92,25 +91,21 @@ export default function OrderPage() {
   };
 
   return (
-    <div style={{ maxWidth: 520, margin: "auto", padding: 16 }}>
-
-      <h2>🛒 Smart Kirana</h2>
+    <div style={container}>
 
       {/* 📱 PHONE MODAL */}
       {showPhone && (
         <div style={popupStyle}>
           <div style={popupBox}>
             <h3>Enter WhatsApp Number</h3>
-
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="10 digit number"
-              style={inputStyle}
+              style={input}
             />
-
             <button
-              style={btnPrimary}
+              style={primaryBtn}
               onClick={() => {
                 if (!phone) return alert("Enter phone");
                 setShowPhone(false);
@@ -122,44 +117,44 @@ export default function OrderPage() {
         </div>
       )}
 
-      {/* 🔍 SEARCH BAR */}
-      <div style={{ display: "flex", gap: 8 }}>
+      {/* 🔝 HEADER */}
+      <div style={header}>
+        <h2 style={{ margin: 0 }}>🛒 Smart Kirana</h2>
+
+        <div style={locationBox}>
+          📍 {location
+            ? `${location.lat.toFixed(3)}, ${location.lng.toFixed(3)}`
+            : "Fetching location..."}
+          <button onClick={getLocation} style={smallBtn}>🔄</button>
+        </div>
+      </div>
+
+      {/* 🔍 SEARCH */}
+      <div style={searchBox}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="milk, oil..."
-          style={inputStyle}
+          style={{ flex: 1, border: "none", outline: "none" }}
         />
-        <button style={btnPrimary} onClick={search}>
-          Search
-        </button>
+        <button style={primaryBtn} onClick={search}>Search</button>
       </div>
 
-      {/* 📍 LOCATION */}
+      {/* 📍 RADIUS */}
       <div style={{ marginTop: 10 }}>
-        📍 Radius:
+        Radius:
         <select value={radius} onChange={(e) => setRadius(Number(e.target.value))}>
           <option value={3}>3 km</option>
           <option value={5}>5 km</option>
           <option value={7}>7 km</option>
         </select>
-
-        <button onClick={getLocation} style={{ marginLeft: 10 }}>
-          🔄 Refresh GPS
-        </button>
-
-        {location && (
-          <div style={{ fontSize: 12, color: "#666" }}>
-            {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
-          </div>
-        )}
       </div>
 
-      {loading && <div>🔄 Searching...</div>}
+      {loading && <div style={{ marginTop: 10 }}>🔄 Searching...</div>}
 
       {/* 💰 SAVINGS */}
       {result?.comparison && (
-        <div style={{ marginTop: 10, color: "green" }}>
+        <div style={savings}>
           💰 Save up to ₹
           {formatPrice(
             Math.max(...Object.values(result.comparison).flat().map(o => o.savings || 0))
@@ -167,40 +162,55 @@ export default function OrderPage() {
         </div>
       )}
 
-      {/* 🏪 STORES */}
-      {stores.map((store, idx) => (
-        <div key={idx} style={cardStyle}>
+      {/* 🏪 STORE CARDS */}
+      <div style={{ marginTop: 10 }}>
+        {stores.map((store, idx) => (
+          <div key={idx} style={card}>
 
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <div>
-              <b>🏪 {store.store}</b>
-              {store.is_best && (
-                <span style={badge}>⭐ Best</span>
-              )}
+            <div style={cardHeader}>
+              <div>
+                <b>{store.store}</b>
+                {store.is_best && <span style={badge}>Best</span>}
+              </div>
+              <b style={{ color: "#16a34a" }}>₹{formatPrice(store.total)}</b>
             </div>
 
-            <b style={{ color: "green" }}>₹{formatPrice(store.total)}</b>
-          </div>
-
-          <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-            {store.reason?.join(" • ")} • {store.distance} km
-          </div>
-
-          {store.items.map((item, i) => (
-            <div key={i} style={{ marginTop: 6 }}>
-              {item.name} ({item.size}{item.unit}) — ₹{formatPrice(item.price)}
+            <div style={subText}>
+              {store.reason?.join(" • ")} • {store.distance} km
             </div>
-          ))}
 
-          <button
-            style={btnOrder}
-            onClick={() => placeOrder(store)}
-          >
-            🛒 Order from this store
+            <div style={{ marginTop: 8 }}>
+              {store.items.map((item, i) => (
+                <div key={i} style={itemRow}>
+                  <span>{item.name} ({item.size}{item.unit})</span>
+                  <span>₹{formatPrice(item.price)}</span>
+                </div>
+              ))}
+            </div>
+
+            <button style={orderBtn} onClick={() => placeOrder(store)}>
+              Order from this store
+            </button>
+
+          </div>
+        ))}
+      </div>
+
+      {/* 🧾 STICKY TOTAL BAR */}
+      {stores.length > 0 && (
+        <div style={bottomBar}>
+          <div>
+            <div style={{ fontSize: 12 }}>Total</div>
+            <div style={{ fontWeight: "bold" }}>
+              ₹{formatPrice(stores[0]?.total)}
+            </div>
+          </div>
+
+          <button style={placeBtn} onClick={() => placeOrder(stores[0])}>
+            Place Order
           </button>
-
         </div>
-      ))}
+      )}
 
     </div>
   );
@@ -208,29 +218,57 @@ export default function OrderPage() {
 
 // 🎨 STYLES
 
-const inputStyle = {
-  flex: 1,
-  padding: 10,
-  borderRadius: 8,
-  border: "1px solid #ccc"
+const container = {
+  maxWidth: 520,
+  margin: "auto",
+  padding: 16,
+  paddingBottom: 100,
+  background: "#f8fafc"
 };
 
-const btnPrimary = {
-  padding: "10px 14px",
-  background: "#22c55e",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8
+const header = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center"
 };
 
-const btnOrder = {
-  marginTop: 10,
-  width: "100%",
+const locationBox = {
+  fontSize: 12,
+  color: "#666"
+};
+
+const searchBox = {
+  display: "flex",
+  gap: 8,
+  background: "#fff",
   padding: 10,
-  background: "#16a34a",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8
+  borderRadius: 12,
+  marginTop: 10
+};
+
+const card = {
+  background: "#fff",
+  padding: 14,
+  borderRadius: 14,
+  marginTop: 12,
+  boxShadow: "0 2px 8px rgba(0,0,0,0.08)"
+};
+
+const cardHeader = {
+  display: "flex",
+  justifyContent: "space-between"
+};
+
+const subText = {
+  fontSize: 12,
+  color: "#666",
+  marginTop: 4
+};
+
+const itemRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  marginTop: 4
 };
 
 const badge = {
@@ -242,12 +280,54 @@ const badge = {
   fontSize: 10
 };
 
-const cardStyle = {
-  background: "#fff",
-  padding: 14,
-  marginTop: 12,
-  borderRadius: 12,
-  boxShadow: "0 2px 6px rgba(0,0,0,0.08)"
+const orderBtn = {
+  marginTop: 10,
+  width: "100%",
+  padding: 10,
+  background: "#16a34a",
+  color: "#fff",
+  border: "none",
+  borderRadius: 10
+};
+
+const primaryBtn = {
+  padding: "8px 12px",
+  background: "#22c55e",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8
+};
+
+const smallBtn = {
+  marginLeft: 6,
+  fontSize: 10
+};
+
+const bottomBar = {
+  position: "fixed",
+  bottom: 0,
+  left: 0,
+  right: 0,
+  background: "#000",
+  color: "#fff",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "12px 20px"
+};
+
+const placeBtn = {
+  background: "#22c55e",
+  border: "none",
+  color: "#fff",
+  padding: "10px 16px",
+  borderRadius: 10
+};
+
+const savings = {
+  marginTop: 10,
+  color: "green",
+  fontWeight: "bold"
 };
 
 const popupStyle = {
@@ -256,7 +336,8 @@ const popupStyle = {
   background: "rgba(0,0,0,0.5)",
   display: "flex",
   justifyContent: "center",
-  alignItems: "center"
+  alignItems: "center",
+  zIndex: 10
 };
 
 const popupBox = {
@@ -264,4 +345,13 @@ const popupBox = {
   padding: 20,
   borderRadius: 12,
   width: 300
+};
+
+const input = {
+  width: "100%",
+  padding: 10,
+  borderRadius: 8,
+  border: "1px solid #ccc",
+  marginTop: 10,
+  marginBottom: 10
 };
