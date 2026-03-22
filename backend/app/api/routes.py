@@ -13,61 +13,46 @@ VERIFY_TOKEN = "Bookofkirana2026"
 # -----------------------------
 @router.post("/order")
 async def create_order(data: dict):
-    try:
-        # -----------------------------
-        # ✅ VALIDATION
-        # -----------------------------
-        phone = data.get("phone")
-        stores = data.get("stores", [])
+    phone = data.get("phone")
 
-        if not phone:
-            raise HTTPException(status_code=400, detail="Phone is required")
+    if not phone:
+        return {"error": "Customer phone missing"}
 
-        if not stores:
-            raise HTTPException(status_code=400, detail="No stores provided")
+    stores = data.get("stores", [])
 
-        # -----------------------------
-        # ✅ CREATE ORDER
-        # -----------------------------
-        final_order_id = await create_full_order(stores, phone)
+    if not stores:
+        return {"error": "No stores"}
 
-        # -----------------------------
-        # 📲 CUSTOMER MESSAGE
-        # -----------------------------
-        summary = []
-        for store in stores:
-            items = ", ".join([
-                i.get("name", "item") for i in store.get("items", [])
-            ])
-            summary.append(f"{store.get('store', 'Store')}: {items}")
+    # ✅ CREATE ORDER
+    final_order_id = await create_full_order(stores, phone)
 
-        summary_text = "\n".join(summary)
+    # -----------------------------
+    # 📲 CUSTOMER MESSAGE (FIXED)
+    # -----------------------------
+    summary = []
 
-        message = f"""🧾 Order Created
+    for store in stores:
+        items = ", ".join([i["name"] for i in store.get("items", [])])
+        summary.append(f"{store['store']}: {items}")
+
+    summary_text = "\n".join(summary)
+
+    message = f"""🧾 Order Confirmed
 
 Order ID: {final_order_id}
 
 {summary_text}
 
-💬 Reply CONFIRM#{final_order_id} to proceed
+We will notify you when ready 🚀
 """
 
-        # -----------------------------
-        # ✅ SEND WHATSAPP
-        # -----------------------------
+    try:
+        print("📲 Sending to customer:", phone)   # 🔥 DEBUG
         await send_message(phone, message)
-
-        # -----------------------------
-        # ✅ RESPONSE
-        # -----------------------------
-        return {
-            "status": "success",
-            "final_order_id": final_order_id
-        }
-
     except Exception as e:
-        print("🔥 ORDER ERROR:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        print("❌ Customer WhatsApp failed:", str(e))
+
+    return {"final_order_id": final_order_id}
     
 # -----------------------------
 # ?? ADMIN STORE ORDERS

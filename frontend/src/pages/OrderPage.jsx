@@ -74,6 +74,8 @@ export default function OrderPage() {
     if (!phone) return setShowPhone(true);
 
     try {
+      console.log("📲 Sending phone:", phone); // ✅ BEFORE CALL
+
       const res = await fetch(`${API_BASE}/order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -85,11 +87,13 @@ export default function OrderPage() {
 
       const data = await res.json();
 
-      console.log("✅ ORDER CREATED:", data);
+      console.log("✅ ORDER RESPONSE:", data);
 
-      alert(`Order placed successfully! ID: ${data.final_order_id}`);
+      alert(`Order placed! ID: ${data.final_order_id}`);
+
       setResult(null);
       setText("");
+
     } catch (err) {
       console.error(err);
       alert("Order failed");
