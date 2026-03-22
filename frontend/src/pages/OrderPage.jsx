@@ -96,7 +96,7 @@ export default function OrderPage() {
       <h2>🛒 Smart Kirana</h2>
 
       {/* 📱 PHONE POPUP */}
-      {!showPhone && (
+      {showPhone && (
         <div style={popupStyle}>
           <div style={popupBox}>
             <h3>Enter WhatsApp Number</h3>
