@@ -13,8 +13,10 @@ export default function OrderPage() {
   const [phone, setPhone] = useState("");
   const [showPhone, setShowPhone] = useState(true);
 
+  const formatPrice = (n) => Number(n || 0).toFixed(2);
+
   // 📍 LOCATION
-  useEffect(() => {
+  const getLocation = () => {
     navigator.geolocation?.getCurrentPosition(
       (pos) => {
         setLocation({
@@ -22,8 +24,12 @@ export default function OrderPage() {
           lng: pos.coords.longitude,
         });
       },
-      () => console.log("Location denied")
+      () => alert("Location permission denied")
     );
+  };
+
+  useEffect(() => {
+    getLocation();
   }, []);
 
   // 🔍 SEARCH
@@ -45,67 +51,52 @@ export default function OrderPage() {
       });
 
       const data = await res.json();
-      console.log("RESULT:", data);
       setResult(data);
 
     } catch (err) {
-      console.error(err);
       alert("Search failed");
     }
 
     setLoading(false);
   };
 
-  // 🧠 BUILD STORE TOTALS
-  const stores = result?.store_view
-    ? Object.entries(result.store_view)
-      .map(([store, items]) => {
-        const list = Object.values(items);
-        const total = list.reduce((sum, i) => sum + i.price, 0);
-        return { store, items: list, total };
-      })
-      .sort((a, b) => a.total - b.total)
-    : [];
+  // 🧠 STORE LIST (SMART)
+  const stores = result?.stores || [];
 
-  // 📦 PLACE ORDER + WHATSAPP
-
-
-  const placeOrder = async (selectedStore) => {
+  // 📦 ORDER
+  const placeOrder = async (store) => {
     if (!phone) return setShowPhone(true);
-    const formattedPhone = phone.startsWith("91") ? phone : "91" + phone;
-    try {
-      console.log("📲 Sending phone:", formattedPhone); // ✅ BEFORE CALL
 
+    const formattedPhone = phone.startsWith("91") ? phone : "91" + phone;
+
+    try {
       const res = await fetch(`${API_BASE}/order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone: formattedPhone,
-          stores: [selectedStore],
+          stores: [store],
         }),
       });
 
       const data = await res.json();
 
-      console.log("✅ ORDER RESPONSE:", data);
-
-      alert(`Order placed! ID: ${data.final_order_id}`);
+      alert(`✅ Order placed! ID: ${data.final_order_id}`);
 
       setResult(null);
       setText("");
 
     } catch (err) {
-      console.error(err);
       alert("Order failed");
     }
   };
 
   return (
-    <div style={{ maxWidth: 500, margin: "auto", padding: 16 }}>
+    <div style={{ maxWidth: 520, margin: "auto", padding: 16 }}>
 
       <h2>🛒 Smart Kirana</h2>
 
-      {/* 📱 PHONE POPUP */}
+      {/* 📱 PHONE MODAL */}
       {showPhone && (
         <div style={popupStyle}>
           <div style={popupBox}>
@@ -115,129 +106,149 @@ export default function OrderPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="10 digit number"
-              style={{ width: "100%", padding: 10 }}
+              style={inputStyle}
             />
 
-            <button onClick={() => {
-              if (!phone) return alert("Enter phone");
-              setShowPhone(false);
-            }}>
+            <button
+              style={btnPrimary}
+              onClick={() => {
+                if (!phone) return alert("Enter phone");
+                setShowPhone(false);
+              }}
+            >
               Continue
             </button>
           </div>
         </div>
       )}
 
-      {/* 🔍 SEARCH */}
+      {/* 🔍 SEARCH BAR */}
       <div style={{ display: "flex", gap: 8 }}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="milk, rice..."
-          style={{ flex: 1 }}
+          placeholder="milk, oil..."
+          style={inputStyle}
         />
-        <button onClick={search}>Search</button>
+        <button style={btnPrimary} onClick={search}>
+          Search
+        </button>
       </div>
 
-      {/* 📍 RADIUS */}
+      {/* 📍 LOCATION */}
       <div style={{ marginTop: 10 }}>
-        Radius:
-        <select
-          value={radius}
-          onChange={(e) => setRadius(Number(e.target.value))}
-        >
+        📍 Radius:
+        <select value={radius} onChange={(e) => setRadius(Number(e.target.value))}>
           <option value={3}>3 km</option>
           <option value={5}>5 km</option>
           <option value={7}>7 km</option>
         </select>
+
+        <button onClick={getLocation} style={{ marginLeft: 10 }}>
+          🔄 Refresh GPS
+        </button>
+
+        {location && (
+          <div style={{ fontSize: 12, color: "#666" }}>
+            {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
+          </div>
+        )}
       </div>
 
       {loading && <div>🔄 Searching...</div>}
 
-      {!result && <div>Enter items to search</div>}
-
       {/* 💰 SAVINGS */}
       {result?.comparison && (
         <div style={{ marginTop: 10, color: "green" }}>
-          💰 You save up to ₹
-          {Math.max(
-            ...Object.values(result.comparison)
-              .flat()
-              .map(o => o.savings || 0)
+          💰 Save up to ₹
+          {formatPrice(
+            Math.max(...Object.values(result.comparison).flat().map(o => o.savings || 0))
           )}
         </div>
       )}
 
-      {/* 🧠 STORE LIST */}
-      {stores.length > 0 && (
-        <div>
-          <h3>🏆 Best Stores</h3>
+      {/* 🏪 STORES */}
+      {stores.map((store, idx) => (
+        <div key={idx} style={cardStyle}>
 
-          {stores.map((store, idx) => (
-            <div key={idx} style={cardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div>
+              <b>🏪 {store.store}</b>
+              {store.is_best && (
+                <span style={badge}>⭐ Best</span>
+              )}
+            </div>
 
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <div>
-                  <b>🏪 {store.store}</b>
-                  {idx === 0 && (
-                    <div style={{ fontSize: 12, color: "green" }}>
-                      ⭐ Best Choice
-                    </div>
-                  )}
-                </div>
+            <b style={{ color: "green" }}>₹{formatPrice(store.total)}</b>
+          </div>
 
-                <b>₹{store.total}</b>
-              </div>
+          <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+            {store.reason?.join(" • ")} • {store.distance} km
+          </div>
 
-              {store.items.map((item, i) => (
-                <div key={i}>
-                  {item.name} ({item.size}{item.unit}) — ₹{item.price}
-                </div>
-              ))}
-
-              <button
-                style={{
-                  marginTop: 10,
-                  width: "100%",
-                  padding: 10,
-                  background: "#22c55e",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8
-                }}
-                onClick={() => placeOrder(store)}
-              >
-                Order from this store
-              </button>
-
+          {store.items.map((item, i) => (
+            <div key={i} style={{ marginTop: 6 }}>
+              {item.name} ({item.size}{item.unit}) — ₹{formatPrice(item.price)}
             </div>
           ))}
+
+          <button
+            style={btnOrder}
+            onClick={() => placeOrder(store)}
+          >
+            🛒 Order from this store
+          </button>
+
         </div>
-      )}
-
-      {/* 🔍 COMPARISON */}
-      {result?.comparison && (
-        <div>
-          <h3>🔍 Compare Prices</h3>
-
-          {Object.entries(result.comparison).map(([item, options]) => (
-            <div key={item} style={cardStyle}>
-              <b>{item}</b>
-
-              {options.map((opt, i) => (
-                <div key={i}>
-                  {opt.store} → ₹{opt.price}
-                  {opt.is_best && " ⭐"}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
+      ))}
 
     </div>
   );
 }
+
+// 🎨 STYLES
+
+const inputStyle = {
+  flex: 1,
+  padding: 10,
+  borderRadius: 8,
+  border: "1px solid #ccc"
+};
+
+const btnPrimary = {
+  padding: "10px 14px",
+  background: "#22c55e",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8
+};
+
+const btnOrder = {
+  marginTop: 10,
+  width: "100%",
+  padding: 10,
+  background: "#16a34a",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8
+};
+
+const badge = {
+  marginLeft: 6,
+  background: "#22c55e",
+  color: "#fff",
+  padding: "2px 6px",
+  borderRadius: 6,
+  fontSize: 10
+};
+
+const cardStyle = {
+  background: "#fff",
+  padding: 14,
+  marginTop: 12,
+  borderRadius: 12,
+  boxShadow: "0 2px 6px rgba(0,0,0,0.08)"
+};
 
 const popupStyle = {
   position: "fixed",
@@ -251,13 +262,6 @@ const popupStyle = {
 const popupBox = {
   background: "#fff",
   padding: 20,
-  borderRadius: 10,
+  borderRadius: 12,
   width: 300
-};
-
-const cardStyle = {
-  background: "#fff",
-  padding: 12,
-  marginTop: 12,
-  borderRadius: 10
 };
