@@ -14,6 +14,8 @@ export default function OrderPage() {
   const [phone, setPhone] = useState("");
   const [showPhone, setShowPhone] = useState(true);
 
+  const [manualCart, setManualCart] = useState({});
+
   const format = (n) => Number(n || 0).toFixed(2);
 
   // 📍 LOCATION
@@ -24,7 +26,7 @@ export default function OrderPage() {
       (pos) => {
         setLocation({
           lat: pos.coords.latitude,
-          lng: pos.coords.longitude
+          lng: pos.coords.longitude,
         });
       },
       () => console.log("GPS denied")
@@ -55,9 +57,8 @@ export default function OrderPage() {
 
   const stores = result?.stores || [];
 
-  // 🧠 SPLIT LOGIC
+  // 🧠 SMART SPLIT
   const splitMap = {};
-
   if (result?.comparison) {
     Object.entries(result.comparison).forEach(([item, options]) => {
       const best = options.find(o => o.is_best);
@@ -72,7 +73,7 @@ export default function OrderPage() {
         price: best.price,
         size: best.size,
         unit: best.unit,
-        packs: best.packs
+        packs: best.packs,
       });
 
       splitMap[best.store].total += best.price;
@@ -81,6 +82,23 @@ export default function OrderPage() {
 
   const splitStores = Object.values(splitMap);
   const splitTotal = splitStores.reduce((s, x) => s + x.total, 0);
+
+  // 🧩 MANUAL MODE
+  const toggleManual = (store, item) => {
+    const key = `${store}-${item.name}`;
+
+    setManualCart((prev) => {
+      const copy = { ...prev };
+
+      if (copy[key]) delete copy[key];
+      else copy[key] = { ...item, store };
+
+      return copy;
+    });
+  };
+
+  const manualItems = Object.values(manualCart);
+  const manualTotal = manualItems.reduce((s, i) => s + (i.price || 0), 0);
 
   // 📦 ORDER
   const placeOrder = async (storesPayload) => {
@@ -108,7 +126,7 @@ export default function OrderPage() {
         <div style={popup}>
           <div style={popupBox}>
             <h3>Enter WhatsApp Number</h3>
-            <input value={phone} onChange={e => setPhone(e.target.value)} style={input}/>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} style={input}/>
             <button style={btn} onClick={() => setShowPhone(false)}>Continue</button>
           </div>
         </div>
@@ -117,7 +135,7 @@ export default function OrderPage() {
       <h2>🛒 Smart Kirana</h2>
 
       {/* GPS */}
-      <div style={{ fontSize: 12, marginBottom: 8 }}>
+      <div style={{ fontSize: 12 }}>
         📍 {location
           ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
           : "Fetching location..."}
@@ -137,7 +155,8 @@ export default function OrderPage() {
       {/* MODES */}
       <div style={{ marginTop: 10 }}>
         <button onClick={() => setMode("smart")} style={mode==="smart"?active:tab}>🧠 Smart</button>
-        <button onClick={() => setMode("one")} style={mode==="one"?active:tab}>🏪 One Store</button>
+        <button onClick={() => setMode("one")} style={mode==="one"?active:tab}>🏪 One</button>
+        <button onClick={() => setMode("manual")} style={mode==="manual"?active:tab}>🧩 Manual</button>
       </div>
 
       {/* SAVINGS */}
@@ -148,16 +167,14 @@ export default function OrderPage() {
         </div>
       )}
 
-      {/* 🔥 SMART */}
+      {/* 🧠 SMART */}
       {mode==="smart" && splitStores.map((s,i)=>(
         <div key={i} style={card}>
           <b>🏪 {s.store}</b>
 
           {s.items.map((it,j)=>(
             <div key={j} style={row}>
-              <span>
-                {it.name} ({it.packs || 1} × {it.size}{it.unit})
-              </span>
+              <span>{it.name} ({it.packs||1} × {it.size}{it.unit})</span>
               <span>₹{format(it.price)}</span>
             </div>
           ))}
@@ -191,7 +208,7 @@ export default function OrderPage() {
               <div>
                 <div>{item.name}</div>
                 <div style={itemMeta}>
-                  {item.packs || 1} × {item.size}{item.unit}
+                  {item.packs||1} × {item.size}{item.unit}
                 </div>
               </div>
               <div>₹{format(item.price)}</div>
@@ -204,12 +221,72 @@ export default function OrderPage() {
         </div>
       ))}
 
-      {/* 🔥 STICKY */}
-      {(mode==="smart" && splitStores.length>0) && (
+      {/* 🧩 MANUAL */}
+      {mode==="manual" && Object.entries(result?.store_view || {}).map(([store, items])=>(
+        <div key={store} style={premiumCard}>
+          <b>🏪 {store}</b>
+
+          {Object.values(items).map((it,i)=>{
+            const key=`${store}-${it.name}`;
+            const selected=manualCart[key];
+
+            return (
+              <div key={i} style={itemBlock}>
+                <div>
+                  <div>{it.name}</div>
+                  <div style={itemMeta}>
+                    {it.brand} • {it.variant} • {it.size}{it.unit}
+                  </div>
+                </div>
+
+                <div style={{display:"flex",gap:8}}>
+                  <span>₹{format(it.price)}</span>
+                  <button
+                    onClick={()=>toggleManual(store,it)}
+                    style={{
+                      background:selected?"#ef4444":"#22c55e",
+                      color:"#fff",
+                      border:"none",
+                      borderRadius:6,
+                      padding:"4px 8px"
+                    }}
+                  >
+                    {selected?"Remove":"Add"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* 🔥 STICKY BAR */}
+      {(mode==="smart" || mode==="manual") && (
         <div style={bottom}>
-          <div>₹{format(splitTotal)}</div>
-          <button style={btn} onClick={()=>placeOrder(splitStores)}>
-            Place Order
+          <div>
+            ₹{format(mode==="smart"?splitTotal:manualTotal)}
+          </div>
+
+          <button
+            style={btn}
+            onClick={()=>{
+              if(mode==="smart"){
+                placeOrder(splitStores);
+              } else {
+                const grouped = manualItems.reduce((acc,item)=>{
+                  let s=acc.find(x=>x.store===item.store);
+                  if(!s){
+                    s={store:item.store,items:[]};
+                    acc.push(s);
+                  }
+                  s.items.push(item);
+                  return acc;
+                },[]);
+                placeOrder(grouped);
+              }
+            }}
+          >
+            🚀 Place Order
           </button>
         </div>
       )}
@@ -218,9 +295,9 @@ export default function OrderPage() {
   );
 }
 
-// 🎨 styles (same as yours, slightly improved)
-const container={maxWidth:520,margin:"auto",padding:16,paddingBottom:80};
-const searchBox={display:"flex",gap:8,background:"#fff",padding:10,borderRadius:12};
+// 🎨 styles
+const container={maxWidth:520,margin:"auto",padding:16,paddingBottom:90};
+const searchBox={display:"flex",gap:8,background:"#fff",padding:10,borderRadius:12,marginTop:10};
 const card={background:"#fff",padding:12,marginTop:10,borderRadius:12};
 const row={display:"flex",justifyContent:"space-between"};
 const btn={background:"#22c55e",color:"#fff",border:"none",padding:10,borderRadius:10};
