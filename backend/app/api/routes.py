@@ -48,7 +48,7 @@ We will notify you when ready 🚀
 
     try:
         print("📲 Sending to customer:", phone)   # 🔥 DEBUG
-        await send_message(phone, message)
+        #await send_message(phone, message)
     except Exception as e:
         print("❌ Customer WhatsApp failed:", str(e))
 
