@@ -21,7 +21,10 @@ app.include_router(whatsapp_router, prefix="/whatsapp")
 # -----------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://ekkilo-1.onrender.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
