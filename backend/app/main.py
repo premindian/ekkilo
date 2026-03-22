@@ -38,13 +38,20 @@ app.include_router(whatsapp_router, prefix="/whatsapp")
 # -----------------------------------------
 @app.websocket("/ws/admin")
 async def admin_ws(websocket: WebSocket):
-    await manager.connect(0, websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except:
-        manager.disconnect(0, websocket)
+    print("🔥 ADMIN WS HIT")
 
+    try:
+        await websocket.accept()
+        print("✅ WS ACCEPTED")
+
+        await manager.connect(0, websocket)
+
+        while True:
+            data = await websocket.receive_text()
+            print("📩 ADMIN MSG:", data)
+
+    except Exception as e:
+        print("❌ WS ERROR:", str(e))
 
 @app.websocket("/ws/{order_id}")
 async def websocket_endpoint(websocket: WebSocket, order_id: int):
