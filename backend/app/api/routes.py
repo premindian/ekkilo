@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Request, HTTPException
 from app.services.whatsapp import send_message
 from app.services.order_service import create_full_order
-
+from fastapi import BackgroundTasks
+import asyncio
 
 router = APIRouter()
 
@@ -12,7 +13,7 @@ VERIFY_TOKEN = "Bookofkirana2026"
 # ?? CREATE ORDER
 # -----------------------------
 @router.post("/order")
-async def create_order(data: dict):
+async def create_order(data: dict, background_tasks: BackgroundTasks):
     phone = data.get("phone")
 
     if not phone:
@@ -23,11 +24,18 @@ async def create_order(data: dict):
     if not stores:
         return {"error": "No stores"}
 
-    # ✅ CREATE ORDER
-    final_order_id = await create_full_order(stores, phone)
+    # ✅ CREATE ORDER + GET WHATSAPP JOBS
+    final_order_id, whatsapp_jobs = await create_full_order(stores, phone)
 
     # -----------------------------
-    # 📲 CUSTOMER MESSAGE (FIXED)
+    # 📲 SEND STORE MESSAGES
+    # -----------------------------
+    for store_phone, message in whatsapp_jobs:
+        print("📤 Queue store message:", store_phone)
+        background_tasks.add_task(send_message, store_phone, message)
+
+    # -----------------------------
+    # 📲 CUSTOMER MESSAGE
     # -----------------------------
     summary = []
 
@@ -37,7 +45,7 @@ async def create_order(data: dict):
 
     summary_text = "\n".join(summary)
 
-    message = f"""🧾 Order Confirmed
+    customer_message = f"""🧾 Order Confirmed
 
 Order ID: {final_order_id}
 
@@ -46,14 +54,11 @@ Order ID: {final_order_id}
 We will notify you when ready 🚀
 """
 
-    try:
-        print("📲 Sending to customer:", phone)   # 🔥 DEBUG
-        #await send_message(phone, message)
-    except Exception as e:
-        print("❌ Customer WhatsApp failed:", str(e))
+    print("📤 Queue customer message:", phone)
+    background_tasks.add_task(send_message, phone, customer_message)
 
     return {"final_order_id": final_order_id}
-    
+
 # -----------------------------
 # ?? ADMIN STORE ORDERS
 # -----------------------------

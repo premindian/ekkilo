@@ -1,11 +1,10 @@
 from app.db.database import get_db
-from app.services.whatsapp import send_message
 from app.core.ws_manager import manager
-
-import asyncio
 
 async def create_full_order(stores, customer_phone):
     db = await get_db()
+
+    whatsapp_jobs = []  # ✅ collect messages here
 
     # -----------------------------
     # 🧾 FINAL ORDER
@@ -23,7 +22,6 @@ async def create_full_order(stores, customer_phone):
     # -----------------------------
     for store in stores:
 
-        # 🔥 FIX: SAFE STORE PHONE EXTRACTION
         store_phone = store.get("store_phone")
 
         if not store_phone:
@@ -32,7 +30,7 @@ async def create_full_order(stores, customer_phone):
                 store_phone = items[0].get("phone")
 
         if not store_phone:
-            print("⚠️ No store phone found, skipping store:", store.get("store"))
+            print("⚠️ No store phone found, skipping:", store.get("store"))
             continue
 
         # -----------------------------
@@ -64,18 +62,14 @@ async def create_full_order(stores, customer_phone):
         """, store_order_id, "SENT")
 
         # -----------------------------
-        # 📲 SEND TO STORE
+        # 📲 PREPARE STORE MESSAGE
         # -----------------------------
         item_text = "\n".join([
             f"{i['name']} x{i.get('qty',1)}"
             for i in store.get("items", [])
         ])
 
-        try:
-            
-            asyncio.create_task(send_message(
-                store_phone,
-                f"""🆕 New Order
+        store_message = f"""🆕 New Order
 
 Order ID: {final_order_id}
 
@@ -84,9 +78,8 @@ Order ID: {final_order_id}
 Reply:
 READY#{final_order_id}
 """
-            ))
-        except Exception as e:
-            print("⚠️ WhatsApp send failed:", str(e))
+
+        whatsapp_jobs.append((store_phone, store_message))  # ✅ collect
 
         # -----------------------------
         # 🔴 ADMIN REALTIME
@@ -97,4 +90,4 @@ READY#{final_order_id}
             "store": store["store"]
         })
 
-    return final_order_id
+    return final_order_id, whatsapp_jobs
