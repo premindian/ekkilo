@@ -59,32 +59,41 @@ export default function OrderPage() {
   // 🧠 BUILD STORE TOTALS
   const stores = result?.store_view
     ? Object.entries(result.store_view)
-        .map(([store, items]) => {
-          const list = Object.values(items);
-          const total = list.reduce((sum, i) => sum + i.price, 0);
-          return { store, items: list, total };
-        })
-        .sort((a, b) => a.total - b.total)
+      .map(([store, items]) => {
+        const list = Object.values(items);
+        const total = list.reduce((sum, i) => sum + i.price, 0);
+        return { store, items: list, total };
+      })
+      .sort((a, b) => a.total - b.total)
     : [];
 
   // 📦 PLACE ORDER + WHATSAPP
+
+
   const placeOrder = async (selectedStore) => {
     if (!phone) return setShowPhone(true);
 
-    await fetch(`${API_BASE}/order`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phone,
-        stores: [selectedStore],
-      }),
-    });
+    try {
+      const res = await fetch(`${API_BASE}/order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          stores: [selectedStore],
+        }),
+      });
 
-    const message = `Hi, I want to order:\n${selectedStore.items
-      .map(i => `${i.name} - ₹${i.price}`)
-      .join("\n")}\nTotal: ₹${selectedStore.total}`;
+      const data = await res.json();
 
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`);
+      console.log("✅ ORDER CREATED:", data);
+
+      alert(`Order placed successfully! ID: ${data.final_order_id}`);
+      setResult(null);
+      setText("");
+    } catch (err) {
+      console.error(err);
+      alert("Order failed");
+    }
   };
 
   return (

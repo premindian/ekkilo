@@ -10,7 +10,6 @@ class ConnectionManager:
         self.admin_connections = []
 
     async def connect(self, order_id: int, websocket: WebSocket):
-        await websocket.accept()
 
         if order_id == 0:
             self.admin_connections.append(websocket)
