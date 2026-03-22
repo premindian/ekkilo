@@ -2,6 +2,7 @@ from app.db.database import get_db
 from app.services.whatsapp import send_message
 from app.core.ws_manager import manager
 
+import asyncio
 
 async def create_full_order(stores, customer_phone):
     db = await get_db()
@@ -71,7 +72,8 @@ async def create_full_order(stores, customer_phone):
         ])
 
         try:
-            await send_message(
+            
+            asyncio.create_task(send_message(
                 store_phone,
                 f"""🆕 New Order
 
@@ -82,7 +84,7 @@ Order ID: {final_order_id}
 Reply:
 READY#{final_order_id}
 """
-            )
+            ))
         except Exception as e:
             print("⚠️ WhatsApp send failed:", str(e))
 

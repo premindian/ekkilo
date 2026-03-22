@@ -94,13 +94,14 @@
 <script>
 const API_BASE = "https://ekkilo.onrender.com";
 
-// ✅ FIXED: WS BASE AS STRING
+// ✅ WebSocket setup
 const protocol = window.location.protocol === "https:" ? "wss" : "ws";
 const WS_BASE = `${protocol}://ekkilo.onrender.com`;
 
 let socket;
+let refreshTimeout = null;
 
-// 🔥 CLEAN WEBSOCKET
+// 🔥 CLEAN + STABLE WEBSOCKET
 function connectWS() {
     socket = new WebSocket(`${WS_BASE}/ws/admin`);
 
@@ -110,8 +111,15 @@ function connectWS() {
 
     socket.onmessage = (event) => {
         console.log("📩 Update received:", event.data);
-        loadOrders();
-        loadStats();
+
+        // 🔥 DEBOUNCE (VERY IMPORTANT)
+        if (refreshTimeout) return;
+
+        refreshTimeout = setTimeout(() => {
+            loadOrders();
+            loadStats();
+            refreshTimeout = null;
+        }, 500);
     };
 
     socket.onerror = (err) => {
@@ -183,7 +191,7 @@ async function updateStatus(id, status) {
     loadStats();
 }
 
-// 🚀 Init
+// 🚀 Initial load (ONLY ONCE)
 async function init() {
     await loadOrders();
     await loadStats();
