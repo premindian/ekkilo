@@ -10,9 +10,8 @@ export default function OrderPage() {
   const [location, setLocation] = useState(null);
   const [radius, setRadius] = useState(5);
 
-  const [phone, setPhone] = useState(localStorage.getItem("phone") || "");
-  const [showPhone, setShowPhone] = useState(!phone);
-
+  const [phone, setPhone] = useState("");
+const [showPhone, setShowPhone] = useState(true);
   // 📍 LOCATION
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
@@ -92,7 +91,7 @@ export default function OrderPage() {
       <h2>🛒 Smart Kirana</h2>
 
       {/* 📱 PHONE POPUP */}
-      {showPhone && (
+      {!showPhone && (
         <div style={popupStyle}>
           <div style={popupBox}>
             <h3>Enter WhatsApp Number</h3>
