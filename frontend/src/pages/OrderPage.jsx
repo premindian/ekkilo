@@ -11,7 +11,7 @@ export default function OrderPage() {
   const [radius, setRadius] = useState(5);
 
   const [phone, setPhone] = useState("");
-const [showPhone, setShowPhone] = useState(true);
+  const [showPhone, setShowPhone] = useState(true);
   // 📍 LOCATION
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
@@ -34,7 +34,7 @@ const [showPhone, setShowPhone] = useState(true);
     try {
       const res = await fetch(`${API_BASE}/search`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
           lat: location?.lat,
@@ -75,7 +75,7 @@ const [showPhone, setShowPhone] = useState(true);
 
     await fetch(`${API_BASE}/order`, {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         phone,
         stores: [selectedStore],
@@ -84,6 +84,11 @@ const [showPhone, setShowPhone] = useState(true);
 
     alert("✅ Order sent!");
   };
+
+  useEffect(() => {
+    console.log("🚨 PHONE POPUP SHOULD SHOW");
+    setShowPhone(true);
+  }, []);
 
   return (
     <div style={{ maxWidth: 500, margin: "auto", padding: 16 }}>
