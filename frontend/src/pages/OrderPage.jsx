@@ -187,23 +187,74 @@ export default function OrderPage() {
       )}
 
       {/* 🏪 ONE STORE */}
-      {mode === "one" && stores.map((store, idx) => (
-        <div key={idx} style={card}>
-          <b>{store.store}</b>
+     {stores.map((store, idx) => (
+  <div key={idx} style={premiumCard}>
 
-          {store.items.map((item, i) => (
-            <div key={i} style={row}>
-              <span>{item.name}</span>
-              <span>₹{formatPrice(item.price)}</span>
+    {/* HEADER */}
+    <div style={headerRow}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 18 }}>🏪</span>
+        <b style={{ fontSize: 16 }}>{store.store}</b>
+
+        {store.is_best && (
+          <span style={bestBadge}>⭐ Best</span>
+        )}
+      </div>
+
+      <div style={{ textAlign: "right" }}>
+        <div style={{ color: "#16a34a", fontWeight: "bold" }}>
+          ₹{format(store.total)}
+        </div>
+        <div style={distance}>
+          📍 {store.distance} km
+        </div>
+      </div>
+    </div>
+
+    {/* REASONS */}
+    <div style={reasonText}>
+      {store.reason?.join(" • ")}
+    </div>
+
+    {/* ITEMS */}
+    <div style={{ marginTop: 12 }}>
+      {store.items.map((item, i) => (
+        <div key={i} style={itemBlock}>
+
+          <div>
+            <div style={itemName}>{item.name}</div>
+
+            <div style={itemMeta}>
+              {item.packs || 1} × {item.size}{item.unit}
             </div>
-          ))}
+          </div>
 
-          <button style={btn} onClick={() => placeOrder([store])}>
-            Order from this store
-          </button>
+          <div style={itemPrice}>
+            ₹{format(item.price)}
+          </div>
+
         </div>
       ))}
+    </div>
 
+    {/* SUBTOTAL */}
+    <div style={divider}></div>
+
+    <div style={subtotalRow}>
+      <b>Subtotal</b>
+      <b>₹{format(store.total)}</b>
+    </div>
+
+    {/* CTA */}
+    <button
+      style={orderButton}
+      onClick={() => placeOrder([store])}
+    >
+      🛒 Place Order
+    </button>
+
+  </div>
+))}
     </div>
   );
 }
@@ -229,3 +280,79 @@ const popupBox = {
 };
 
 const input = { width: "100%", padding: 10, marginBottom: 10 };
+const premiumCard = {
+  background: "#ffffff",
+  padding: 16,
+  borderRadius: 16,
+  marginTop: 14,
+  boxShadow: "0 6px 18px rgba(0,0,0,0.08)"
+};
+
+const headerRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center"
+};
+
+const bestBadge = {
+  background: "#22c55e",
+  color: "#fff",
+  padding: "3px 8px",
+  borderRadius: 8,
+  fontSize: 11
+};
+
+const distance = {
+  fontSize: 12,
+  color: "#666"
+};
+
+const reasonText = {
+  marginTop: 6,
+  fontSize: 12,
+  color: "#6b7280"
+};
+
+const itemBlock = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginTop: 10
+};
+
+const itemName = {
+  fontSize: 15,
+  fontWeight: 500
+};
+
+const itemMeta = {
+  fontSize: 12,
+  color: "#888"
+};
+
+const itemPrice = {
+  fontWeight: "bold"
+};
+
+const divider = {
+  height: 1,
+  background: "#eee",
+  marginTop: 12
+};
+
+const subtotalRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  marginTop: 10
+};
+
+const orderButton = {
+  marginTop: 12,
+  width: "100%",
+  padding: 12,
+  background: "#22c55e",
+  color: "#fff",
+  border: "none",
+  borderRadius: 12,
+  fontWeight: "bold"
+};
