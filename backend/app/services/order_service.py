@@ -1,10 +1,11 @@
 from app.db.database import get_db
 from app.core.ws_manager import manager
 
+
 async def create_full_order(stores, customer_phone):
     db = await get_db()
 
-    whatsapp_jobs = []  # ✅ collect messages here
+    whatsapp_jobs = []
 
     # -----------------------------
     # 🧾 FINAL ORDER
@@ -22,12 +23,14 @@ async def create_full_order(stores, customer_phone):
     # -----------------------------
     for store in stores:
 
+        # 📞 EXTRACT STORE PHONE
         store_phone = store.get("store_phone")
 
         if not store_phone:
-            items = store.get("items", [])
-            if items:
-                store_phone = items[0].get("phone")
+            for item in store.get("items", []):
+                if item.get("phone"):
+                    store_phone = item.get("phone")
+                    break
 
         if not store_phone:
             print("⚠️ No store phone found, skipping:", store.get("store"))
@@ -40,7 +43,7 @@ async def create_full_order(stores, customer_phone):
             INSERT INTO store_orders (final_order_id, store_name, store_phone)
             VALUES ($1, $2, $3)
             RETURNING id
-        """, final_order_id, store["store"], store_phone)
+        """, final_order_id, store.get("store"), store_phone)
 
         store_order_id = so["id"]
 
@@ -51,7 +54,12 @@ async def create_full_order(stores, customer_phone):
             await db.execute("""
                 INSERT INTO order_items (store_order_id, product_name, quantity, price)
                 VALUES ($1, $2, $3, $4)
-            """, store_order_id, item["name"], item.get("qty", 1), item.get("price", 0))
+            """,
+                store_order_id,
+                item.get("name"),
+                item.get("qty", 1),
+                item.get("price", 0)
+            )
 
         # -----------------------------
         # 📊 EVENT
@@ -62,14 +70,14 @@ async def create_full_order(stores, customer_phone):
         """, store_order_id, "SENT")
 
         # -----------------------------
-        # 📲 PREPARE STORE MESSAGE
+        # 📲 MESSAGE
         # -----------------------------
-        item_text = "\n".join([
-            f"{i['name']} x{i.get('qty',1)}"
+        item_text = "\n".join(
+            f"{i.get('name')} x{i.get('qty', 1)}"
             for i in store.get("items", [])
-        ])
+        )
 
-        store_message = f"""🆕 New Order
+        message = f"""🆕 New Order
 
 Order ID: {final_order_id}
 
@@ -79,15 +87,15 @@ Reply:
 READY#{final_order_id}
 """
 
-        whatsapp_jobs.append((store_phone, store_message))  # ✅ collect
+        whatsapp_jobs.append((store_phone, message))
 
         # -----------------------------
-        # 🔴 ADMIN REALTIME
+        # 🔴 ADMIN UPDATE
         # -----------------------------
         await manager.broadcast(0, {
             "type": "new_order",
             "final_order_id": final_order_id,
-            "store": store["store"]
+            "store": store.get("store")
         })
 
     return final_order_id, whatsapp_jobs

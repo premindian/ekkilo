@@ -26,6 +26,10 @@ class Optimizer:
             used_stores = set()
             availability_penalty = 0
 
+            # 🔥 NEW
+            brand_bonus = 0
+            variant_bonus = 0
+
             for opt in combo:
                 store = opt.get("store")
                 total_price += opt.get("price", 0)
@@ -34,9 +38,22 @@ class Optimizer:
                 if store:
                     used_stores.add(store)
 
-                # 🔥 HANDLE OUT-OF-STOCK
+                # ❌ OUT OF STOCK
                 if not opt.get("available", True):
-                    availability_penalty += 50  # strong penalty
+                    availability_penalty += 50
+
+                # 🧠 PREFERENCE MATCHING
+                pref_brand = (opt.get("preferred_brand") or "").lower()
+                pref_variant = (opt.get("preferred_variant") or "").lower()
+
+                brand = (opt.get("brand") or "").lower()
+                variant = (opt.get("variant") or "").lower()
+
+                if pref_brand and brand == pref_brand:
+                    brand_bonus += 5   # strong signal
+
+                if pref_variant and variant == pref_variant:
+                    variant_bonus += 3
 
                 plan.setdefault(store, []).append(opt)
 
@@ -44,34 +61,33 @@ class Optimizer:
             # 🧠 SCORES
             # -----------------------------
 
-            # 📦 availability
             coverage_ratio = len(covered_items) / total_items
-
-            # 💰 normalized price
             normalized_price = total_price / total_items
 
-            # 📍 distance (average)
-            distances = []
-            for s in used_stores:
-                d = store_meta.get(s, {}).get("distance")
-                if d is not None:
-                    distances.append(d)
+            # 📍 distance
+            distances = [
+                store_meta.get(s, {}).get("distance")
+                for s in used_stores
+                if store_meta.get(s, {}).get("distance") is not None
+            ]
 
             avg_distance = sum(distances) / len(distances) if distances else 5
-            normalized_distance = avg_distance / 10  # assume 10km max
+            normalized_distance = avg_distance / 10
 
-            # 🏪 STORE COUNT PENALTY (NEW 🔥)
+            # 🏪 store penalty
             store_penalty = len(used_stores) * 10
 
             # -----------------------------
-            # 🔥 FINAL SCORE (CLEANED)
+            # 🔥 FINAL SCORE (UPGRADED)
             # -----------------------------
             score = (
-                (0.5 * normalized_price) +          # price matters most
-                (30 * normalized_distance) +        # distance penalty
-                (40 * (1 - coverage_ratio)) +       # missing items penalty
-                store_penalty +                     # fewer stores preferred
-                availability_penalty                # avoid OOS
+                (0.5 * normalized_price)
+                + (30 * normalized_distance)
+                + (40 * (1 - coverage_ratio))
+                + store_penalty
+                + availability_penalty
+                - (brand_bonus)       # ⭐ reward preference
+                - (variant_bonus)
             )
 
             if score < best_score:
@@ -86,7 +102,7 @@ class Optimizer:
             total_price = 0
         else:
             total_price = sum(
-                item["real_price"] if item.get("real_price") else item["price"]
+                item.get("real_price", item.get("price", 0))
                 for store_items in best_plan.values()
                 for item in store_items
             )

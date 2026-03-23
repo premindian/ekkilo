@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from app.services.whatsapp import send_message
 from app.services.order_service import create_full_order
 from fastapi import BackgroundTasks
+from app.services.whatsapp import send_message
+from app.db.database import get_db
 import asyncio
 
 router = APIRouter()
@@ -14,6 +16,8 @@ VERIFY_TOKEN = "Bookofkirana2026"
 # -----------------------------
 @router.post("/order")
 async def create_order(data: dict, background_tasks: BackgroundTasks):
+    db = await get_db()
+
     phone = data.get("phone")
 
     if not phone:
@@ -24,15 +28,27 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
     if not stores:
         return {"error": "No stores"}
 
-    # ✅ CREATE ORDER + GET WHATSAPP JOBS
+    print("🔥 ORDER API HIT")
+
+    # -----------------------------
+    # 🧾 CREATE ORDER
+    # -----------------------------
     final_order_id, whatsapp_jobs = await create_full_order(stores, phone)
 
     # -----------------------------
-    # 📲 SEND STORE MESSAGES
+    # 📲 STORE MESSAGES
     # -----------------------------
     for store_phone, message in whatsapp_jobs:
+
+        msg_id = await db.fetchval("""
+            INSERT INTO whatsapp_messages (phone, message)
+            VALUES ($1, $2)
+            RETURNING id
+        """, store_phone, message)
+
         print("📤 Queue store message:", store_phone)
-        background_tasks.add_task(send_message, store_phone, message)
+
+        background_tasks.add_task(send_message, store_phone, message, msg_id)
 
     # -----------------------------
     # 📲 CUSTOMER MESSAGE
@@ -40,8 +56,10 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
     summary = []
 
     for store in stores:
-        items = ", ".join([i["name"] for i in store.get("items", [])])
-        summary.append(f"{store['store']}: {items}")
+        items = ", ".join(
+            i.get("name", "") for i in store.get("items", [])
+        )
+        summary.append(f"{store.get('store')}: {items}")
 
     summary_text = "\n".join(summary)
 
@@ -54,8 +72,15 @@ Order ID: {final_order_id}
 We will notify you when ready 🚀
 """
 
+    msg_id = await db.fetchval("""
+        INSERT INTO whatsapp_messages (phone, message)
+        VALUES ($1, $2)
+        RETURNING id
+    """, phone, customer_message)
+
     print("📤 Queue customer message:", phone)
-    background_tasks.add_task(send_message, phone, customer_message)
+
+    background_tasks.add_task(send_message, phone, customer_message, msg_id)
 
     return {"final_order_id": final_order_id}
 
@@ -624,3 +649,98 @@ async def whatsapp_webhook(data: dict):
         print("?? Webhook error:", e)
 
     return {"status": "ok"}
+
+#############
+# Admin Messages for WhatsApp Messages
+##############
+@router.get("/admin/messages")
+async def get_whatsapp_messages():
+    from app.db.database import get_db
+    db = await get_db()
+
+    rows = await db.fetch("""
+        SELECT 
+            id,
+            phone,
+            message,
+            status,
+            attempts,
+            created_at,
+            sent_at
+        FROM whatsapp_messages
+        ORDER BY id DESC
+        LIMIT 100
+    """)
+
+    return [dict(r) for r in rows]
+
+#############
+# Admin Retry Messages from Admin
+##############
+@router.post("/admin/retry-message/{msg_id}")
+async def retry_message(msg_id: int):
+    from app.db.database import get_db
+    from app.services.whatsapp import send_message
+
+    db = await get_db()
+
+    row = await db.fetchrow("""
+        SELECT phone, message
+        FROM whatsapp_messages
+        WHERE id = $1
+    """, msg_id)
+
+    if not row:
+        return {"error": "Message not found"}
+
+    await send_message(row["phone"], row["message"], msg_id)
+
+    return {"status": "retry_sent"}
+
+#############################
+# Admin Message Analytics
+##############################
+@router.get("/admin/message-analytics")
+async def message_analytics():
+    from app.db.database import get_db
+    db = await get_db()
+
+    rows = await db.fetch("""
+        SELECT status, COUNT(*) as count
+        FROM whatsapp_messages
+        GROUP BY status
+    """)
+
+    stats = {r["status"]: r["count"] for r in rows}
+
+    total = sum(stats.values()) or 1
+
+    return {
+        "total": total,
+        "sent": stats.get("SENT", 0),
+        "delivered": stats.get("DELIVERED", 0),
+        "read": stats.get("READ", 0),
+        "failed": stats.get("FAILED", 0),
+        "delivery_rate": round(stats.get("DELIVERED", 0) * 100 / total, 2),
+        "read_rate": round(stats.get("READ", 0) * 100 / total, 2),
+        "failure_rate": round(stats.get("FAILED", 0) * 100 / total, 2)
+    }
+
+#############################
+# Admin Store Performance
+##############################
+@router.get("/admin/store-performance")
+async def store_performance():
+    from app.db.database import get_db
+    db = await get_db()
+
+    rows = await db.fetch("""
+        SELECT 
+            so.store_name,
+            COUNT(*) as total_orders
+        FROM store_orders so
+        GROUP BY so.store_name
+        ORDER BY total_orders DESC
+    """)
+
+    return [dict(r) for r in rows]
