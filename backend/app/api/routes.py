@@ -40,11 +40,13 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
     # -----------------------------
     for store_phone, message in whatsapp_jobs:
 
-        msg_id = await db.fetchval("""
-            INSERT INTO whatsapp_messages (phone, message)
-            VALUES ($1, $2)
-            RETURNING id
-        """, store_phone, message)
+        row = await db.fetchrow("""
+         INSERT INTO whatsapp_messages (phone, message)
+              VALUES ($1, $2)
+              RETURNING id
+            """, phone, message)
+
+        msg_id = row["id"]
 
         print("📤 Queue store message:", store_phone)
 
@@ -72,12 +74,13 @@ Order ID: {final_order_id}
 We will notify you when ready 🚀
 """
 
-    msg_id = await db.fetchval("""
+    row = await db.fetchrow("""
         INSERT INTO whatsapp_messages (phone, message)
-        VALUES ($1, $2)
-        RETURNING id
-    """, phone, customer_message)
+              VALUES ($1, $2)
+              RETURNING id
+            """, phone, message)
 
+    msg_id = row["id"]
     print("📤 Queue customer message:", phone)
 
     background_tasks.add_task(send_message, phone, customer_message, msg_id)
@@ -224,7 +227,7 @@ async def search_products(data: dict):
     db = await get_db()
 
     # -----------------------------
-    # 🏪 FETCH STORES (ONE QUERY + DISTANCE)
+    # 🏪 FETCH STORES
     # -----------------------------
     store_names = list(optimized.keys())
 
@@ -232,6 +235,7 @@ async def search_products(data: dict):
         rows = await db.fetch("""
             SELECT 
                 name,
+                phone,
                 lat,
                 lng,
                 (
@@ -247,6 +251,7 @@ async def search_products(data: dict):
 
         store_map = {
             r["name"]: {
+                "phone": r["phone"],
                 "lat": r["lat"],
                 "lng": r["lng"],
                 "distance": float(r["distance"]) if r["distance"] else None
@@ -255,13 +260,15 @@ async def search_products(data: dict):
         }
 
     else:
-        rows = await db.fetch(
-            "SELECT name, lat, lng FROM stores WHERE name = ANY($1)",
-            store_names
-        )
+        rows = await db.fetch("""
+            SELECT name, phone, lat, lng 
+            FROM stores 
+            WHERE name = ANY($1)
+        """, store_names)
 
         store_map = {
             r["name"]: {
+                "phone": r["phone"],
                 "lat": r["lat"],
                 "lng": r["lng"]
             }
@@ -277,6 +284,16 @@ async def search_products(data: dict):
 
         store_data = store_map.get(store, {})
 
+        # 🔥 CRITICAL: store phone
+        store_phone = store_data.get("phone")
+
+        # fallback from items
+        if not store_phone:
+            for p in products:
+                if p.get("phone"):
+                    store_phone = p.get("phone")
+                    break
+
         store_total = 0
         items = []
 
@@ -288,13 +305,15 @@ async def search_products(data: dict):
                 "packs": p.get("packs", 1),
                 "size": p.get("size", 1),
                 "unit": p.get("unit", ""),
-                "price": price
+                "price": price,
+                "phone": p.get("phone")   # 🔥 IMPORTANT
             })
 
             store_total += price
 
         store_obj = {
             "store": store,
+            "store_phone": store_phone,   # 🔥 CRITICAL FIX
             "items": items,
             "total": store_total
         }
@@ -336,29 +355,24 @@ async def search_products(data: dict):
             (0.4 * availability_ratio)
         )
 
-    # 🔥 FINAL SORT + LIMIT
     stores = sorted(stores, key=lambda x: x["score"])[:5]
 
     # -----------------------------
-    # 🤖 AI EXPLANATION (WHY BEST)
+    # 🤖 REASONS
     # -----------------------------
     for i, s in enumerate(stores):
 
         reasons = []
 
-        # ⭐ BEST STORE
         if i == 0:
             reasons.append("Lowest overall cost")
 
-        # 📍 DISTANCE
         if s.get("distance") is not None:
             if s["distance"] <= 3:
                 reasons.append(f"Very close ({s['distance']} km)")
             elif s["distance"] <= radius:
                 reasons.append(f"Within {radius} km")
 
-        # 📦 AVAILABILITY
-        total_items = len(price_matrix.keys()) or 1
         available_items = len(s.get("items", []))
 
         if available_items == total_items:
@@ -366,15 +380,13 @@ async def search_products(data: dict):
         elif available_items > 0:
             reasons.append(f"{available_items}/{total_items} items available")
 
-        # 💰 PRICE COMPARED TO BEST
         if i > 0:
             diff = round(s["total"] - stores[0]["total"], 2)
             if diff > 0:
                 reasons.append(f"₹{diff} costlier than best")
 
         s["reason"] = reasons
-    
-    
+
     # -----------------------------
     # 💰 SAVINGS
     # -----------------------------
@@ -392,10 +404,7 @@ async def search_products(data: dict):
     # -----------------------------
     # ⭐ BEST STORE
     # -----------------------------
-    if stores:
-        best_store_name = stores[0]["store"]
-    else:
-        best_store_name = None
+    best_store_name = stores[0]["store"] if stores else None
 
     for s in stores:
         s["is_best"] = (s["store"] == best_store_name)
@@ -414,10 +423,7 @@ async def search_products(data: dict):
         for opt in options:
             store = opt.get("store")
 
-            if (
-                store not in best_per_store or
-                opt["price"] < best_per_store[store]["price"]
-            ):
+            if store not in best_per_store or opt["price"] < best_per_store[store]["price"]:
                 best_per_store[store] = opt
 
         sorted_opts = sorted(best_per_store.values(), key=lambda x: x["price"])
@@ -464,7 +470,7 @@ async def search_products(data: dict):
         "comparison": comparison,
         "store_view": store_view
     }
-
+    
 # -----------------------------
 #  PRODUCT UPDATE
 # -----------------------------

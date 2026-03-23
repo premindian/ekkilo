@@ -111,7 +111,7 @@ export default function OrderPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         phone: formatted,
-        stores: storesPayload,
+        stores: result.stores,
       }),
     });
 
