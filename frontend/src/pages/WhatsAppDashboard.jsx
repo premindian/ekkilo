@@ -7,54 +7,46 @@ import {
 const API_BASE = "https://ekkilo.onrender.com";
 const WS_BASE = "wss://ekkilo.onrender.com";
 
-export default function WhatsAppDashboard() {
+export default function AdminDashboard() {
   const [messages, setMessages] = useState([]);
-  const [filter, setFilter] = useState("ALL");
+  const [orders, setOrders] = useState([]);
   const [analytics, setAnalytics] = useState({});
   const [stores, setStores] = useState([]);
+  const [stats, setStats] = useState({});
+  const [filter, setFilter] = useState("ALL");
 
   // -----------------------------
-  // 📡 FETCH ALL DATA
+  // 🚀 FETCH ALL DATA
   // -----------------------------
   const fetchAll = async () => {
     try {
-      const [m, a, s] = await Promise.all([
+      const [m, a, s, o, st] = await Promise.all([
         fetch(`${API_BASE}/admin/messages`).then(r => r.json()),
         fetch(`${API_BASE}/admin/message-analytics`).then(r => r.json()),
-        fetch(`${API_BASE}/admin/store-performance`).then(r => r.json())
+        fetch(`${API_BASE}/admin/store-performance`).then(r => r.json()),
+        fetch(`${API_BASE}/admin/store-orders`).then(r => r.json()),
+        fetch(`${API_BASE}/admin/stats`).then(r => r.json())
       ]);
 
       setMessages(m);
       setAnalytics(a);
       setStores(s);
+      setOrders(o);
+      setStats(st);
     } catch (e) {
       console.error(e);
     }
   };
 
   // -----------------------------
-  // 🚀 WEBSOCKET LIVE UPDATES
+  // ⚡ WEBSOCKET
   // -----------------------------
   useEffect(() => {
     fetchAll();
 
     const ws = new WebSocket(`${WS_BASE}/ws/admin`);
 
-    ws.onopen = () => console.log("✅ WS Connected");
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === "message_update") {
-        setMessages(prev =>
-          prev.map(m =>
-            m.whatsapp_message_id === data.wa_id
-              ? { ...m, status: data.status }
-              : m
-          )
-        );
-      }
-    };
+    ws.onmessage = () => fetchAll();
 
     const interval = setInterval(fetchAll, 10000);
 
@@ -65,20 +57,26 @@ export default function WhatsAppDashboard() {
   }, []);
 
   // -----------------------------
-  // 🔁 RETRY
+  // 🔁 RETRY MESSAGE
   // -----------------------------
   const retryMessage = async (id) => {
     await fetch(`${API_BASE}/admin/retry-message/${id}`, {
       method: "POST"
     });
+    fetchAll();
   };
 
   // -----------------------------
-  // 🔍 FILTER
+  // 🔄 UPDATE ORDER STATUS
   // -----------------------------
-  const filtered = messages.filter(m =>
-    filter === "ALL" ? true : m.status === filter
-  );
+  const updateOrder = async (id, status) => {
+    await fetch(`${API_BASE}/admin/store-orders/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    fetchAll();
+  };
 
   // -----------------------------
   // 📊 CHART DATA
@@ -92,37 +90,41 @@ export default function WhatsAppDashboard() {
 
   const COLORS = ["#3b82f6", "#22c55e", "#a855f7", "#ef4444"];
 
-  // -----------------------------
-  // ICONS
-  // -----------------------------
-  const getIcon = (s) => {
-    if (s === "READ") return "✔✔👀";
-    if (s === "DELIVERED") return "✔✔";
-    if (s === "SENT") return "✔";
-    if (s === "FAILED") return "❌";
-    return "⏳";
-  };
+  const filteredMessages = messages.filter(m =>
+    filter === "ALL" ? true : m.status === filter
+  );
 
+  // -----------------------------
+  // UI
+  // -----------------------------
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
 
       <h1 className="text-2xl font-bold mb-6">
-        📊 WhatsApp Ops Dashboard
+        🚀 Ekkilo Admin Control Tower
       </h1>
 
-      {/* 🔥 KPI CARDS */}
+      {/* 🔥 ORDER STATS */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <Card title="Total Orders" value={stats.total || 0} />
+        <Card title="Sent" value={stats.sent || 0} />
+        <Card title="Accepted" value={stats.accepted || 0} />
+        <Card title="Ready" value={stats.ready || 0} />
+      </div>
+
+      {/* 📊 MESSAGE ANALYTICS */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <Card title="Delivery %" value={`${analytics.delivery_rate || 0}%`} />
         <Card title="Read %" value={`${analytics.read_rate || 0}%`} />
         <Card title="Failure %" value={`${analytics.failure_rate || 0}%`} />
-        <Card title="Total" value={analytics.total || 0} />
+        <Card title="Total Msg" value={analytics.total || 0} />
       </div>
 
       {/* 📊 CHARTS */}
       <div className="grid grid-cols-2 gap-6 mb-6">
 
         <div className="bg-white p-4 rounded-xl shadow">
-          <h2 className="font-semibold mb-3">Status Distribution</h2>
+          <h2>Status Distribution</h2>
           <PieChart width={300} height={250}>
             <Pie data={pieData} dataKey="value" outerRadius={100}>
               {pieData.map((_, i) => (
@@ -134,7 +136,7 @@ export default function WhatsAppDashboard() {
         </div>
 
         <div className="bg-white p-4 rounded-xl shadow">
-          <h2 className="font-semibold mb-3">Retry Activity</h2>
+          <h2>Retry Activity</h2>
           <LineChart width={400} height={250} data={messages.slice(0, 10)}>
             <XAxis dataKey="id" />
             <YAxis />
@@ -147,8 +149,7 @@ export default function WhatsAppDashboard() {
 
       {/* 🏪 STORE PERFORMANCE */}
       <div className="bg-white p-4 rounded-xl shadow mb-6">
-        <h2 className="font-semibold mb-3">🏪 Store Performance</h2>
-
+        <h2>🏪 Store Performance</h2>
         {stores.map((s, i) => (
           <div key={i} className="flex justify-between border-b py-2">
             <span>{s.store_name}</span>
@@ -157,56 +158,72 @@ export default function WhatsAppDashboard() {
         ))}
       </div>
 
-      {/* FILTERS */}
-      <div className="flex gap-3 mb-4">
-        {["ALL", "SENT", "DELIVERED", "READ", "FAILED"].map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-full 
-              ${filter === f ? "bg-black text-white" : "bg-white border"}`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
+      {/* 📦 ORDER CONTROL TABLE */}
+      <div className="bg-white p-4 rounded-xl shadow mb-6">
+        <h2>📦 Store Orders</h2>
 
-      {/* TABLE */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-100">
+          <thead>
             <tr>
-              <th className="p-3">Phone</th>
-              <th className="p-3">Message</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Retry</th>
+              <th>Order</th>
+              <th>Customer</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {filtered.map(m => (
-              <tr key={m.id} className="border-t">
-                <td className="p-3">{m.phone}</td>
-
-                <td className="p-3 max-w-xs truncate">
-                  {m.message}
+            {orders.map(o => (
+              <tr key={o.id} className="border-t">
+                <td>#{o.final_order_id} ({o.store})</td>
+                <td>{o.customer}</td>
+                <td>{o.status}</td>
+                <td>
+                  <button onClick={() => updateOrder(o.id, "ACCEPTED")}>Accept</button>
+                  <button onClick={() => updateOrder(o.id, "READY")}>Ready</button>
+                  <button onClick={() => updateOrder(o.id, "COMPLETED")}>Complete</button>
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-                <td className="p-3 font-semibold">
-                  {getIcon(m.status)} {m.status}
-                </td>
+      {/* 💬 MESSAGE TABLE */}
+      <div className="bg-white p-4 rounded-xl shadow">
+        <h2>📩 Messages</h2>
 
-                <td className="p-3">
+        <div className="flex gap-3 mb-4">
+          {["ALL", "SENT", "DELIVERED", "READ", "FAILED"].map(f => (
+            <button key={f} onClick={() => setFilter(f)}>
+              {f}
+            </button>
+          ))}
+        </div>
+
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th>Phone</th>
+              <th>Message</th>
+              <th>Status</th>
+              <th>Retry</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {filteredMessages.map(m => (
+              <tr key={m.id}>
+                <td>{m.phone}</td>
+                <td>{m.message}</td>
+                <td>{m.status}</td>
+                <td>
                   {m.status === "FAILED" && (
-                    <button
-                      onClick={() => retryMessage(m.id)}
-                      className="bg-red-500 text-white px-3 py-1 rounded"
-                    >
+                    <button onClick={() => retryMessage(m.id)}>
                       Retry
                     </button>
                   )}
                 </td>
-
               </tr>
             ))}
           </tbody>
@@ -217,9 +234,6 @@ export default function WhatsAppDashboard() {
   );
 }
 
-// -----------------------------
-// CARD COMPONENT
-// -----------------------------
 function Card({ title, value }) {
   return (
     <div className="bg-white p-4 rounded-xl shadow">
