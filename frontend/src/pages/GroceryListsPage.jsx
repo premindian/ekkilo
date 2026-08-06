@@ -46,7 +46,7 @@ export default function GroceryListsPage({ onSelectList, onClose }) {
   };
 
   const deleteList = async (listId) => {
-    if (!confirm('Delete this list?')) return;
+    if (!window.confirm('Delete this list?')) return;
 
     try {
       await fetch(`${API_BASE}/api/grocery-lists/${listId}?token=${token}`, {
