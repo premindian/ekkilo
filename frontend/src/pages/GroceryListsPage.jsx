@@ -170,6 +170,18 @@ export default function GroceryListsPage({ onSelectList, onClose }) {
   );
 }
 
+// Common grocery items for quick add
+const COMMON_ITEMS = [
+  { name: 'Milk', unit: 'l' },
+  { name: 'Rice', unit: 'kg' },
+  { name: 'Oil', unit: 'l' },
+  { name: 'Sugar', unit: 'kg' },
+  { name: 'Bread', unit: 'unit' },
+  { name: 'Eggs', unit: 'unit' },
+  { name: 'Flour', unit: 'kg' },
+  { name: 'Salt', unit: 'kg' }
+];
+
 // List Detail Component
 function ListDetailView({ list, token, onBack, onQuickOrder }) {
   const [items, setItems] = useState(list.items || []);
@@ -177,13 +189,24 @@ function ListDetailView({ list, token, onBack, onQuickOrder }) {
   const [newItem, setNewItem] = useState({ product_name: '', quantity: 1, unit: 'kg' });
 
   const addItem = async () => {
-    if (!newItem.product_name.trim()) return;
+    if (!newItem.product_name.trim()) {
+      alert('Please enter a product name');
+      return;
+    }
+
+    if (!newItem.quantity || newItem.quantity <= 0) {
+      alert('Please enter a valid quantity');
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/grocery-lists/${list.list.id}/items?token=${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newItem)
+        body: JSON.stringify({
+          ...newItem,
+          quantity: parseFloat(newItem.quantity)
+        })
       });
       const data = await res.json();
       
@@ -193,6 +216,11 @@ function ListDetailView({ list, token, onBack, onQuickOrder }) {
     } catch (err) {
       alert('Failed to add item');
     }
+  };
+
+  const quickAddItem = (itemName, unit) => {
+    setNewItem({ product_name: itemName, quantity: 1, unit });
+    setShowAddItem(true);
   };
 
   const deleteItem = async (itemId) => {
@@ -217,38 +245,65 @@ function ListDetailView({ list, token, onBack, onQuickOrder }) {
         ➕ Add Item
       </button>
 
-      {showAddItem && (
+      {showAddItem ? (
         <div style={styles.addItemBox}>
+          <h4 style={styles.formTitle}>Add New Item</h4>
           <input
             type="text"
-            placeholder="Product name"
+            placeholder="Product name (e.g., Milk, Rice, Oil...)"
             value={newItem.product_name}
             onChange={(e) => setNewItem({ ...newItem, product_name: e.target.value })}
+            onKeyPress={(e) => e.key === 'Enter' && addItem()}
             style={styles.input}
+            autoFocus
           />
           <div style={styles.quantityRow}>
-            <input
-              type="number"
-              placeholder="Qty"
-              value={newItem.quantity}
-              onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
-              style={{ ...styles.input, width: 80 }}
-            />
-            <select
-              value={newItem.unit}
-              onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
-              style={{ ...styles.input, width: 100 }}
-            >
-              <option value="kg">kg</option>
-              <option value="l">L</option>
-              <option value="g">g</option>
-              <option value="ml">ml</option>
-              <option value="unit">unit</option>
-            </select>
+            <div style={styles.quantityGroup}>
+              <label style={styles.label}>Quantity</label>
+              <input
+                type="number"
+                min="0.1"
+                step="0.5"
+                placeholder="1"
+                value={newItem.quantity}
+                onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
+                onKeyPress={(e) => e.key === 'Enter' && addItem()}
+                style={styles.quantityInput}
+              />
+            </div>
+            <div style={styles.quantityGroup}>
+              <label style={styles.label}>Unit</label>
+              <select
+                value={newItem.unit}
+                onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                style={styles.unitSelect}
+              >
+                <option value="kg">kg</option>
+                <option value="l">L</option>
+                <option value="g">g</option>
+                <option value="ml">ml</option>
+                <option value="unit">unit</option>
+              </select>
+            </div>
           </div>
           <div style={styles.buttonRow}>
-            <button onClick={addItem} style={styles.saveBtn}>Add</button>
-            <button onClick={() => setShowAddItem(false)} style={styles.cancelBtn}>Cancel</button>
+            <button onClick={addItem} style={styles.saveBtn}>✓ Add</button>
+            <button onClick={() => { setShowAddItem(false); setNewItem({ product_name: '', quantity: 1, unit: 'kg' }); }} style={styles.cancelBtn}>✕ Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div style={styles.quickAddSection}>
+          <p style={styles.quickAddTitle}>Quick Add:</p>
+          <div style={styles.quickAddGrid}>
+            {COMMON_ITEMS.map((item, idx) => (
+              <button
+                key={idx}
+                onClick={() => quickAddItem(item.name, item.unit)}
+                style={styles.quickAddBtn}
+              >
+                {item.name}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -289,9 +344,19 @@ const styles = {
   loading: { textAlign: 'center', padding: 40, color: '#999' },
   newListBtn: { width: '100%', padding: 14, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 'bold', cursor: 'pointer', marginBottom: 20 },
   newListBox: { background: '#f9fafb', padding: 16, borderRadius: 8, marginBottom: 20 },
-  addItemBox: { background: '#f9fafb', padding: 16, borderRadius: 8, marginBottom: 20 },
+  addItemBox: { background: '#f9fafb', padding: 20, borderRadius: 12, marginBottom: 20, border: '2px solid #e5e7eb' },
+  formTitle: { fontSize: 16, fontWeight: '600', marginTop: 0, marginBottom: 12, color: '#333' },
   input: { width: '100%', padding: 12, border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, marginBottom: 12, boxSizing: 'border-box' },
+  quantityRow: { display: 'flex', gap: 12, marginBottom: 12 },
+  quantityGroup: { flex: 1 },
+  label: { display: 'block', fontSize: 12, color: '#666', marginBottom: 6, fontWeight: '500' },
+  quantityInput: { width: '100%', padding: 12, border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, fontWeight: '500', boxSizing: 'border-box' },
+  unitSelect: { width: '100%', padding: 12, border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', background: '#fff' },
   buttonRow: { display: 'flex', gap: 8 },
+  quickAddSection: { marginBottom: 20 },
+  quickAddTitle: { fontSize: 14, fontWeight: '600', color: '#666', marginBottom: 10 },
+  quickAddGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 },
+  quickAddBtn: { padding: '10px 8px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontSize: 13, transition: 'all 0.2s', ':hover': { background: '#f3f4f6' } },
   saveBtn: { flex: 1, padding: 10, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' },
   cancelBtn: { flex: 1, padding: 10, background: '#e5e7eb', border: 'none', borderRadius: 8, cursor: 'pointer' },
   listsContainer: { display: 'flex', flexDirection: 'column', gap: 12 },
@@ -305,7 +370,6 @@ const styles = {
   orderBtn: { padding: '8px 16px', background: '#667eea', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 },
   deleteBtn: { padding: '8px 12px', background: '#fee', border: 'none', borderRadius: 8, cursor: 'pointer' },
   addItemBtn: { width: '100%', padding: 12, background: '#667eea', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', marginBottom: 16 },
-  quantityRow: { display: 'flex', gap: 8 },
   itemsList: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 },
   itemCard: { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   itemName: { fontSize: 16, margin: '0 0 4px 0', fontWeight: 500 },
