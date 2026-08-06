@@ -79,11 +79,14 @@ export default function OrderPage({ initialSearchText }) {
     });
 
     const data = await res.json();
+    console.log('📊 Search Result:', data);
+    console.log('📦 Stores:', data.stores);
     setResult(data);
     setLoading(false);
   };
 
   const stores = result?.stores || [];
+  console.log('🏪 Rendering stores:', stores.length, stores);
 
   // 🧠 SMART SPLIT
   const splitMap = {};
@@ -188,15 +191,32 @@ export default function OrderPage({ initialSearchText }) {
       </div>
 
       {/* SAVINGS */}
-      {result?.comparison && (
-        <div style={{ color: "green", marginTop: 10 }}>
-          💰 Save up to ₹
-          {format(Math.max(...Object.values(result.comparison).flat().map(o=>o.savings||0)))}
+      {result?.comparison && Object.keys(result.comparison).length > 0 && (() => {
+        const maxSavings = Math.max(...Object.values(result.comparison).flat().map(o=>o.savings||0), 0);
+        return maxSavings > 0 ? (
+          <div style={{ color: "green", marginTop: 10 }}>
+            💰 Save up to ₹{format(maxSavings)}
+          </div>
+        ) : null;
+      })()}
+
+      {/* LOADING */}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>
+          🔍 Searching for best prices...
+        </div>
+      )}
+
+      {/* NO RESULTS */}
+      {!loading && result && stores.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+          <p>😕 No stores found</p>
+          <p style={{ fontSize: 14 }}>Try adjusting your search or location</p>
         </div>
       )}
 
       {/* 🧠 SMART */}
-      {mode==="smart" && splitStores.map((s,i)=>(
+      {!loading && mode==="smart" && splitStores.map((s,i)=>(
         <div key={i} style={card}>
           <b>🏪 {s.store}</b>
 
@@ -212,7 +232,7 @@ export default function OrderPage({ initialSearchText }) {
       ))}
 
       {/* 🏪 ONE STORE */}
-      {mode==="one" && stores.map((store, idx) => (
+      {!loading && mode==="one" && stores.map((store, idx) => (
         <div key={idx} style={premiumCard}>
 
           <div style={headerRow}>
@@ -250,7 +270,7 @@ export default function OrderPage({ initialSearchText }) {
       ))}
 
       {/* 🧩 MANUAL */}
-      {mode==="manual" && Object.entries(result?.store_view || {}).map(([store, items])=>(
+      {!loading && mode==="manual" && Object.entries(result?.store_view || {}).map(([store, items])=>(
         <div key={store} style={premiumCard}>
           <b>🏪 {store}</b>
 
@@ -289,7 +309,7 @@ export default function OrderPage({ initialSearchText }) {
       ))}
 
       {/* 🔥 STICKY BAR */}
-      {(mode==="smart" || mode==="manual") && (
+      {((mode==="smart" && splitStores.length > 0) || (mode==="manual" && manualItems.length > 0)) && (
         <div style={bottom}>
           <div>
             ₹{format(mode==="smart"?splitTotal:manualTotal)}
