@@ -148,6 +148,22 @@ export default function OrderPage({ initialSearchText }) {
       return;
     }
 
+    // Build confirmation message
+    const orderSummary = storesPayload.map(store => {
+      const itemsList = store.items.map(item => 
+        `  • ${item.name} (${item.packs || 1} × ${item.size}${item.unit})`
+      ).join('\n');
+      return `📍 ${store.store}\n${itemsList}\n💰 Subtotal: ₹${store.total.toFixed(2)}`;
+    }).join('\n\n');
+
+    const grandTotal = storesPayload.reduce((sum, store) => sum + store.total, 0);
+    
+    const confirmMessage = `🛒 Confirm Your Order?\n\n${orderSummary}\n\n💳 Grand Total: ₹${grandTotal.toFixed(2)}\n\n${storesPayload.length} store(s) will be notified.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return; // User cancelled
+    }
+
     const formatted = user.phone.startsWith("91") ? user.phone : "91" + user.phone;
 
     await fetch(`${API_BASE}/order`, {
@@ -159,7 +175,7 @@ export default function OrderPage({ initialSearchText }) {
       }),
     });
 
-    alert("✅ Order placed!");
+    alert("✅ Order placed! You'll receive a WhatsApp confirmation.");
   };
 
   return (
