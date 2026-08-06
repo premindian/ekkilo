@@ -60,7 +60,7 @@ class Pricing:
 
                 # 🔥 PACK SIZE → BASE UNIT
                 pack_size = self.convert_to_base(
-                    r.get("size") or 1,
+                    float(r.get("size") or 1),  # Convert Decimal to float
                     r.get("unit"),
                     base_unit
                 )
