@@ -138,6 +138,24 @@ export default function GroceryListsPage({ onSelectList }) {
     <div style={styles.container}>
       <h2 style={styles.title}>🛒 Smart Grocery Lists</h2>
       
+      {/* CURRENT LIST INDICATOR */}
+      {selectedList && (
+        <div style={styles.currentList}>
+          📋 Adding to: <b>{selectedList.list.name}</b>
+          {lists.length > 1 && (
+            <select 
+              value={selectedList.list.id}
+              onChange={(e) => loadListDetail(parseInt(e.target.value))}
+              style={styles.listSelect}
+            >
+              {lists.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
       {/* VIEW TOGGLE */}
       <div style={styles.viewToggle}>
         <button 
@@ -161,17 +179,25 @@ export default function GroceryListsPage({ onSelectList }) {
       </div>
 
       {view === 'templates' && (
-        <TemplateView onApplyTemplate={(items) => {
-          if (selectedList) {
-            items.forEach(item => {
-              // Add to current list
-              fetch(`${API_BASE}/api/grocery-lists/${selectedList.list.id}/items?token=${token}`, {
+        <TemplateView onApplyTemplate={async (items, templateName) => {
+          if (!selectedList) {
+            alert('Please create or select a list first!');
+            return;
+          }
+          
+          try {
+            for (const item of items) {
+              await fetch(`${API_BASE}/api/grocery-lists/${selectedList.list.id}/items?token=${token}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ product_name: item.name, quantity: item.qty, unit: item.unit })
               });
-            });
-            setTimeout(() => loadListDetail(selectedList.list.id), 500);
+            }
+            alert(`✅ ${items.length} items added to ${selectedList.list.name}!`);
+            setView('list');
+            setTimeout(() => loadListDetail(selectedList.list.id), 300);
+          } catch (err) {
+            alert('Failed to add items');
           }
         }} />
       )}
@@ -249,10 +275,10 @@ function TemplateView({ onApplyTemplate }) {
             ))}
           </div>
           <button 
-            onClick={() => onApplyTemplate(template.items)}
+            onClick={() => onApplyTemplate(template.items, template.name)}
             style={styles.applyBtn}
           >
-            ➕ Add to List
+            ➕ Add to List ({template.items.length} items)
           </button>
         </div>
       ))}
@@ -535,6 +561,24 @@ const styles = {
   loading: { textAlign: 'center', padding: 40, color: '#999' },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
   
+  currentList: { 
+    background: '#f9fafb', 
+    padding: 12, 
+    borderRadius: 8, 
+    marginBottom: 12, 
+    display: 'flex', 
+    alignItems: 'center', 
+    gap: 8,
+    fontSize: 14
+  },
+  listSelect: {
+    padding: '6px 12px',
+    borderRadius: 6,
+    border: '1px solid #e5e7eb',
+    background: '#fff',
+    cursor: 'pointer'
+  },
+
   viewToggle: { display: 'flex', gap: 8, marginBottom: 20 },
   viewBtn: { flex: 1, padding: 10, background: '#f3f4f6', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 },
   viewBtnActive: { background: '#667eea', color: '#fff', fontWeight: 'bold' },
