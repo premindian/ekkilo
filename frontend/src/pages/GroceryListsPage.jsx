@@ -76,22 +76,12 @@ export default function GroceryListsPage({ onSelectList }) {
     const normalized = text.trim();
     if (!normalized) return null;
 
-    // Try to parse "item qty unit"
-    const match = normalized.match(/^(.+?)\s+([\d.]+)\s*([a-z]+)$/i);
-    
-    if (match) {
-      return {
-        product_name: match[1].trim(),
-        quantity: parseFloat(match[2]),
-        unit: match[3].toLowerCase()
-      };
-    }
-
-    // Default: item name only, 1 unit
+    // Store EXACTLY what user types as product_name
+    // Backend search will parse it intelligently
     return {
       product_name: normalized,
-      quantity: 1,
-      unit: 'unit'
+      quantity: 1,  // Backend uses this for internal tracking
+      unit: 'item'   // Backend uses this for internal tracking
     };
   };
 
@@ -183,7 +173,7 @@ export default function GroceryListsPage({ onSelectList }) {
         <div style={s.addBox}>
           <input
             type="text"
-            placeholder='Add: "milk 2l" or "rice 5kg" or just "bread"'
+            placeholder='Type: "rice 5kg", "basmati rice 10kg bag", "amul milk 2 liters"...'
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && addItem()}
@@ -211,16 +201,13 @@ export default function GroceryListsPage({ onSelectList }) {
             <div style={s.empty}>
               <div style={s.emptyIcon}>📝</div>
               <p>Your list is empty</p>
-              <p style={s.hint}>Add items like "milk 2l" or "rice 5kg"</p>
+              <p style={s.hint}>Type exactly what you need: "rice 5kg", "basmati rice 10kg bag", etc.</p>
             </div>
           ) : (
             items.map((item) => (
               <div key={item.id} style={s.item}>
                 <div style={s.itemContent}>
                   <div style={s.itemName}>{item.product_name}</div>
-                  <div style={s.itemQty}>
-                    {item.quantity} {item.unit}
-                  </div>
                 </div>
                 <button
                   onClick={() => deleteItem(item.id)}
