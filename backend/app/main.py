@@ -7,6 +7,9 @@ import asyncio
 from app.api.routes import router
 from app.api.admin import router as admin_router
 from app.api.whatsapp import router as whatsapp_router
+from app.api.auth import router as auth_router
+from app.api.grocery_lists import router as grocery_lists_router
+from app.api.user_preferences import router as preferences_router
 
 # services
 from app.services.whatsapp_retry import retry_failed_messages
@@ -62,6 +65,9 @@ async def preflight_handler():
 app.include_router(router)
 app.include_router(admin_router)
 app.include_router(whatsapp_router, prefix="/whatsapp")
+app.include_router(auth_router, prefix="/api")
+app.include_router(grocery_lists_router, prefix="/api")
+app.include_router(preferences_router, prefix="/api")
 
 
 # -----------------------------------------
