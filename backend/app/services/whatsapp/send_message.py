@@ -7,6 +7,7 @@ PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 
 async def send_message(phone, message, msg_id=None):
+    print(f"🎯 Background task started for {phone}, msg_id={msg_id}")
     db = await get_db()
 
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
@@ -71,7 +72,9 @@ async def send_message(phone, message, msg_id=None):
                 """, msg_id)
 
     except Exception as e:
-        print("❌ WhatsApp ERROR:", str(e))
+        print(f"❌ WhatsApp ERROR for {phone}:", str(e))
+        import traceback
+        traceback.print_exc()
 
         if msg_id:
             await db.execute("""
@@ -81,3 +84,5 @@ async def send_message(phone, message, msg_id=None):
                     last_error = $2
                 WHERE id = $1
             """, msg_id, str(e))
+    
+    print(f"✅ Background task completed for {phone}")
