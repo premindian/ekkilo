@@ -62,11 +62,13 @@ export default function OrderPage({ initialSearchText }) {
     });
 
     const data = await res.json();
+    console.log('Search response:', data); // Debug
     setResult(data);
     setLoading(false);
   };
 
   const stores = result?.stores || [];
+  console.log('Stores to display:', stores); // Debug
 
   // 🧠 SMART SPLIT
   const splitMap = {};
