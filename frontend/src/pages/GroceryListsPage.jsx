@@ -3,41 +3,68 @@ import { useAuth } from '../context/AuthContext';
 
 const API_BASE = "https://ekkilo.onrender.com";
 
-// Quick templates for common items
-const QUICK_ITEMS = [
-  { name: 'Milk', qty: 1, unit: 'l' },
-  { name: 'Rice', qty: 1, unit: 'kg' },
-  { name: 'Oil', qty: 1, unit: 'l' },
-  { name: 'Bread', qty: 1, unit: 'unit' },
-  { name: 'Eggs', qty: 12, unit: 'unit' },
-  { name: 'Sugar', qty: 1, unit: 'kg' },
-  { name: 'Salt', qty: 1, unit: 'kg' },
-  { name: 'Flour', qty: 1, unit: 'kg' },
-];
-
 export default function GroceryListsPage({ onSelectList }) {
   const { token } = useAuth();
-  const [lists, setLists] = useState([]);
-  const [currentList, setCurrentList] = useState(null);
   const [items, setItems] = useState([]);
   const [input, setInput] = useState('');
+  const [listId, setListId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadLists();
+    loadOrCreateList();
   }, []);
 
-  const loadLists = async () => {
+  const loadOrCreateList = async () => {
     try {
+      // Get all lists
       const res = await fetch(`${API_BASE}/api/grocery-lists?token=${token}`);
-      const data = await res.json();
-      setLists(data);
+      const lists = await res.json();
       
-      // Load default or first list
-      const defaultList = data.find(l => l.is_default) || data[0];
-      if (defaultList) {
-        loadList(defaultList.id);
+      // Find "My Monthly List" or create it
+      let monthlyList = lists.find(l => l.name === 'My Monthly List');
+      
+      if (!monthlyList) {
+        // Create it
+        await fetch(`${API_BASE}/api/grocery-lists?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'My Monthly List' })
+        });
+        
+        // Reload
+        const res2 = await fetch(`${API_BASE}/api/grocery-lists?token=${token}`);
+        const lists2 = await res2.json();
+        monthlyList = lists2.find(l => l.name === 'My Monthly List');
       }
+      
+      if (monthlyList) {
+        loadItems(monthlyList.id);
+      }
+    } catch (err) {
+      console.error('Setup failed:', err);
+      setLoading(false);
+    }
+  };
+
+  const loadItems = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/grocery-lists/${id}?token=${token}`);
+      const data = await res.json();
+      setListId(id);
+      
+      // Remove duplicates if any exist
+      const uniqueItems = [];
+      const seen = new Set();
+      
+      for (const item of data.items || []) {
+        const key = item.product_name.toLowerCase().trim();
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueItems.push(item);
+        }
+      }
+      
+      setItems(uniqueItems);
     } catch (err) {
       console.error('Load failed:', err);
     } finally {
@@ -45,61 +72,22 @@ export default function GroceryListsPage({ onSelectList }) {
     }
   };
 
-  const loadList = async (listId) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/grocery-lists/${listId}?token=${token}`);
-      const data = await res.json();
-      setCurrentList(data.list);
-      setItems(data.items || []);
-    } catch (err) {
-      console.error('Load list failed:', err);
-    }
-  };
-
-  const createList = async () => {
-    const name = prompt('New list name:');
-    if (!name) return;
-    
-    try {
-      await fetch(`${API_BASE}/api/grocery-lists?token=${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-      });
-      loadLists();
-    } catch (err) {
-      alert('Failed to create list');
-    }
-  };
-
   const parseItem = (text) => {
-    const normalized = text.trim().toLowerCase();
+    const normalized = text.trim();
     if (!normalized) return null;
 
-    // Pattern: "item quantity unit" like "milk 2 liters" or "rice 1kg"
-    const pattern = /^(.+?)\s*([\d.]+)\s*([a-z]+)$/;
-    const match = normalized.match(pattern);
-
+    // Try to parse "item qty unit"
+    const match = normalized.match(/^(.+?)\s+([\d.]+)\s*([a-z]+)$/i);
+    
     if (match) {
-      const [, name, qty, unitText] = match;
-      
-      // Normalize units
-      const unitMap = {
-        'l': 'l', 'liter': 'l', 'litre': 'l', 'liters': 'l',
-        'ml': 'ml',
-        'kg': 'kg', 'kilogram': 'kg', 'kilograms': 'kg',
-        'g': 'g', 'gram': 'g', 'grams': 'g',
-        'pc': 'unit', 'piece': 'unit', 'pieces': 'unit'
-      };
-
       return {
-        product_name: name.trim(),
-        quantity: parseFloat(qty),
-        unit: unitMap[unitText] || unitText
+        product_name: match[1].trim(),
+        quantity: parseFloat(match[2]),
+        unit: match[3].toLowerCase()
       };
     }
 
-    // No quantity - default to 1 unit
+    // Default: item name only, 1 unit
     return {
       product_name: normalized,
       quantity: 1,
@@ -107,67 +95,69 @@ export default function GroceryListsPage({ onSelectList }) {
     };
   };
 
-  const addItem = async (itemData = null) => {
-    const parsed = itemData || parseItem(input);
-    if (!parsed || !currentList) return;
+  const addItem = async () => {
+    if (!input.trim() || !listId) return;
 
-    // Check for duplicates
-    const exists = items.find(i => 
-      i.product_name.toLowerCase() === parsed.product_name.toLowerCase()
+    const parsed = parseItem(input);
+    if (!parsed) return;
+
+    // Check for duplicate
+    const nameKey = parsed.product_name.toLowerCase().trim();
+    const isDuplicate = items.some(i => 
+      i.product_name.toLowerCase().trim() === nameKey
     );
-    
-    if (exists) {
-      if (!window.confirm(`${parsed.product_name} already in list. Add anyway?`)) {
-        return;
-      }
+
+    if (isDuplicate) {
+      alert(`"${parsed.product_name}" is already in your list!`);
+      return;
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/grocery-lists/${currentList.id}/items?token=${token}`, {
+      const res = await fetch(`${API_BASE}/api/grocery-lists/${listId}/items?token=${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed)
       });
-      const data = await res.json();
       
-      setItems([...items, data]);
-      setInput('');
+      if (res.ok) {
+        const newItem = await res.json();
+        setItems([...items, newItem]);
+        setInput('');
+      }
     } catch (err) {
       alert('Failed to add item');
     }
   };
 
   const deleteItem = async (itemId) => {
-    if (!currentList) return;
-    
+    if (!listId) return;
+
     try {
-      await fetch(`${API_BASE}/api/grocery-lists/${currentList.id}/items/${itemId}?token=${token}`, {
+      const res = await fetch(`${API_BASE}/api/grocery-lists/${listId}/items/${itemId}?token=${token}`, {
         method: 'DELETE'
       });
-      setItems(items.filter(i => i.id !== itemId));
+      
+      if (res.ok) {
+        setItems(items.filter(i => i.id !== itemId));
+      }
     } catch (err) {
       alert('Failed to delete');
     }
   };
 
-  const adjustQuantity = (item, change) => {
-    const newQty = Math.max(0.5, item.quantity + change);
-    // Simple update: delete and re-add
-    deleteItem(item.id);
-    setTimeout(() => {
-      addItem({
-        product_name: item.product_name,
-        quantity: newQty,
-        unit: item.unit
-      });
-    }, 200);
+  const clearAll = async () => {
+    if (!window.confirm('Remove all items from list?')) return;
+    
+    for (const item of items) {
+      await deleteItem(item.id);
+    }
   };
 
   const quickOrder = async () => {
-    if (!currentList || items.length === 0) return;
-    
+    if (!listId || items.length === 0) return;
+
     try {
-      const res = await fetch(`${API_BASE}/api/grocery-lists/${currentList.id}/quick-order?token=${token}`, {
+      const res = await fetch(`${API_BASE}/api/grocery-lists/${listId}/quick-order?token=${token}`, {
         method: 'POST'
       });
       const data = await res.json();
@@ -176,7 +166,7 @@ export default function GroceryListsPage({ onSelectList }) {
         onSelectList(data.search_text);
       }
     } catch (err) {
-      alert('Quick order failed');
+      alert('Order failed');
     }
   };
 
@@ -185,297 +175,213 @@ export default function GroceryListsPage({ onSelectList }) {
   }
 
   return (
-    <div style={s.container}>
-      <h2 style={s.title}>📝 My Grocery List</h2>
+    <div style={s.page}>
+      <div style={s.container}>
+        <h2 style={s.title}>📝 My Monthly List</h2>
 
-      {/* LIST SELECTOR */}
-      <div style={s.listBar}>
-        <select 
-          value={currentList?.id || ''} 
-          onChange={(e) => loadList(e.target.value)}
-          style={s.select}
-        >
-          {lists.map(l => (
-            <option key={l.id} value={l.id}>
-              {l.name} {l.is_default && '⭐'}
-            </option>
-          ))}
-        </select>
-        <button onClick={createList} style={s.newBtn}>+ New List</button>
-      </div>
-
-      {/* QUICK ADD BUTTONS */}
-      <div style={s.quickSection}>
-        <p style={s.quickTitle}>Quick Add:</p>
-        <div style={s.quickGrid}>
-          {QUICK_ITEMS.map((item, i) => (
-            <button
-              key={i}
-              onClick={() => addItem(item)}
-              style={s.quickBtn}
-            >
-              {item.name}
-            </button>
-          ))}
+        {/* ADD ITEM */}
+        <div style={s.addBox}>
+          <input
+            type="text"
+            placeholder='Add: "milk 2l" or "rice 5kg" or just "bread"'
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && addItem()}
+            style={s.input}
+            autoFocus
+          />
+          <button onClick={addItem} style={s.addBtn}>
+            + Add
+          </button>
         </div>
-      </div>
 
-      {/* ADD ITEM INPUT */}
-      <div style={s.addBox}>
-        <input
-          type="text"
-          placeholder='Add item: "milk 2l" or "rice 1kg" or just "bread"'
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && addItem()}
-          style={s.input}
-        />
-        <button onClick={() => addItem()} style={s.addBtn}>
-          + Add
-        </button>
-      </div>
-
-      {/* ITEMS LIST */}
-      <div style={s.itemsList}>
-        {items.length === 0 ? (
-          <div style={s.empty}>
-            <p>📝 Your list is empty</p>
-            <p style={s.emptyHint}>Try quick-add buttons or type an item above</p>
+        {/* ITEMS COUNT */}
+        {items.length > 0 && (
+          <div style={s.header}>
+            <span style={s.count}>{items.length} items</span>
+            <button onClick={clearAll} style={s.clearBtn}>
+              Clear All
+            </button>
           </div>
-        ) : (
-          <>
-            <div style={s.itemsHeader}>
-              <span>{items.length} items</span>
+        )}
+
+        {/* ITEMS LIST */}
+        <div style={s.list}>
+          {items.length === 0 ? (
+            <div style={s.empty}>
+              <div style={s.emptyIcon}>📝</div>
+              <p>Your list is empty</p>
+              <p style={s.hint}>Add items like "milk 2l" or "rice 5kg"</p>
             </div>
-            {items.map((item) => (
+          ) : (
+            items.map((item) => (
               <div key={item.id} style={s.item}>
-                <div style={s.itemLeft}>
+                <div style={s.itemContent}>
                   <div style={s.itemName}>{item.product_name}</div>
-                  <div style={s.qtyRow}>
-                    <button 
-                      onClick={() => adjustQuantity(item, -0.5)} 
-                      style={s.qtyBtn}
-                    >
-                      −
-                    </button>
-                    <span style={s.qty}>{item.quantity} {item.unit}</span>
-                    <button 
-                      onClick={() => adjustQuantity(item, 0.5)} 
-                      style={s.qtyBtn}
-                    >
-                      +
-                    </button>
+                  <div style={s.itemQty}>
+                    {item.quantity} {item.unit}
                   </div>
                 </div>
-                <button 
-                  onClick={() => deleteItem(item.id)} 
-                  style={s.delBtn}
+                <button
+                  onClick={() => deleteItem(item.id)}
+                  style={s.deleteBtn}
                 >
                   ×
                 </button>
               </div>
-            ))}
-          </>
+            ))
+          )}
+        </div>
+
+        {/* ORDER BUTTON */}
+        {items.length > 0 && (
+          <button onClick={quickOrder} style={s.orderBtn}>
+            🛒 Order All ({items.length} items)
+          </button>
         )}
       </div>
-
-      {/* ORDER BUTTON */}
-      {items.length > 0 && (
-        <button onClick={quickOrder} style={s.orderBtn}>
-          🛒 Order All ({items.length} items)
-        </button>
-      )}
     </div>
   );
 }
 
 const s = {
+  page: {
+    background: '#f9fafb',
+    minHeight: '100vh',
+    padding: '20px 0'
+  },
   container: {
-    padding: 20,
     maxWidth: 600,
     margin: 'auto',
-    background: '#f9fafb',
-    minHeight: '100vh'
+    padding: 20
   },
   loading: {
     textAlign: 'center',
-    padding: 40,
+    padding: 60,
     color: '#999'
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#333'
-  },
-
-  listBar: {
-    display: 'flex',
-    gap: 8,
-    marginBottom: 20
-  },
-  select: {
-    flex: 1,
-    padding: 12,
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
-    background: '#fff',
-    fontSize: 14,
-    cursor: 'pointer'
-  },
-  newBtn: {
-    padding: '12px 20px',
-    background: '#22c55e',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-    cursor: 'pointer',
-    fontSize: 14,
-    fontWeight: 'bold'
-  },
-
-  quickSection: {
-    background: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    border: '1px solid #e5e7eb'
-  },
-  quickTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 10,
-    margin: 0
-  },
-  quickGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: 8,
-    marginTop: 10
-  },
-  quickBtn: {
-    padding: '8px 4px',
-    background: '#f3f4f6',
-    border: '1px solid #e5e7eb',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontSize: 13,
-    transition: 'all 0.2s'
+    marginBottom: 24,
+    color: '#111'
   },
 
   addBox: {
     display: 'flex',
-    gap: 8,
-    marginBottom: 16
+    gap: 10,
+    marginBottom: 20
   },
   input: {
     flex: 1,
-    padding: 14,
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
-    fontSize: 14,
+    padding: 16,
+    border: '2px solid #e5e7eb',
+    borderRadius: 12,
+    fontSize: 15,
     background: '#fff'
   },
   addBtn: {
-    padding: '14px 24px',
-    background: '#667eea',
+    padding: '16px 28px',
+    background: '#22c55e',
     color: '#fff',
     border: 'none',
-    borderRadius: 8,
+    borderRadius: 12,
     cursor: 'pointer',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold'
   },
 
-  itemsList: {
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    padding: '0 4px'
+  },
+  count: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666'
+  },
+  clearBtn: {
+    padding: '6px 12px',
+    background: '#fee2e2',
+    color: '#dc2626',
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: '500'
+  },
+
+  list: {
     background: '#fff',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
-    border: '1px solid #e5e7eb',
-    minHeight: 200
-  },
-  itemsHeader: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 12,
-    paddingBottom: 8,
-    borderBottom: '1px solid #f3f4f6'
+    marginBottom: 20,
+    border: '2px solid #e5e7eb',
+    minHeight: 300
   },
   empty: {
     textAlign: 'center',
-    padding: '60px 20px',
+    padding: '80px 20px',
     color: '#999'
   },
-  emptyHint: {
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 16
+  },
+  hint: {
     fontSize: 13,
-    marginTop: 8
+    marginTop: 8,
+    color: '#bbb'
   },
   item: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '12px 0',
+    padding: '16px 12px',
     borderBottom: '1px solid #f3f4f6'
   },
-  itemLeft: {
+  itemContent: {
     flex: 1
   },
   itemName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '500',
-    marginBottom: 6,
+    marginBottom: 4,
     color: '#333',
     textTransform: 'capitalize'
   },
-  qtyRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8
-  },
-  qtyBtn: {
-    width: 28,
-    height: 28,
-    background: '#f3f4f6',
-    border: 'none',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontSize: 18,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  qty: {
+  itemQty: {
     fontSize: 14,
-    color: '#666',
-    minWidth: 70
+    color: '#999'
   },
-  delBtn: {
-    width: 32,
-    height: 32,
+  deleteBtn: {
+    width: 36,
+    height: 36,
     background: '#fee2e2',
     border: 'none',
-    borderRadius: 6,
+    borderRadius: 8,
     cursor: 'pointer',
-    fontSize: 20,
+    fontSize: 24,
     color: '#dc2626',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    fontWeight: 'bold'
   },
 
   orderBtn: {
     width: '100%',
-    padding: 16,
-    background: '#22c55e',
+    padding: 18,
+    background: '#667eea',
     color: '#fff',
     border: 'none',
     borderRadius: 12,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
     cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(34, 197, 94, 0.3)'
+    boxShadow: '0 4px 14px rgba(102, 126, 234, 0.4)'
   }
 };
