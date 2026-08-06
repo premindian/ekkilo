@@ -6,6 +6,12 @@ const API_BASE = "https://ekkilo.onrender.com";
 export default function OrderPage({ initialSearchText }) {
   const { user } = useAuth();
   const [text, setText] = useState("");
+  const [result, setResult] = useState(null);
+  const [mode, setMode] = useState("smart");
+  const [loading, setLoading] = useState(false);
+  const [location, setLocation] = useState(null);
+  const [radius, setRadius] = useState(5);
+  const [manualCart, setManualCart] = useState({});
   
   // Auto-search when initialSearchText is provided
   useEffect(() => {
@@ -36,14 +42,6 @@ export default function OrderPage({ initialSearchText }) {
       return () => clearTimeout(timer);
     }
   }, [initialSearchText, location, radius]);
-  const [result, setResult] = useState(null);
-  const [mode, setMode] = useState("smart");
-  const [loading, setLoading] = useState(false);
-
-  const [location, setLocation] = useState(null);
-  const [radius, setRadius] = useState(5);
-
-  const [manualCart, setManualCart] = useState({});
 
   const format = (n) => Number(n || 0).toFixed(2);
 
