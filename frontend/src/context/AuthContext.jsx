@@ -31,7 +31,7 @@ export const AuthProvider = ({ children }) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('ekkilo_token', newToken);
-    localStorage.setItem('ekkilo_user', JSON.parse(newUser));
+    localStorage.setItem('ekkilo_user', JSON.stringify(newUser));
   };
 
   const logout = () => {
