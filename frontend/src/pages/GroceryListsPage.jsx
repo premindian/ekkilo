@@ -133,30 +133,28 @@ function ListEditor({ list, token, onUpdate, onQuickOrder }) {
     let unit = 'unit';
 
     if (parts.length >= 2) {
-      // Try to parse quantity and unit from second part
+      // Try to parse quantity and unit from second part (e.g., "2l" or "1kg")
       const quantityPart = parts[1];
       const match = quantityPart.match(/^([\d.]+)([a-z]+)$/);
       
       if (match) {
+        // Found format like "2l" or "1kg"
         quantity = parseFloat(match[1]);
         unit = match[2];
       } else {
-        // Maybe just a number, use default unit
+        // Check if it's just a number
         const num = parseFloat(quantityPart);
         if (!isNaN(num)) {
           quantity = num;
+          // If there's a third part, it might be the unit
+          if (parts.length >= 3) {
+            unit = parts[2];
+          }
         } else {
-          // It's part of the name
+          // It's all part of the product name
           product_name = parts.join(' ');
         }
       }
-    }
-
-    // If there are more parts, they're part of the name
-    if (parts.length > 2 && !quantityPart.match(/^[\d.]+[a-z]+$/)) {
-      product_name = parts.join(' ');
-      quantity = 1;
-      unit = 'unit';
     }
 
     return { product_name, quantity, unit };
