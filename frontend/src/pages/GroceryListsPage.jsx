@@ -123,41 +123,45 @@ function ListEditor({ list, token, onUpdate, onQuickOrder }) {
   const [items, setItems] = useState(list.items || []);
   const [input, setInput] = useState('');
 
-  // Parse simple format: "milk 2L" or "rice 1kg" or just "bread"
+  // Flexible parser: "milk 2L", "oil 500ml", "rice 1 kg", "bread", etc.
   const parseItem = (text) => {
-    const parts = text.trim().toLowerCase().split(/\s+/);
-    if (parts.length === 0) return null;
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) return null;
 
-    let product_name = parts[0];
-    let quantity = 1;
-    let unit = 'unit';
+    // Try to find quantity and unit patterns
+    // Patterns: "2kg", "500ml", "1.5l", "2 kg", "500 ml", "1 liter", etc.
+    const pattern = /^(.+?)\s*([\d.]+)\s*([a-z]+)$/;
+    const match = normalized.match(pattern);
 
-    if (parts.length >= 2) {
-      // Try to parse quantity and unit from second part (e.g., "2l" or "1kg")
-      const quantityPart = parts[1];
-      const match = quantityPart.match(/^([\d.]+)([a-z]+)$/);
+    if (match) {
+      let [, name, qty, unitText] = match;
       
-      if (match) {
-        // Found format like "2l" or "1kg"
-        quantity = parseFloat(match[1]);
-        unit = match[2];
-      } else {
-        // Check if it's just a number
-        const num = parseFloat(quantityPart);
-        if (!isNaN(num)) {
-          quantity = num;
-          // If there's a third part, it might be the unit
-          if (parts.length >= 3) {
-            unit = parts[2];
-          }
-        } else {
-          // It's all part of the product name
-          product_name = parts.join(' ');
-        }
-      }
+      // Normalize common unit variations
+      const unitMap = {
+        'l': 'l', 'ltr': 'l', 'liter': 'l', 'litre': 'l', 'liters': 'l', 'litres': 'l',
+        'ml': 'ml', 'milliliter': 'ml', 'millilitre': 'ml',
+        'kg': 'kg', 'kgs': 'kg', 'kilogram': 'kg', 'kilograms': 'kg',
+        'g': 'g', 'gm': 'g', 'gms': 'g', 'gram': 'g', 'grams': 'g',
+        'pc': 'unit', 'pcs': 'unit', 'piece': 'unit', 'pieces': 'unit',
+        'dozen': 'dozen', 'dz': 'dozen'
+      };
+
+      const unit = unitMap[unitText] || unitText;
+      const quantity = parseFloat(qty);
+
+      return {
+        product_name: name.trim(),
+        quantity: quantity,
+        unit: unit
+      };
     }
 
-    return { product_name, quantity, unit };
+    // No quantity/unit found - default to 1 unit
+    return {
+      product_name: normalized,
+      quantity: 1,
+      unit: 'unit'
+    };
   };
 
   const addItem = async () => {
@@ -198,15 +202,20 @@ function ListEditor({ list, token, onUpdate, onQuickOrder }) {
     <div>
       {/* SIMPLE ADD INPUT */}
       <div style={styles.addBox}>
-        <input
-          type="text"
-          placeholder='Type items: "milk 2L" or "rice 1kg" or just "bread"'
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && addItem()}
-          style={styles.input}
-          autoFocus
-        />
+        <div style={styles.inputWrapper}>
+          <input
+            type="text"
+            placeholder='Type: "milk 2 liters" or "oil 500ml" or "rice 1kg"'
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && addItem()}
+            style={styles.input}
+            autoFocus
+          />
+          <div style={styles.hint}>
+            💡 Examples: "milk 2l", "oil 500ml", "rice 1 kg", "bread 2 pieces"
+          </div>
+        </div>
         <button onClick={addItem} style={styles.addBtn}>+ Add</button>
       </div>
 
@@ -266,12 +275,20 @@ const styles = {
   },
 
   addBox: { display: 'flex', gap: 8, marginBottom: 20 },
+  inputWrapper: { flex: 1 },
   input: { 
-    flex: 1, 
+    width: '100%',
     padding: 12, 
     border: '1px solid #e5e7eb', 
     borderRadius: 8, 
-    fontSize: 14 
+    fontSize: 14,
+    boxSizing: 'border-box'
+  },
+  hint: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    fontStyle: 'italic'
   },
   addBtn: { 
     padding: '12px 20px', 
