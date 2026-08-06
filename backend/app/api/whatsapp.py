@@ -237,7 +237,7 @@ READY#{order_id}
                 return {"status": "ready"}
 
         # =========================================================
-        # 🔍 SEARCH FLOW
+        # 🔍 SEARCH FLOW + CREATE ORDER
         # =========================================================
         context = Context(user_text=text)
 
@@ -251,22 +251,76 @@ READY#{order_id}
         result = await engine.run(context)
         data = result.data
 
-        message = "🧠 Smart Kirana\n\n"
+        optimized_plan = data.get("optimized_plan", {})
+        
+        if not optimized_plan:
+            await send_message(phone, "❌ No products found. Try again!")
+            return {"status": "no_results"}
 
-        for store, items in data.get("optimized_plan", {}).items():
-            message += f"🏪 {store}\n"
+        # 🔥 CREATE ORDER IN DB
+        from app.services.order_service import create_full_order
+        
+        # Build stores payload
+        stores_payload = []
+        for store_name, products in optimized_plan.items():
+            # Get store phone from products
+            store_phone = None
+            for p in products:
+                if p.get("phone"):
+                    store_phone = p["phone"]
+                    break
+            
+            # If no phone found, fetch from DB
+            if not store_phone:
+                store_row = await db.fetchrow("""
+                    SELECT phone FROM stores WHERE name = $1
+                """, store_name)
+                if store_row:
+                    store_phone = store_row["phone"]
+            
+            items = []
+            for p in products:
+                items.append({
+                    "name": p.get("name", ""),
+                    "packs": p.get("packs", 1),
+                    "size": p.get("size", 1),
+                    "unit": p.get("unit", ""),
+                    "price": p.get("price", 0),
+                    "phone": p.get("phone")
+                })
+            
+            stores_payload.append({
+                "store": store_name,
+                "store_phone": store_phone,
+                "items": items
+            })
+        
+        # Create the order
+        final_order_id, whatsapp_jobs = await create_full_order(stores_payload, phone)
+
+        # Send store messages
+        for store_phone, store_message in whatsapp_jobs:
+            await send_message(store_phone, store_message)
+
+        # Build customer message
+        message = "🧠 Smart Kirana Order\n\n"
+        message += f"📝 Order ID: {final_order_id}\n\n"
+
+        for store_name, items in optimized_plan.items():
+            message += f"🏪 {store_name}\n"
 
             for i in items:
-                message += f"{i['name']} x{i['packs']} ₹{i['price']}\n"
+                message += f"  {i['name']} x{i['packs']} ₹{i['price']}\n"
 
             message += "\n"
 
-        message += f"💰 Total ₹{data.get('optimized_total', 0)}\n\n"
-        message += "Reply:\nCONFIRM#order_id\nCANCEL#order_id"
+        message += f"💰 Total: ₹{data.get('optimized_total', 0)}\n\n"
+        message += f"Reply CONFIRM#{final_order_id} to proceed\n"
+        message += f"Or CANCEL#{final_order_id} to cancel"
 
         await send_message(phone, message)
 
-        return {"status": "search_done"}
+        return {"status": "order_created", "order_id": final_order_id}
 
     except Exception as e:
         print("❌ Error:", str(e))

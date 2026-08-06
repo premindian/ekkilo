@@ -44,7 +44,7 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
          INSERT INTO whatsapp_messages (phone, message)
               VALUES ($1, $2)
               RETURNING id
-            """, phone, message)
+            """, store_phone, message)
 
         msg_id = row["id"]
 
@@ -78,7 +78,7 @@ We will notify you when ready 🚀
         INSERT INTO whatsapp_messages (phone, message)
               VALUES ($1, $2)
               RETURNING id
-            """, phone, message)
+            """, phone, customer_message)
 
     msg_id = row["id"]
     print("📤 Queue customer message:", phone)
