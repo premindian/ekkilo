@@ -332,11 +332,13 @@ async def search_products(data: dict):
     # -----------------------------
     # 📍 FILTER BY DISTANCE
     # -----------------------------
+    print(f"📍 Before distance filter: {len(stores)} stores")
     if user_lat and user_lng:
         stores = [
             s for s in stores
             if "distance" not in s or s["distance"] <= radius
         ]
+        print(f"📍 After distance filter: {len(stores)} stores (radius: {radius}km)")
 
     # -----------------------------
     # 🧠 HYBRID RANKING
@@ -361,7 +363,9 @@ async def search_products(data: dict):
             (0.4 * availability_ratio)
         )
 
+    print(f"🧠 Before sorting: {len(stores)} stores")
     stores = sorted(stores, key=lambda x: x["score"])[:5]
+    print(f"🧠 After sorting and limiting to top 5: {len(stores)} stores")
 
     # -----------------------------
     # 🤖 REASONS
