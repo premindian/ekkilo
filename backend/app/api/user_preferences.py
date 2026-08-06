@@ -167,33 +167,37 @@ async def get_user_stats(token: str):
     user = await get_current_user(token, db)
     
     # Get order count
-    order_count = await db.fetchval("""
-        SELECT COUNT(*) FROM final_orders
+    order_row = await db.fetchrow("""
+        SELECT COUNT(*) as count FROM final_orders
         WHERE customer_phone = $1
     """, user["phone"])
+    order_count = order_row["count"] if order_row else 0
     
     # Get favorite stores count
-    favorite_count = await db.fetchval("""
-        SELECT COUNT(*) FROM user_favorite_stores
+    fav_row = await db.fetchrow("""
+        SELECT COUNT(*) as count FROM user_favorite_stores
         WHERE user_id = $1
     """, user["id"])
+    favorite_count = fav_row["count"] if fav_row else 0
     
     # Get grocery lists count
-    list_count = await db.fetchval("""
-        SELECT COUNT(*) FROM grocery_lists
+    list_row = await db.fetchrow("""
+        SELECT COUNT(*) as count FROM grocery_lists
         WHERE user_id = $1
     """, user["id"])
+    list_count = list_row["count"] if list_row else 0
     
     # Get total savings (compared to single store)
     # This is a simple calculation - can be enhanced
-    total_savings = await db.fetchval("""
+    savings_row = await db.fetchrow("""
         SELECT COALESCE(SUM(
             (SELECT SUM(price) FROM order_items WHERE store_order_id = so.id)
-        ), 0) * 0.1
+        ), 0) * 0.1 as savings
         FROM store_orders so
         JOIN final_orders fo ON so.final_order_id = fo.id
         WHERE fo.customer_phone = $1
-    """, user["phone"]) or 0
+    """, user["phone"])
+    total_savings = savings_row["savings"] if savings_row else 0
     
     return {
         "total_orders": order_count or 0,
