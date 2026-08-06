@@ -2,8 +2,19 @@ import { useState, useEffect } from "react";
 
 const API_BASE = "https://ekkilo.onrender.com";
 
-export default function OrderPage() {
+export default function OrderPage({ initialSearchText }) {
   const [text, setText] = useState("");
+  
+  // Auto-search when initialSearchText is provided
+  useEffect(() => {
+    if (initialSearchText) {
+      setText(initialSearchText);
+      // Trigger search automatically
+      setTimeout(() => {
+        search(initialSearchText);
+      }, 500);
+    }
+  }, [initialSearchText]);
   const [result, setResult] = useState(null);
   const [mode, setMode] = useState("smart");
   const [loading, setLoading] = useState(false);
@@ -34,8 +45,9 @@ export default function OrderPage() {
   }, []);
 
   // 🔍 SEARCH
-  const search = async () => {
-    if (!text) return;
+  const search = async (searchText) => {
+    const queryText = searchText || text;
+    if (!queryText) return;
 
     setLoading(true);
 
@@ -43,7 +55,7 @@ export default function OrderPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        text,
+        text: queryText,
         lat: location?.lat,
         lng: location?.lng,
         radius,
