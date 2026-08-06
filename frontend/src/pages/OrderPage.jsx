@@ -173,10 +173,11 @@ export default function OrderPage({ initialSearchText }) {
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && search()}
           placeholder="milk, oil..."
           style={{ flex: 1, border: "none" }}
         />
-        <button style={btn} onClick={search}>Search</button>
+        <button style={btn} onClick={() => search()}>Search</button>
       </div>
 
       {/* MODES */}
