@@ -3,62 +3,28 @@ import { useAuth } from '../context/AuthContext';
 
 const API_BASE = "https://ekkilo.onrender.com";
 
-// Smart categories for auto-grouping
-const CATEGORIES = {
-  'dairy': ['milk', 'curd', 'butter', 'cheese', 'paneer', 'ghee'],
-  'vegetables': ['potato', 'onion', 'tomato', 'carrot', 'cabbage', 'spinach', 'cauliflower'],
-  'fruits': ['apple', 'banana', 'orange', 'mango', 'grapes', 'watermelon'],
-  'grains': ['rice', 'wheat', 'flour', 'atta', 'maida', 'rava', 'sooji'],
-  'pulses': ['dal', 'lentils', 'moong', 'toor', 'chana', 'rajma'],
-  'oil': ['oil', 'ghee', 'butter'],
-  'spices': ['salt', 'sugar', 'turmeric', 'chilli', 'masala', 'pepper', 'cumin'],
-  'bakery': ['bread', 'bun', 'pav', 'cake', 'biscuit'],
-  'beverages': ['tea', 'coffee', 'juice'],
-  'other': []
-};
-
-const TEMPLATES = {
-  'weekly': {
-    name: '🗓️ Weekly Essentials',
-    items: [
-      { name: 'milk', qty: 7, unit: 'l' },
-      { name: 'bread', qty: 7, unit: 'unit' },
-      { name: 'eggs', qty: 12, unit: 'unit' },
-      { name: 'vegetables', qty: 2, unit: 'kg' },
-    ]
-  },
-  'monthly': {
-    name: '📅 Monthly Groceries',
-    items: [
-      { name: 'rice', qty: 10, unit: 'kg' },
-      { name: 'wheat flour', qty: 10, unit: 'kg' },
-      { name: 'oil', qty: 5, unit: 'l' },
-      { name: 'sugar', qty: 2, unit: 'kg' },
-      { name: 'salt', qty: 1, unit: 'kg' },
-      { name: 'dal', qty: 3, unit: 'kg' },
-    ]
-  },
-  'quick': {
-    name: '⚡ Quick Snacks',
-    items: [
-      { name: 'biscuits', qty: 2, unit: 'unit' },
-      { name: 'chips', qty: 1, unit: 'unit' },
-      { name: 'juice', qty: 2, unit: 'l' },
-    ]
-  }
-};
+// Quick templates for common items
+const QUICK_ITEMS = [
+  { name: 'Milk', qty: 1, unit: 'l' },
+  { name: 'Rice', qty: 1, unit: 'kg' },
+  { name: 'Oil', qty: 1, unit: 'l' },
+  { name: 'Bread', qty: 1, unit: 'unit' },
+  { name: 'Eggs', qty: 12, unit: 'unit' },
+  { name: 'Sugar', qty: 1, unit: 'kg' },
+  { name: 'Salt', qty: 1, unit: 'kg' },
+  { name: 'Flour', qty: 1, unit: 'kg' },
+];
 
 export default function GroceryListsPage({ onSelectList }) {
   const { token } = useAuth();
   const [lists, setLists] = useState([]);
-  const [selectedList, setSelectedList] = useState(null);
+  const [currentList, setCurrentList] = useState(null);
+  const [items, setItems] = useState([]);
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('list'); // 'list', 'templates', 'recent'
-  const [recentItems, setRecentItems] = useState([]);
 
   useEffect(() => {
     loadLists();
-    loadRecentItems();
   }, []);
 
   const loadLists = async () => {
@@ -67,40 +33,33 @@ export default function GroceryListsPage({ onSelectList }) {
       const data = await res.json();
       setLists(data);
       
-      const defaultList = data.find(l => l.is_default);
+      // Load default or first list
+      const defaultList = data.find(l => l.is_default) || data[0];
       if (defaultList) {
-        loadListDetail(defaultList.id);
-      } else if (data.length > 0) {
-        loadListDetail(data[0].id);
+        loadList(defaultList.id);
       }
     } catch (err) {
-      console.error('Failed to load lists:', err);
+      console.error('Load failed:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadListDetail = async (listId) => {
+  const loadList = async (listId) => {
     try {
       const res = await fetch(`${API_BASE}/api/grocery-lists/${listId}?token=${token}`);
       const data = await res.json();
-      setSelectedList(data);
+      setCurrentList(data.list);
+      setItems(data.items || []);
     } catch (err) {
-      console.error('Failed to load list details:', err);
+      console.error('Load list failed:', err);
     }
   };
 
-  const loadRecentItems = async () => {
-    // Mock recent items - in production, fetch from order history
-    setRecentItems([
-      { name: 'milk', qty: 2, unit: 'l', frequency: 8 },
-      { name: 'rice', qty: 1, unit: 'kg', frequency: 5 },
-      { name: 'oil', qty: 500, unit: 'ml', frequency: 4 },
-      { name: 'bread', qty: 2, unit: 'unit', frequency: 6 },
-    ]);
-  };
-
-  const createList = async (name) => {
+  const createList = async () => {
+    const name = prompt('New list name:');
+    if (!name) return;
+    
     try {
       await fetch(`${API_BASE}/api/grocery-lists?token=${token}`, {
         method: 'POST',
@@ -113,247 +72,34 @@ export default function GroceryListsPage({ onSelectList }) {
     }
   };
 
-  const quickOrder = async () => {
-    if (!selectedList) return;
-    
-    try {
-      const res = await fetch(`${API_BASE}/api/grocery-lists/${selectedList.list.id}/quick-order?token=${token}`, {
-        method: 'POST'
-      });
-      const data = await res.json();
-      
-      if (onSelectList) {
-        onSelectList(data.search_text);
-      }
-    } catch (err) {
-      alert('Failed to create quick order');
-    }
-  };
-
-  if (loading) {
-    return <div style={styles.loading}>Loading...</div>;
-  }
-
-  return (
-    <div style={styles.container}>
-      <h2 style={styles.title}>🛒 Smart Grocery Lists</h2>
-      
-      {/* CURRENT LIST INDICATOR */}
-      {selectedList && (
-        <div style={styles.currentList}>
-          📋 Adding to: <b>{selectedList.list.name}</b>
-          {lists.length > 1 && (
-            <select 
-              value={selectedList.list.id}
-              onChange={(e) => loadListDetail(parseInt(e.target.value))}
-              style={styles.listSelect}
-            >
-              {lists.map(l => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
-          )}
-        </div>
-      )}
-
-      {/* VIEW TOGGLE */}
-      <div style={styles.viewToggle}>
-        <button 
-          onClick={() => setView('list')} 
-          style={{...styles.viewBtn, ...(view==='list' ? styles.viewBtnActive : {})}}
-        >
-          📝 My Lists
-        </button>
-        <button 
-          onClick={() => setView('recent')} 
-          style={{...styles.viewBtn, ...(view==='recent' ? styles.viewBtnActive : {})}}
-        >
-          🕐 Recent
-        </button>
-        <button 
-          onClick={() => setView('templates')} 
-          style={{...styles.viewBtn, ...(view==='templates' ? styles.viewBtnActive : {})}}
-        >
-          ⭐ Templates
-        </button>
-      </div>
-
-      {view === 'templates' && (
-        <TemplateView onApplyTemplate={async (items, templateName) => {
-          if (!selectedList) {
-            alert('Please create or select a list first!');
-            return;
-          }
-          
-          try {
-            for (const item of items) {
-              await fetch(`${API_BASE}/api/grocery-lists/${selectedList.list.id}/items?token=${token}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ product_name: item.name, quantity: item.qty, unit: item.unit })
-              });
-            }
-            alert(`✅ ${items.length} items added to ${selectedList.list.name}!`);
-            setView('list');
-            setTimeout(() => loadListDetail(selectedList.list.id), 300);
-          } catch (err) {
-            alert('Failed to add items');
-          }
-        }} />
-      )}
-
-      {view === 'recent' && (
-        <RecentItemsView 
-          items={recentItems} 
-          onAddItem={(item) => {
-            if (selectedList) {
-              fetch(`${API_BASE}/api/grocery-lists/${selectedList.list.id}/items?token=${token}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ product_name: item.name, quantity: item.qty, unit: item.unit })
-              });
-              setTimeout(() => loadListDetail(selectedList.list.id), 300);
-            }
-          }}
-        />
-      )}
-
-      {view === 'list' && (
-        <>
-          {/* LIST TABS */}
-          <div style={styles.tabs}>
-            {lists.map(list => (
-              <button
-                key={list.id}
-                onClick={() => loadListDetail(list.id)}
-                style={{
-                  ...styles.tab,
-                  ...(selectedList?.list.id === list.id ? styles.activeTab : {})
-                }}
-              >
-                {list.name} {list.is_default && '⭐'}
-              </button>
-            ))}
-            <button
-              onClick={() => {
-                const name = prompt('New list name:');
-                if (name) createList(name);
-              }}
-              style={styles.newTab}
-            >
-              + New
-            </button>
-          </div>
-
-          {selectedList && (
-            <ListEditor
-              list={selectedList}
-              token={token}
-              onUpdate={() => loadListDetail(selectedList.list.id)}
-              onQuickOrder={quickOrder}
-              recentItems={recentItems}
-            />
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// Template View
-function TemplateView({ onApplyTemplate }) {
-  return (
-    <div style={styles.templatesGrid}>
-      {Object.entries(TEMPLATES).map(([key, template]) => (
-        <div key={key} style={styles.templateCard}>
-          <h3 style={styles.templateName}>{template.name}</h3>
-          <div style={styles.templateItems}>
-            {template.items.map((item, i) => (
-              <div key={i} style={styles.templateItem}>
-                • {item.name} {item.qty}{item.unit}
-              </div>
-            ))}
-          </div>
-          <button 
-            onClick={() => onApplyTemplate(template.items, template.name)}
-            style={styles.applyBtn}
-          >
-            ➕ Add to List ({template.items.length} items)
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Recent Items View
-function RecentItemsView({ items, onAddItem }) {
-  return (
-    <div style={styles.recentList}>
-      <p style={styles.sectionTitle}>🕐 Your Most Ordered Items</p>
-      {items.map((item, i) => (
-        <div key={i} style={styles.recentItem}>
-          <div>
-            <b>{item.name}</b>
-            <span style={styles.recentMeta}>
-              {item.qty} {item.unit} • Ordered {item.frequency}x
-            </span>
-          </div>
-          <button onClick={() => onAddItem(item)} style={styles.quickAddBtn}>
-            + Add
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Advanced List Editor
-function ListEditor({ list, token, onUpdate, onQuickOrder, recentItems }) {
-  const [items, setItems] = useState(list.items || []);
-  const [input, setInput] = useState('');
-  const [bulkMode, setBulkMode] = useState(false);
-  const [bulkText, setBulkText] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-
-  const categorizeItem = (name) => {
-    for (const [category, keywords] of Object.entries(CATEGORIES)) {
-      if (keywords.some(kw => name.toLowerCase().includes(kw))) {
-        return category;
-      }
-    }
-    return 'other';
-  };
-
   const parseItem = (text) => {
     const normalized = text.trim().toLowerCase();
     if (!normalized) return null;
 
+    // Pattern: "item quantity unit" like "milk 2 liters" or "rice 1kg"
     const pattern = /^(.+?)\s*([\d.]+)\s*([a-z]+)$/;
     const match = normalized.match(pattern);
 
     if (match) {
-      let [, name, qty, unitText] = match;
+      const [, name, qty, unitText] = match;
       
+      // Normalize units
       const unitMap = {
-        'l': 'l', 'ltr': 'l', 'liter': 'l', 'litre': 'l', 'liters': 'l', 'litres': 'l',
-        'ml': 'ml', 'milliliter': 'ml', 'millilitre': 'ml',
-        'kg': 'kg', 'kgs': 'kg', 'kilogram': 'kg', 'kilograms': 'kg',
-        'g': 'g', 'gm': 'g', 'gms': 'g', 'gram': 'g', 'grams': 'g',
-        'pc': 'unit', 'pcs': 'unit', 'piece': 'unit', 'pieces': 'unit',
-        'dozen': 'dozen', 'dz': 'dozen'
+        'l': 'l', 'liter': 'l', 'litre': 'l', 'liters': 'l',
+        'ml': 'ml',
+        'kg': 'kg', 'kilogram': 'kg', 'kilograms': 'kg',
+        'g': 'g', 'gram': 'g', 'grams': 'g',
+        'pc': 'unit', 'piece': 'unit', 'pieces': 'unit'
       };
-
-      const unit = unitMap[unitText] || unitText;
-      const quantity = parseFloat(qty);
 
       return {
         product_name: name.trim(),
-        quantity: quantity,
-        unit: unit
+        quantity: parseFloat(qty),
+        unit: unitMap[unitText] || unitText
       };
     }
 
+    // No quantity - default to 1 unit
     return {
       product_name: normalized,
       quantity: 1,
@@ -361,14 +107,23 @@ function ListEditor({ list, token, onUpdate, onQuickOrder, recentItems }) {
     };
   };
 
-  const addItem = async () => {
-    if (!input.trim()) return;
+  const addItem = async (itemData = null) => {
+    const parsed = itemData || parseItem(input);
+    if (!parsed || !currentList) return;
 
-    const parsed = parseItem(input);
-    if (!parsed) return;
+    // Check for duplicates
+    const exists = items.find(i => 
+      i.product_name.toLowerCase() === parsed.product_name.toLowerCase()
+    );
+    
+    if (exists) {
+      if (!window.confirm(`${parsed.product_name} already in list. Add anyway?`)) {
+        return;
+      }
+    }
 
     try {
-      const res = await fetch(`${API_BASE}/api/grocery-lists/${list.list.id}/items?token=${token}`, {
+      const res = await fetch(`${API_BASE}/api/grocery-lists/${currentList.id}/items?token=${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed)
@@ -377,178 +132,156 @@ function ListEditor({ list, token, onUpdate, onQuickOrder, recentItems }) {
       
       setItems([...items, data]);
       setInput('');
-      onUpdate();
     } catch (err) {
       alert('Failed to add item');
     }
   };
 
-  const bulkAdd = async () => {
-    const lines = bulkText.split('\n').filter(l => l.trim());
-    
-    for (const line of lines) {
-      const parsed = parseItem(line);
-      if (parsed) {
-        try {
-          await fetch(`${API_BASE}/api/grocery-lists/${list.list.id}/items?token=${token}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(parsed)
-          });
-        } catch (err) {
-          console.error('Failed to add:', line);
-        }
-      }
-    }
-    
-    setBulkText('');
-    setBulkMode(false);
-    onUpdate();
-    setTimeout(() => window.location.reload(), 500);
-  };
-
   const deleteItem = async (itemId) => {
+    if (!currentList) return;
+    
     try {
-      await fetch(`${API_BASE}/api/grocery-lists/${list.list.id}/items/${itemId}?token=${token}`, {
+      await fetch(`${API_BASE}/api/grocery-lists/${currentList.id}/items/${itemId}?token=${token}`, {
         method: 'DELETE'
       });
       setItems(items.filter(i => i.id !== itemId));
-      onUpdate();
     } catch (err) {
-      alert('Failed to delete item');
+      alert('Failed to delete');
     }
   };
 
-  const updateQuantity = async (item, change) => {
+  const adjustQuantity = (item, change) => {
     const newQty = Math.max(0.5, item.quantity + change);
-    // Update via delete and re-add for simplicity
-    await deleteItem(item.id);
+    // Simple update: delete and re-add
+    deleteItem(item.id);
+    setTimeout(() => {
+      addItem({
+        product_name: item.product_name,
+        quantity: newQty,
+        unit: item.unit
+      });
+    }, 200);
+  };
+
+  const quickOrder = async () => {
+    if (!currentList || items.length === 0) return;
     
     try {
-      const res = await fetch(`${API_BASE}/api/grocery-lists/${list.list.id}/items?token=${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_name: item.product_name, quantity: newQty, unit: item.unit })
+      const res = await fetch(`${API_BASE}/api/grocery-lists/${currentList.id}/quick-order?token=${token}`, {
+        method: 'POST'
       });
       const data = await res.json();
-      setItems([...items.filter(i => i.id !== item.id), data]);
-      onUpdate();
+      
+      if (onSelectList) {
+        onSelectList(data.search_text);
+      }
     } catch (err) {
-      console.error('Failed to update');
+      alert('Quick order failed');
     }
   };
 
-  // Group items by category
-  const groupedItems = items.reduce((acc, item) => {
-    const category = categorizeItem(item.product_name);
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(item);
-    return acc;
-  }, {});
-
-  const filteredSuggestions = recentItems.filter(r => 
-    !items.some(i => i.product_name.toLowerCase() === r.name.toLowerCase()) &&
-    r.name.toLowerCase().includes(input.toLowerCase())
-  );
+  if (loading) {
+    return <div style={s.loading}>Loading...</div>;
+  }
 
   return (
-    <div>
-      {/* ADD INPUT */}
-      {!bulkMode ? (
-        <div style={styles.addBox}>
-          <div style={styles.inputWrapper}>
-            <input
-              type="text"
-              placeholder='Type: "milk 2 liters" or "oil 500ml"'
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setShowSuggestions(e.target.value.length > 0);
-              }}
-              onKeyPress={(e) => e.key === 'Enter' && addItem()}
-              style={styles.input}
-              autoFocus
-            />
-            {showSuggestions && filteredSuggestions.length > 0 && (
-              <div style={styles.suggestions}>
-                {filteredSuggestions.slice(0, 3).map((item, i) => (
-                  <div
-                    key={i}
-                    style={styles.suggestionItem}
-                    onClick={() => {
-                      setInput(`${item.name} ${item.qty}${item.unit}`);
-                      setShowSuggestions(false);
-                    }}
-                  >
-                    💡 {item.name} {item.qty}{item.unit}
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={styles.hint}>
-              💡 Or try: <button onClick={() => setBulkMode(true)} style={styles.linkBtn}>📋 Bulk Add</button>
-            </div>
-          </div>
-          <button onClick={addItem} style={styles.addBtn}>+ Add</button>
-        </div>
-      ) : (
-        <div style={styles.bulkBox}>
-          <h4 style={styles.bulkTitle}>📋 Bulk Add Items</h4>
-          <textarea
-            placeholder={'Paste your list here (one item per line):\nmilk 2l\nrice 1kg\noil 500ml\nbread 2 pieces'}
-            value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)}
-            style={styles.textarea}
-            rows={6}
-          />
-          <div style={styles.buttonRow}>
-            <button onClick={bulkAdd} style={styles.saveBtn}>➕ Add All</button>
-            <button onClick={() => setBulkMode(false)} style={styles.cancelBtn}>Cancel</button>
-          </div>
-        </div>
-      )}
+    <div style={s.container}>
+      <h2 style={s.title}>📝 My Grocery List</h2>
 
-      {/* CATEGORIZED ITEMS */}
-      <div style={styles.itemsList}>
+      {/* LIST SELECTOR */}
+      <div style={s.listBar}>
+        <select 
+          value={currentList?.id || ''} 
+          onChange={(e) => loadList(e.target.value)}
+          style={s.select}
+        >
+          {lists.map(l => (
+            <option key={l.id} value={l.id}>
+              {l.name} {l.is_default && '⭐'}
+            </option>
+          ))}
+        </select>
+        <button onClick={createList} style={s.newBtn}>+ New List</button>
+      </div>
+
+      {/* QUICK ADD BUTTONS */}
+      <div style={s.quickSection}>
+        <p style={s.quickTitle}>Quick Add:</p>
+        <div style={s.quickGrid}>
+          {QUICK_ITEMS.map((item, i) => (
+            <button
+              key={i}
+              onClick={() => addItem(item)}
+              style={s.quickBtn}
+            >
+              {item.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ADD ITEM INPUT */}
+      <div style={s.addBox}>
+        <input
+          type="text"
+          placeholder='Add item: "milk 2l" or "rice 1kg" or just "bread"'
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && addItem()}
+          style={s.input}
+        />
+        <button onClick={() => addItem()} style={s.addBtn}>
+          + Add
+        </button>
+      </div>
+
+      {/* ITEMS LIST */}
+      <div style={s.itemsList}>
         {items.length === 0 ? (
-          <p style={styles.empty}>No items yet. Try adding some!</p>
+          <div style={s.empty}>
+            <p>📝 Your list is empty</p>
+            <p style={s.emptyHint}>Try quick-add buttons or type an item above</p>
+          </div>
         ) : (
-          Object.entries(groupedItems).map(([category, categoryItems]) => (
-            <div key={category}>
-              <h4 style={styles.categoryTitle}>
-                {category === 'dairy' && '🥛'}
-                {category === 'vegetables' && '🥬'}
-                {category === 'fruits' && '🍎'}
-                {category === 'grains' && '🌾'}
-                {category === 'pulses' && '🫘'}
-                {category === 'oil' && '🫗'}
-                {category === 'spices' && '🌶️'}
-                {category === 'bakery' && '🍞'}
-                {category === 'beverages' && '☕'}
-                {category === 'other' && '📦'}
-                {' '}{category.charAt(0).toUpperCase() + category.slice(1)}
-              </h4>
-              {categoryItems.map((item) => (
-                <div key={item.id} style={styles.item}>
-                  <div style={styles.itemInfo}>
-                    <b>{item.product_name}</b>
-                    <div style={styles.qtyControls}>
-                      <button onClick={() => updateQuantity(item, -0.5)} style={styles.qtyBtn}>−</button>
-                      <span style={styles.qty}>{item.quantity} {item.unit}</span>
-                      <button onClick={() => updateQuantity(item, 0.5)} style={styles.qtyBtn}>+</button>
-                    </div>
-                  </div>
-                  <button onClick={() => deleteItem(item.id)} style={styles.deleteBtn}>×</button>
-                </div>
-              ))}
+          <>
+            <div style={s.itemsHeader}>
+              <span>{items.length} items</span>
             </div>
-          ))
+            {items.map((item) => (
+              <div key={item.id} style={s.item}>
+                <div style={s.itemLeft}>
+                  <div style={s.itemName}>{item.product_name}</div>
+                  <div style={s.qtyRow}>
+                    <button 
+                      onClick={() => adjustQuantity(item, -0.5)} 
+                      style={s.qtyBtn}
+                    >
+                      −
+                    </button>
+                    <span style={s.qty}>{item.quantity} {item.unit}</span>
+                    <button 
+                      onClick={() => adjustQuantity(item, 0.5)} 
+                      style={s.qtyBtn}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => deleteItem(item.id)} 
+                  style={s.delBtn}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </>
         )}
       </div>
 
-      {/* QUICK ORDER */}
+      {/* ORDER BUTTON */}
       {items.length > 0 && (
-        <button onClick={onQuickOrder} style={styles.orderBtn}>
+        <button onClick={quickOrder} style={s.orderBtn}>
           🛒 Order All ({items.length} items)
         </button>
       )}
@@ -556,162 +289,193 @@ function ListEditor({ list, token, onUpdate, onQuickOrder, recentItems }) {
   );
 }
 
-const styles = {
-  container: { padding: 20, maxWidth: 700, margin: 'auto' },
-  loading: { textAlign: 'center', padding: 40, color: '#999' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
-  
-  currentList: { 
-    background: '#f9fafb', 
-    padding: 12, 
-    borderRadius: 8, 
-    marginBottom: 12, 
-    display: 'flex', 
-    alignItems: 'center', 
+const s = {
+  container: {
+    padding: 20,
+    maxWidth: 600,
+    margin: 'auto',
+    background: '#f9fafb',
+    minHeight: '100vh'
+  },
+  loading: {
+    textAlign: 'center',
+    padding: 40,
+    color: '#999'
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    color: '#333'
+  },
+
+  listBar: {
+    display: 'flex',
     gap: 8,
-    fontSize: 14
+    marginBottom: 20
   },
-  listSelect: {
-    padding: '6px 12px',
-    borderRadius: 6,
-    border: '1px solid #e5e7eb',
-    background: '#fff',
-    cursor: 'pointer'
-  },
-
-  viewToggle: { display: 'flex', gap: 8, marginBottom: 20 },
-  viewBtn: { flex: 1, padding: 10, background: '#f3f4f6', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 },
-  viewBtnActive: { background: '#667eea', color: '#fff', fontWeight: 'bold' },
-
-  tabs: { display: 'flex', gap: 8, marginBottom: 20, overflowX: 'auto', paddingBottom: 8 },
-  tab: { 
-    padding: '10px 16px', 
-    background: '#f3f4f6', 
-    border: 'none', 
-    borderRadius: 8, 
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-    fontSize: 14
-  },
-  activeTab: { background: '#667eea', color: '#fff', fontWeight: 'bold' },
-  newTab: { 
-    padding: '10px 16px', 
-    background: '#22c55e', 
-    color: '#fff', 
-    border: 'none', 
-    borderRadius: 8, 
-    cursor: 'pointer',
-    fontSize: 14
-  },
-
-  addBox: { display: 'flex', gap: 8, marginBottom: 20 },
-  inputWrapper: { flex: 1, position: 'relative' },
-  input: { 
-    width: '100%',
-    padding: 12, 
-    border: '1px solid #e5e7eb', 
-    borderRadius: 8, 
-    fontSize: 14,
-    boxSizing: 'border-box'
-  },
-  suggestions: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    background: '#fff',
+  select: {
+    flex: 1,
+    padding: 12,
     border: '1px solid #e5e7eb',
     borderRadius: 8,
-    marginTop: 4,
-    zIndex: 10,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+    background: '#fff',
+    fontSize: 14,
+    cursor: 'pointer'
   },
-  suggestionItem: {
-    padding: 10,
+  newBtn: {
+    padding: '12px 20px',
+    background: '#22c55e',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
     cursor: 'pointer',
-    borderBottom: '1px solid #f3f4f6',
-    ':hover': { background: '#f9fafb' }
-  },
-  hint: { fontSize: 12, color: '#666', marginTop: 4 },
-  linkBtn: { background: 'none', border: 'none', color: '#667eea', cursor: 'pointer', textDecoration: 'underline', padding: 0 },
-  addBtn: { 
-    padding: '12px 20px', 
-    background: '#22c55e', 
-    color: '#fff', 
-    border: 'none', 
-    borderRadius: 8, 
-    cursor: 'pointer',
+    fontSize: 14,
     fontWeight: 'bold'
   },
 
-  bulkBox: { background: '#f9fafb', padding: 16, borderRadius: 12, marginBottom: 20, border: '2px dashed #e5e7eb' },
-  bulkTitle: { margin: '0 0 12px 0', fontSize: 16 },
-  textarea: { width: '100%', padding: 12, border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', fontFamily: 'monospace' },
-  buttonRow: { display: 'flex', gap: 8, marginTop: 12 },
-  saveBtn: { flex: 1, padding: 10, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold' },
-  cancelBtn: { flex: 1, padding: 10, background: '#e5e7eb', border: 'none', borderRadius: 8, cursor: 'pointer' },
-
-  categoryTitle: { fontSize: 14, fontWeight: '600', color: '#666', marginTop: 16, marginBottom: 8 },
-  itemsList: { marginBottom: 20 },
-  item: { 
-    background: '#fff', 
-    border: '1px solid #e5e7eb', 
-    borderRadius: 8, 
-    padding: 12, 
-    display: 'flex', 
-    justifyContent: 'space-between', 
-    alignItems: 'center',
-    marginBottom: 8
+  quickSection: {
+    background: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    border: '1px solid #e5e7eb'
   },
-  itemInfo: { flex: 1 },
-  qtyControls: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 },
-  qtyBtn: { background: '#f3f4f6', border: 'none', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', fontSize: 16 },
-  qty: { fontSize: 14, color: '#666', minWidth: 80 },
-  deleteBtn: { 
-    background: '#fee', 
-    border: 'none', 
-    borderRadius: 6, 
-    width: 28, 
-    height: 28, 
+  quickTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 10,
+    margin: 0
+  },
+  quickGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: 8,
+    marginTop: 10
+  },
+  quickBtn: {
+    padding: '8px 4px',
+    background: '#f3f4f6',
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontSize: 13,
+    transition: 'all 0.2s'
+  },
+
+  addBox: {
+    display: 'flex',
+    gap: 8,
+    marginBottom: 16
+  },
+  input: {
+    flex: 1,
+    padding: 14,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    fontSize: 14,
+    background: '#fff'
+  },
+  addBtn: {
+    padding: '14px 24px',
+    background: '#667eea',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontSize: 14,
+    fontWeight: 'bold'
+  },
+
+  itemsList: {
+    background: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    border: '1px solid #e5e7eb',
+    minHeight: 200
+  },
+  itemsHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottom: '1px solid #f3f4f6'
+  },
+  empty: {
+    textAlign: 'center',
+    padding: '60px 20px',
+    color: '#999'
+  },
+  emptyHint: {
+    fontSize: 13,
+    marginTop: 8
+  },
+  item: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 0',
+    borderBottom: '1px solid #f3f4f6'
+  },
+  itemLeft: {
+    flex: 1
+  },
+  itemName: {
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 6,
+    color: '#333',
+    textTransform: 'capitalize'
+  },
+  qtyRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8
+  },
+  qtyBtn: {
+    width: 28,
+    height: 28,
+    background: '#f3f4f6',
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontSize: 18,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  qty: {
+    fontSize: 14,
+    color: '#666',
+    minWidth: 70
+  },
+  delBtn: {
+    width: 32,
+    height: 32,
+    background: '#fee2e2',
+    border: 'none',
+    borderRadius: 6,
     cursor: 'pointer',
     fontSize: 20,
-    color: '#dc2626'
-  },
-  empty: { textAlign: 'center', color: '#999', padding: 40 },
-
-  orderBtn: { 
-    width: '100%', 
-    padding: 14, 
-    background: '#667eea', 
-    color: '#fff', 
-    border: 'none', 
-    borderRadius: 8, 
-    fontSize: 16, 
-    fontWeight: 'bold', 
-    cursor: 'pointer' 
-  },
-
-  // Templates
-  templatesGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 20 },
-  templateCard: { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 16 },
-  templateName: { margin: '0 0 12px 0', fontSize: 16 },
-  templateItems: { fontSize: 13, color: '#666', marginBottom: 12 },
-  templateItem: { marginBottom: 4 },
-  applyBtn: { width: '100%', padding: 8, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 },
-
-  // Recent Items
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12 },
-  recentList: { marginTop: 20 },
-  recentItem: { 
-    background: '#fff', 
-    border: '1px solid #e5e7eb', 
-    borderRadius: 8, 
-    padding: 12, 
-    display: 'flex', 
-    justifyContent: 'space-between', 
+    color: '#dc2626',
+    display: 'flex',
     alignItems: 'center',
-    marginBottom: 8
+    justifyContent: 'center'
   },
-  recentMeta: { display: 'block', fontSize: 12, color: '#999', marginTop: 4 },
-  quickAddBtn: { padding: '8px 16px', background: '#667eea', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }
+
+  orderBtn: {
+    width: '100%',
+    padding: 16,
+    background: '#22c55e',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 12,
+    fontSize: 16,
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(34, 197, 94, 0.3)'
+  }
 };
