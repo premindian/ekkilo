@@ -65,7 +65,14 @@ export default function OrderPage() {
       if (!best) return;
 
       if (!splitMap[best.store]) {
-        splitMap[best.store] = { store: best.store, items: [], total: 0 };
+        // Find store_phone from result.stores
+        const storeData = stores.find(s => s.store === best.store);
+        splitMap[best.store] = { 
+          store: best.store, 
+          store_phone: storeData?.store_phone,
+          items: [], 
+          total: 0 
+        };
       }
 
       splitMap[best.store].items.push({
@@ -276,7 +283,9 @@ export default function OrderPage() {
                 const grouped = manualItems.reduce((acc,item)=>{
                   let s=acc.find(x=>x.store===item.store);
                   if(!s){
-                    s={store:item.store,items:[]};
+                    // Find store_phone from result.stores
+                    const storeData = stores.find(st => st.store === item.store);
+                    s={store:item.store, store_phone: storeData?.store_phone, items:[]};
                     acc.push(s);
                   }
                   s.items.push(item);
