@@ -29,9 +29,6 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
         return {"error": "No stores"}
 
     print("🔥 ORDER API HIT")
-    print("📦 RECEIVED STORES PAYLOAD:", stores)
-    for idx, store in enumerate(stores):
-        print(f"   Store {idx}: {store.get('store')} - phone: {store.get('store_phone')}")
 
     # -----------------------------
     # 🧾 CREATE ORDER
@@ -316,23 +313,19 @@ async def search_products(data: dict):
 
         store_obj = {
             "store": store,
-            "store_phone": store_phone,   # 🔥 CRITICAL FIX
+            "store_phone": store_phone,
             "items": items,
             "total": store_total
         }
-        
-        print(f"🏪 Building store object: {store} - store_phone: {store_phone}")
 
         if store_data.get("distance") is not None:
             store_obj["distance"] = round(store_data["distance"], 2)
 
         stores.append(store_obj)
-        print(f"📦 Store object after append: {store_obj.get('store')} has store_phone: {store_obj.get('store_phone')}")
 
     # -----------------------------
     # 📍 FILTER BY DISTANCE
     # -----------------------------
-    print(f"📍 Before distance filter: {len(stores)} stores")
     if user_lat and user_lng:
         filtered_stores = [
             s for s in stores
@@ -341,9 +334,6 @@ async def search_products(data: dict):
         # Keep filtered stores only if at least one remains, otherwise keep all
         if filtered_stores:
             stores = filtered_stores
-            print(f"📍 After distance filter: {len(stores)} stores (radius: {radius}km)")
-        else:
-            print(f"📍 Distance filter would remove all stores, keeping all {len(stores)} stores")
 
     # -----------------------------
     # 🧠 HYBRID RANKING
@@ -368,9 +358,7 @@ async def search_products(data: dict):
             (0.4 * availability_ratio)
         )
 
-    print(f"🧠 Before sorting: {len(stores)} stores")
     stores = sorted(stores, key=lambda x: x["score"])[:5]
-    print(f"🧠 After sorting and limiting to top 5: {len(stores)} stores")
 
     # -----------------------------
     # 🤖 REASONS
@@ -478,10 +466,6 @@ async def search_products(data: dict):
     # -----------------------------
     # ✅ FINAL RESPONSE
     # -----------------------------
-    import json
-    print("🔍 SEARCH RESPONSE - Full stores JSON:")
-    print(json.dumps(stores, indent=2, default=str))
-    
     return {
         "stores": stores,
         "total": optimized_total,
