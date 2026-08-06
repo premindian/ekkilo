@@ -320,11 +320,14 @@ async def search_products(data: dict):
             "items": items,
             "total": store_total
         }
+        
+        print(f"🏪 Building store object: {store} - store_phone: {store_phone}")
 
         if store_data.get("distance") is not None:
             store_obj["distance"] = round(store_data["distance"], 2)
 
         stores.append(store_obj)
+        print(f"📦 Store object after append: {store_obj.get('store')} has store_phone: {store_obj.get('store_phone')}")
 
     # -----------------------------
     # 📍 FILTER BY DISTANCE
