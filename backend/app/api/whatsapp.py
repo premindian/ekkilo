@@ -141,24 +141,19 @@ async def receive(req: Request):
 
                 await send_message(phone, f"✅ Order {order_id} confirmed")
 
-                stores = await db.fetch("""
-                    SELECT store_phone
-                    FROM store_orders
-                    WHERE final_order_id = $1
+                # Send the store messages that were queued during order creation
+                pending_messages = await db.fetch("""
+                    SELECT id, phone, message
+                    FROM whatsapp_messages
+                    WHERE phone IN (
+                        SELECT store_phone FROM store_orders WHERE final_order_id = $1
+                    )
+                    AND status = 'PENDING'
+                    ORDER BY id
                 """, order_id)
 
-                for s in stores:
-                    await send_message(
-                        s["store_phone"],
-                        f"""✅ Order {order_id} confirmed
-
-Start processing now
-
-Reply:
-ACCEPT#{order_id}
-READY#{order_id}
-"""
-                    )
+                for msg in pending_messages:
+                    await send_message(msg["phone"], msg["message"], msg["id"])
 
                 return {"status": "confirmed"}
 
@@ -295,12 +290,11 @@ READY#{order_id}
                 "items": items
             })
         
-        # Create the order
+        # Create the order (but don't send to stores yet - wait for CONFIRM)
         final_order_id, whatsapp_jobs = await create_full_order(stores_payload, phone)
 
-        # Send store messages
-        for store_phone, store_message in whatsapp_jobs:
-            await send_message(store_phone, store_message)
+        # DON'T send store messages yet - wait for customer to CONFIRM
+        # Store the messages are already in whatsapp_messages table via create_full_order
 
         # Build customer message
         message = "🧠 Smart Kirana Order\n\n"

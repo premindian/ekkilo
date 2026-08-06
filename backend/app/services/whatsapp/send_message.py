@@ -31,19 +31,44 @@ async def send_message(phone, message, msg_id=None):
 
         data = response.json()
 
+        # Check for errors in response
+        if "error" in data or response.status_code != 200:
+            error_message = data.get("error", {}).get("message", f"HTTP {response.status_code}")
+            print(f"❌ WhatsApp API Error: {error_message}")
+            
+            if msg_id:
+                await db.execute("""
+                    UPDATE whatsapp_messages
+                    SET status = 'FAILED',
+                        attempts = attempts + 1,
+                        last_error = $2
+                    WHERE id = $1
+                """, msg_id, error_message)
+            return
+
         # 🔥 EXTRACT WHATSAPP MESSAGE ID
         wa_id = None
         if "messages" in data:
             wa_id = data["messages"][0].get("id")
 
         if msg_id:
-            await db.execute("""
-                UPDATE whatsapp_messages
-                SET status = 'SENT',
-                    sent_at = NOW(),
-                    whatsapp_message_id = $2
-                WHERE id = $1
-            """, msg_id, wa_id)
+            if wa_id:
+                await db.execute("""
+                    UPDATE whatsapp_messages
+                    SET status = 'SENT',
+                        sent_at = NOW(),
+                        whatsapp_message_id = $2
+                    WHERE id = $1
+                """, msg_id, wa_id)
+            else:
+                # No message ID means it didn't send
+                await db.execute("""
+                    UPDATE whatsapp_messages
+                    SET status = 'FAILED',
+                        attempts = attempts + 1,
+                        last_error = 'No message ID in response'
+                    WHERE id = $1
+                """, msg_id)
 
     except Exception as e:
         print("❌ WhatsApp ERROR:", str(e))

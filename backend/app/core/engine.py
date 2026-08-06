@@ -37,14 +37,17 @@ class Engine:
                 continue
 
             # -----------------------------
-            # ? SAVE EVENT (DB)
+            # ? SAVE EVENT (DB) - Only if order_id exists
             # -----------------------------
-            await db.execute("""
-                INSERT INTO order_events (order_id, status)
-                VALUES ($1, $2)
-            """, order_id, status)
+            if order_id is not None:
+                await db.execute("""
+                    INSERT INTO order_events (order_id, status)
+                    VALUES ($1, $2)
+                """, order_id, status)
 
-            print(f"?? Event saved: {status}")
+                print(f"?? Event saved: {status}")
+            else:
+                print(f"?? Event: {status} (not saved - no order_id)")
 
             # -----------------------------
             # ? WEBSOCKET BROADCAST

@@ -34,6 +34,14 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
     # 🧾 CREATE ORDER
     # -----------------------------
     final_order_id, whatsapp_jobs = await create_full_order(stores, phone)
+    
+    # -----------------------------
+    # ✅ WEB ORDERS AUTO-CONFIRMED
+    # -----------------------------
+    await db.execute("""
+        INSERT INTO final_order_events (final_order_id, status)
+        VALUES ($1, 'CONFIRMED')
+    """, final_order_id)
 
     # -----------------------------
     # 📲 STORE MESSAGES
@@ -122,6 +130,76 @@ async def get_store_orders():
         }
         for r in rows
     ]
+
+# -----------------------------
+# ?? UPDATE STORE ORDER STATUS
+# -----------------------------
+@router.patch("/admin/store-orders/{store_order_id}")
+async def update_store_order_status(store_order_id: int, data: dict):
+    from app.db.database import get_db
+    from app.core.ws_manager import manager
+    
+    db = await get_db()
+    new_status = data.get("status")
+    
+    if not new_status:
+        return {"error": "Status required"}
+    
+    # Update store order
+    await db.execute("""
+        UPDATE store_orders
+        SET status = $1, updated_at = NOW()
+        WHERE id = $2
+    """, new_status, store_order_id)
+    
+    # Insert event
+    await db.execute("""
+        INSERT INTO store_order_events (store_order_id, status)
+        VALUES ($1, $2)
+    """, store_order_id, new_status)
+    
+    # Get final order id and all store statuses
+    row = await db.fetchrow("""
+        SELECT final_order_id FROM store_orders WHERE id = $1
+    """, store_order_id)
+    
+    if not row:
+        return {"error": "Store order not found"}
+    
+    final_order_id = row["final_order_id"]
+    
+    # Calculate final status
+    statuses = await db.fetch("""
+        SELECT status FROM store_orders WHERE final_order_id = $1
+    """, final_order_id)
+    
+    status_list = [s["status"] for s in statuses]
+    
+    if all(s == "READY" for s in status_list):
+        final_status = "READY"
+    elif any(s == "READY" for s in status_list):
+        final_status = "PARTIAL_READY"
+    elif all(s == "ACCEPTED" for s in status_list):
+        final_status = "ACCEPTED"
+    else:
+        final_status = "PROCESSING"
+    
+    # Update final order
+    await db.execute("""
+        UPDATE final_orders
+        SET status = $1
+        WHERE id = $2
+    """, final_status, final_order_id)
+    
+    # Broadcast update
+    await manager.broadcast(0, {
+        "type": "status_update",
+        "final_order_id": final_order_id,
+        "store_order_id": store_order_id,
+        "status": final_status
+    })
+    
+    return {"status": "ok", "new_status": new_status, "final_status": final_status}
 
 
 # -----------------------------
@@ -545,119 +623,8 @@ async def get_store_products(store_id: int):
 
     return [dict(r) for r in rows]
     
-# -----------------------------
-# ?? WHATSAPP WEBHOOK
-# -----------------------------
-@router.post("/webhook")
-async def whatsapp_webhook(data: dict):
-    print("?? Incoming webhook:", data)
-
-    try:
-        from app.core.ws_manager import manager
-        from app.db.database import get_db
-        import re
-
-        db = await get_db()
-
-        entry = data.get("entry", [])
-        changes = entry[0].get("changes", []) if entry else []
-        value = changes[0].get("value", {}) if changes else {}
-        messages = value.get("messages", [])
-
-        if not messages:
-            return {"status": "no message"}
-
-        message = messages[0]
-        text = message.get("text", {}).get("body", "").strip().lower()
-        phone = message.get("from")
-
-        match = re.search(r"\d+", text)
-        if not match:
-            return {"status": "invalid"}
-
-        final_order_id = int(match.group())
-
-        # FIND STORE ORDER
-        row = await db.fetchrow("""
-            SELECT id FROM store_orders
-            WHERE final_order_id = $1 AND store_phone = $2
-        """, final_order_id, phone)
-
-        if not row:
-            return {"status": "store not found"}
-
-        store_order_id = row["id"]
-
-        # STATUS
-        if text.startswith("yes"):
-            status = "ACCEPTED"
-        elif text.startswith("ready"):
-            status = "READY"
-        else:
-            return {"status": "ignored"}
-
-        # UPDATE STORE
-        await db.execute("""
-            UPDATE store_orders
-            SET status = $1, updated_at = NOW()
-            WHERE id = $2
-        """, status, store_order_id)
-
-        await db.execute("""
-            INSERT INTO store_order_events (store_order_id, status)
-            VALUES ($1, $2)
-        """, store_order_id, status)
-
-        # GET CUSTOMER
-        row = await db.fetchrow("""
-            SELECT fo.customer_phone
-            FROM store_orders so
-            JOIN final_orders fo ON so.final_order_id = fo.id
-            WHERE so.id = $1
-        """, store_order_id)
-
-        customer_phone = row["customer_phone"]
-
-        # SEND CUSTOMER MESSAGE
-        if status == "ACCEPTED":
-            await send_message(customer_phone, f"? Order #{final_order_id} accepted")
-
-        if status == "READY":
-            await send_message(customer_phone, f"?? Order #{final_order_id} READY for pickup")
-
-        # FINAL STATUS
-        statuses = await db.fetch("""
-            SELECT status FROM store_orders WHERE final_order_id = $1
-        """, final_order_id)
-
-        status_list = [s["status"] for s in statuses]
-
-        if all(s == "READY" for s in status_list):
-            final_status = "READY"
-        elif any(s == "READY" for s in status_list):
-            final_status = "PARTIAL_READY"
-        elif all(s == "ACCEPTED" for s in status_list):
-            final_status = "ACCEPTED"
-        else:
-            final_status = "PROCESSING"
-
-        await db.execute("""
-            UPDATE final_orders
-            SET status = $1
-            WHERE id = $2
-        """, final_status, final_order_id)
-
-        # ?? REALTIME UPDATE
-        await manager.broadcast(0, {
-            "type": "status_update",
-            "final_order_id": final_order_id,
-            "status": final_status
-        })
-
-    except Exception as e:
-        print("?? Webhook error:", e)
-
-    return {"status": "ok"}
+# Note: Webhook endpoint moved to whatsapp.py for better organization
+# The /whatsapp/webhook endpoint handles all WhatsApp webhook callbacks
 
 #############
 # Admin Messages for WhatsApp Messages
