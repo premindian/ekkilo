@@ -122,15 +122,29 @@ class Pricing:
             if unit == "g":
                 return qty
 
-        # 🥛 VOLUME (ml)
+        # 🥛 VOLUME (L as base)
+        if base_unit == "l":
+            if unit == "ml":
+                return qty / 1000  # 500ml → 0.5L
+            if unit == "l":
+                return qty
+
+        # 🥛 VOLUME (ml as base)
         if base_unit == "ml":
             if unit == "l":
-                return qty * 1000
+                return qty * 1000  # 1L → 1000ml
             if unit == "ml":
                 return qty
 
+        # ⚖️ MASS (kg as base)
+        if base_unit == "kg":
+            if unit == "g":
+                return qty / 1000  # 500g → 0.5kg
+            if unit == "kg":
+                return qty
+
         # 🥚 COUNT
-        if base_unit == "pcs":
+        if base_unit in ["pcs", "unit"]:
             return qty
 
         # ⚠️ fallback
