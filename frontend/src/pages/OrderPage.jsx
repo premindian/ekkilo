@@ -9,14 +9,33 @@ export default function OrderPage({ initialSearchText }) {
   
   // Auto-search when initialSearchText is provided
   useEffect(() => {
-    if (initialSearchText) {
+    if (initialSearchText && initialSearchText.trim()) {
       setText(initialSearchText);
-      // Trigger search automatically
-      setTimeout(() => {
-        search(initialSearchText);
-      }, 500);
+      // Trigger search after a brief delay
+      const timer = setTimeout(async () => {
+        setLoading(true);
+        try {
+          const res = await fetch(`${API_BASE}/search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: initialSearchText,
+              lat: location?.lat,
+              lng: location?.lng,
+              radius,
+            }),
+          });
+          const data = await res.json();
+          setResult(data);
+        } catch (err) {
+          console.error("Search error:", err);
+        } finally {
+          setLoading(false);
+        }
+      }, 300);
+      return () => clearTimeout(timer);
     }
-  }, [initialSearchText]);
+  }, [initialSearchText, location, radius]);
   const [result, setResult] = useState(null);
   const [mode, setMode] = useState("smart");
   const [loading, setLoading] = useState(false);
@@ -62,13 +81,11 @@ export default function OrderPage({ initialSearchText }) {
     });
 
     const data = await res.json();
-    console.log('Search response:', data); // Debug
     setResult(data);
     setLoading(false);
   };
 
   const stores = result?.stores || [];
-  console.log('Stores to display:', stores); // Debug
 
   // 🧠 SMART SPLIT
   const splitMap = {};
