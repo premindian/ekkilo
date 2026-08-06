@@ -469,9 +469,9 @@ async def search_products(data: dict):
     # -----------------------------
     # ✅ FINAL RESPONSE
     # -----------------------------
-    print("🔍 SEARCH RESPONSE - Stores being returned:")
-    for idx, s in enumerate(stores):
-        print(f"   Store {idx}: {s.get('store')} - store_phone: {s.get('store_phone')}")
+    import json
+    print("🔍 SEARCH RESPONSE - Full stores JSON:")
+    print(json.dumps(stores, indent=2, default=str))
     
     return {
         "stores": stores,
