@@ -29,6 +29,9 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
         return {"error": "No stores"}
 
     print("🔥 ORDER API HIT")
+    print("📦 RECEIVED STORES PAYLOAD:", stores)
+    for idx, store in enumerate(stores):
+        print(f"   Store {idx}: {store.get('store')} - phone: {store.get('store_phone')}")
 
     # -----------------------------
     # 🧾 CREATE ORDER
