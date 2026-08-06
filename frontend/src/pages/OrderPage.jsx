@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
 
 const API_BASE = "https://ekkilo.onrender.com";
 
 export default function OrderPage({ initialSearchText }) {
+  const { user } = useAuth();
   const [text, setText] = useState("");
   
   // Auto-search when initialSearchText is provided
@@ -21,9 +23,6 @@ export default function OrderPage({ initialSearchText }) {
 
   const [location, setLocation] = useState(null);
   const [radius, setRadius] = useState(5);
-
-  const [phone, setPhone] = useState("");
-  const [showPhone, setShowPhone] = useState(true);
 
   const [manualCart, setManualCart] = useState({});
 
@@ -121,9 +120,12 @@ export default function OrderPage({ initialSearchText }) {
 
   // 📦 ORDER
   const placeOrder = async (storesPayload) => {
-    if (!phone) return setShowPhone(true);
+    if (!user?.phone) {
+      alert("Please login to place order");
+      return;
+    }
 
-    const formatted = phone.startsWith("91") ? phone : "91" + phone;
+    const formatted = user.phone.startsWith("91") ? user.phone : "91" + user.phone;
 
     await fetch(`${API_BASE}/order`, {
       method: "POST",
@@ -139,17 +141,6 @@ export default function OrderPage({ initialSearchText }) {
 
   return (
     <div style={container}>
-
-      {/* PHONE */}
-      {showPhone && (
-        <div style={popup}>
-          <div style={popupBox}>
-            <h3>Enter WhatsApp Number</h3>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} style={input}/>
-            <button style={btn} onClick={() => setShowPhone(false)}>Continue</button>
-          </div>
-        </div>
-      )}
 
       <h2>🛒 Smart Kirana</h2>
 
