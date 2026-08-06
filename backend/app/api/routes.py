@@ -334,11 +334,16 @@ async def search_products(data: dict):
     # -----------------------------
     print(f"📍 Before distance filter: {len(stores)} stores")
     if user_lat and user_lng:
-        stores = [
+        filtered_stores = [
             s for s in stores
             if "distance" not in s or s["distance"] <= radius
         ]
-        print(f"📍 After distance filter: {len(stores)} stores (radius: {radius}km)")
+        # Keep filtered stores only if at least one remains, otherwise keep all
+        if filtered_stores:
+            stores = filtered_stores
+            print(f"📍 After distance filter: {len(stores)} stores (radius: {radius}km)")
+        else:
+            print(f"📍 Distance filter would remove all stores, keeping all {len(stores)} stores")
 
     # -----------------------------
     # 🧠 HYBRID RANKING
