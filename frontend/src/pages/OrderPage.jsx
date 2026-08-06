@@ -98,6 +98,9 @@ export default function OrderPage({ initialSearchText }) {
       if (!splitMap[best.store]) {
         // Find store_phone from result.stores
         const storeData = stores.find(s => s.store === best.store);
+        console.log(`🔍 Looking for store "${best.store}":`, storeData);
+        console.log(`📞 Found phone:`, storeData?.store_phone);
+        
         splitMap[best.store] = { 
           store: best.store, 
           store_phone: storeData?.store_phone,
