@@ -19,18 +19,17 @@ const API_BASE = "";
 
 function App() {
   const { isAuthenticated, loading, user, token } = useAuth();
-  const [currentPage, setCurrentPage] = useState('order'); // order, lists, history, profile
+  // Initialize currentPage from URL pathname
+  const [currentPage, setCurrentPage] = useState(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/admin') || path.startsWith('/store')) {
+      return path;
+    }
+    return 'order';
+  });
   const [searchText, setSearchText] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
-
-  // Handle routing based on URL path
-  useEffect(() => {
-    const path = window.location.pathname;
-    if (path.startsWith('/store')) {
-      setCurrentPage(path); // Store the full path for store routes
-    }
-  }, []);
 
   useEffect(() => {
     // Wait for auth to finish loading first
