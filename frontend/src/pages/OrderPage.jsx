@@ -17,6 +17,7 @@ export default function OrderPage({ initialSearchText }) {
   const [gpsError, setGpsError] = useState(false);
   const [showCitySelector, setShowCitySelector] = useState(false);
   const [selectedCity, setSelectedCity] = useState('');
+  const [selectedStoreDetails, setSelectedStoreDetails] = useState(null);
   
   // Auto-search when initialSearchText is provided
   useEffect(() => {
@@ -556,13 +557,27 @@ export default function OrderPage({ initialSearchText }) {
       })()}
 
       {/* 🧠 SMART */}
-      {!loading && mode==="smart" && splitStores.map((s,i)=>(
-        <div key={i} style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <b style={{ fontSize: 16 }}>🏪 {s.store}</b>
-            {(() => {
-              const storeData = stores.find(st => st.store === s.store);
-              return storeData?.distance !== undefined ? (
+      {!loading && mode==="smart" && splitStores.map((s,i)=>{
+        // More robust store lookup (case-insensitive, trimmed)
+        const storeData = stores.find(st => 
+          st.store?.toLowerCase().trim() === s.store?.toLowerCase().trim()
+        );
+        
+        return (
+          <div key={i} style={card}>
+            <div 
+              style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                marginBottom: 8,
+                cursor: 'pointer',
+                padding: '4px 0'
+              }}
+              onClick={() => storeData && setSelectedStoreDetails(storeData)}
+            >
+              <b style={{ fontSize: 16 }}>🏪 {s.store}</b>
+              {storeData?.distance !== undefined ? (
                 <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
                   📍 {storeData.distance} km
                 </span>
@@ -570,20 +585,20 @@ export default function OrderPage({ initialSearchText }) {
                 <span style={{ fontSize: 13, color: '#999' }}>
                   ⏳ Distance...
                 </span>
-              );
-            })()}
-          </div>
-
-          {s.items.map((it,j)=>(
-            <div key={j} style={row}>
-              <span>{it.name} ({it.packs||1} × {it.size}{it.unit})</span>
-              <span>₹{format(it.price)}</span>
+              )}
             </div>
-          ))}
 
-          <b>Subtotal: ₹{format(s.total)}</b>
-        </div>
-      ))}
+            {s.items.map((it,j)=>(
+              <div key={j} style={row}>
+                <span>{it.name} ({it.packs||1} × {it.size}{it.unit})</span>
+                <span>₹{format(it.price)}</span>
+              </div>
+            ))}
+
+            <b>Subtotal: ₹{format(s.total)}</b>
+          </div>
+        );
+      })}
 
       {/* ⭐ FAVORITES MODE */}
       {!loading && mode==="favorites" && (() => {
@@ -786,6 +801,154 @@ export default function OrderPage({ initialSearchText }) {
           >
             🚀 Place Order
           </button>
+        </div>
+      )}
+
+      {/* STORE DETAILS MODAL */}
+      {selectedStoreDetails && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: 16
+          }}
+          onClick={() => setSelectedStoreDetails(null)}
+        >
+          <div 
+            style={{
+              background: '#fff',
+              borderRadius: 16,
+              padding: 24,
+              maxWidth: 400,
+              width: '100%',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 20, fontWeight: 'bold' }}>
+                🏪 {selectedStoreDetails.store}
+              </h3>
+              <button
+                onClick={() => setSelectedStoreDetails(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: 28,
+                  cursor: 'pointer',
+                  color: '#999',
+                  padding: 0,
+                  minWidth: 32,
+                  minHeight: 32
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Distance */}
+              {selectedStoreDetails.distance !== undefined && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: '#f0fdf4', borderRadius: 8 }}>
+                  <span style={{ fontSize: 24 }}>📍</span>
+                  <div>
+                    <div style={{ fontSize: 14, color: '#666' }}>Distance</div>
+                    <div style={{ fontSize: 18, fontWeight: 'bold', color: '#166534' }}>
+                      {selectedStoreDetails.distance} km away
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Phone */}
+              {selectedStoreDetails.store_phone && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: '#f9fafb', borderRadius: 8 }}>
+                  <span style={{ fontSize: 24 }}>📞</span>
+                  <div>
+                    <div style={{ fontSize: 14, color: '#666' }}>Phone</div>
+                    <a 
+                      href={`tel:${selectedStoreDetails.store_phone}`}
+                      style={{ fontSize: 16, fontWeight: 600, color: '#667eea', textDecoration: 'none' }}
+                    >
+                      {selectedStoreDetails.store_phone}
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Coordinates */}
+              {selectedStoreDetails.lat && selectedStoreDetails.lng && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: '#f9fafb', borderRadius: 8 }}>
+                  <span style={{ fontSize: 24 }}>🗺️</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>Location</div>
+                    <a
+                      href={`https://www.google.com/maps?q=${selectedStoreDetails.lat},${selectedStoreDetails.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: 14, color: '#667eea', textDecoration: 'none', fontWeight: 600 }}
+                    >
+                      Open in Maps →
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Items Available */}
+              {selectedStoreDetails.items && selectedStoreDetails.items.length > 0 && (
+                <div style={{ padding: 12, background: '#fffbeb', borderRadius: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#92400e' }}>
+                    🛒 Items Available ({selectedStoreDetails.items.length})
+                  </div>
+                  {selectedStoreDetails.items.map((item, i) => (
+                    <div key={i} style={{ fontSize: 13, color: '#666', padding: '4px 0' }}>
+                      • {item.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Total */}
+              {selectedStoreDetails.total !== undefined && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: '#f0fdf4', borderRadius: 8 }}>
+                  <span style={{ fontSize: 24 }}>💰</span>
+                  <div>
+                    <div style={{ fontSize: 14, color: '#666' }}>Total</div>
+                    <div style={{ fontSize: 20, fontWeight: 'bold', color: '#166534' }}>
+                      ₹{format(selectedStoreDetails.total)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setSelectedStoreDetails(null)}
+              style={{
+                width: '100%',
+                marginTop: 16,
+                padding: 14,
+                background: '#667eea',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 10,
+                fontSize: 16,
+                fontWeight: 600,
+                cursor: 'pointer',
+                minHeight: 48
+              }}
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
 
