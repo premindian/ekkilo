@@ -17,10 +17,16 @@ function App() {
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
 
   useEffect(() => {
+    // Wait for auth to finish loading first
+    if (loading) return;
+    
     if (isAuthenticated && token) {
       checkOnboardingStatus();
+    } else {
+      // Not authenticated, no need to check onboarding
+      setCheckingOnboarding(false);
     }
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, loading]);
 
   const checkOnboardingStatus = async () => {
     try {
