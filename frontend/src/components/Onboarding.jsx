@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const API_BASE = "https://ekkilo.onrender.com";
+const API_BASE = window.location.hostname.includes("localhost") ? "http://localhost:8000" : "";
 
 export default function Onboarding({ onComplete, onSkip, token }) {
   const [step, setStep] = useState(1);
