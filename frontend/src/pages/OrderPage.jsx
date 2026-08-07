@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 const API_BASE = "https://ekkilo.onrender.com";
 
 export default function OrderPage({ initialSearchText }) {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [text, setText] = useState("");
   const [result, setResult] = useState(null);
   const [mode, setMode] = useState("smart");
@@ -12,6 +12,8 @@ export default function OrderPage({ initialSearchText }) {
   const [location, setLocation] = useState(null);
   const [radius, setRadius] = useState(5);
   const [manualCart, setManualCart] = useState({});
+  const [favorites, setFavorites] = useState([]);
+  const [regularStore, setRegularStore] = useState(null);
   
   // Auto-search when initialSearchText is provided
   useEffect(() => {
@@ -59,6 +61,28 @@ export default function OrderPage({ initialSearchText }) {
       () => console.log("GPS denied")
     );
   }, []);
+
+  // ⭐ LOAD FAVORITES
+  useEffect(() => {
+    if (!token) return;
+    
+    const loadFavorites = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/favorite-stores?token=${token}`);
+        const data = await res.json();
+        setFavorites(data);
+        
+        // Set first favorite as regular store by default
+        if (data.length > 0) {
+          setRegularStore(data[0].store_name);
+        }
+      } catch (err) {
+        console.error("Failed to load favorites:", err);
+      }
+    };
+    
+    loadFavorites();
+  }, [token]);
 
   // 🔍 SEARCH
   const search = async (searchText) => {
@@ -203,11 +227,36 @@ export default function OrderPage({ initialSearchText }) {
       </div>
 
       {/* MODES */}
-      <div style={{ marginTop: 10 }}>
-        <button onClick={() => setMode("smart")} style={mode==="smart"?active:tab}>🧠 Smart</button>
-        <button onClick={() => setMode("one")} style={mode==="one"?active:tab}>🏪 One</button>
-        <button onClick={() => setMode("manual")} style={mode==="manual"?active:tab}>🧩 Manual</button>
+      <div style={{ marginTop: 10, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+        <button onClick={() => setMode("smart")} style={mode==="smart"?active:tab}>
+          💰 Smart Buy
+        </button>
+        <button onClick={() => setMode("favorites")} style={mode==="favorites"?active:tab}>
+          ⭐ Favorites
+        </button>
+        <button onClick={() => setMode("regular")} style={mode==="regular"?active:tab}>
+          🏪 Regular
+        </button>
+        <button onClick={() => setMode("manual")} style={mode==="manual"?active:tab}>
+          ✋ Manual
+        </button>
       </div>
+
+      {/* REGULAR STORE SELECTOR */}
+      {mode === "regular" && favorites.length > 0 && (
+        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}>
+          <span>My regular store:</span>
+          <select 
+            value={regularStore || ''} 
+            onChange={(e) => setRegularStore(e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', flex: 1 }}
+          >
+            {favorites.map(f => (
+              <option key={f.id} value={f.store_name}>{f.store_name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* SAVINGS */}
       {result?.comparison && Object.keys(result.comparison).length > 0 && (() => {
@@ -250,43 +299,115 @@ export default function OrderPage({ initialSearchText }) {
         </div>
       ))}
 
-      {/* 🏪 ONE STORE */}
-      {!loading && mode==="one" && stores.map((store, idx) => (
-        <div key={idx} style={premiumCard}>
-
-          <div style={headerRow}>
-            <div>
-              <b>🏪 {store.store}</b>
-              {store.is_best && <span style={bestBadge}>⭐ Best</span>}
+      {/* ⭐ FAVORITES MODE */}
+      {!loading && mode==="favorites" && (() => {
+        const favoriteStoreNames = favorites.map(f => f.store_name);
+        const filteredStores = stores.filter(s => favoriteStoreNames.includes(s.store));
+        
+        if (filteredStores.length === 0 && stores.length > 0) {
+          return (
+            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+              <p>😕 None of your favorite stores have these items</p>
+              <p style={{ fontSize: 14 }}>Try switching to Smart mode or add more favorites</p>
             </div>
-
-            <div>
-              ₹{format(store.total)}
-              <div style={distance}>📍 {store.distance} km</div>
-            </div>
-          </div>
-
-          <div style={reasonText}>
-            {store.reason?.join(" • ")}
-          </div>
-
-          {store.items.map((item,i)=>(
-            <div key={i} style={itemBlock}>
+          );
+        }
+        
+        return filteredStores.map((store, idx) => (
+          <div key={idx} style={premiumCard}>
+            <div style={headerRow}>
               <div>
-                <div>{item.name}</div>
-                <div style={itemMeta}>
-                  {item.packs||1} × {item.size}{item.unit}
-                </div>
+                <b>⭐ {store.store}</b>
+                {store.is_best && <span style={bestBadge}>Best Price</span>}
               </div>
-              <div>₹{format(item.price)}</div>
+              <div>
+                ₹{format(store.total)}
+                <div style={distance}>📍 {store.distance} km</div>
+              </div>
             </div>
-          ))}
 
-          <button style={orderButton} onClick={()=>placeOrder([store])}>
-            🛒 Place Order
-          </button>
-        </div>
-      ))}
+            <div style={reasonText}>
+              {store.reason?.join(" • ")}
+            </div>
+
+            {store.items.map((item,i)=>(
+              <div key={i} style={itemBlock}>
+                <div>
+                  <div>{item.name}</div>
+                  <div style={itemMeta}>
+                    {item.packs||1} × {item.size}{item.unit}
+                  </div>
+                </div>
+                <div>₹{format(item.price)}</div>
+              </div>
+            ))}
+
+            <button style={orderButton} onClick={()=>placeOrder([store])}>
+              🛒 Place Order
+            </button>
+          </div>
+        ));
+      })()}
+
+      {/* 🏪 REGULAR STORE MODE */}
+      {!loading && mode==="regular" && (() => {
+        if (!regularStore) {
+          return (
+            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+              <p>😕 No regular store set</p>
+              <p style={{ fontSize: 14 }}>Add a favorite store first in your Profile</p>
+            </div>
+          );
+        }
+        
+        const myRegularStore = stores.find(s => s.store === regularStore);
+        
+        if (!myRegularStore && stores.length > 0) {
+          return (
+            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+              <p>😕 {regularStore} doesn't have these items</p>
+              <p style={{ fontSize: 14 }}>Try switching to Smart mode</p>
+            </div>
+          );
+        }
+        
+        if (!myRegularStore) return null;
+        
+        return (
+          <div style={premiumCard}>
+            <div style={headerRow}>
+              <div>
+                <b>🏪 {myRegularStore.store}</b>
+                <span style={{ fontSize: 12, color: '#666', marginLeft: 8 }}>Your Regular Store</span>
+              </div>
+              <div>
+                ₹{format(myRegularStore.total)}
+                <div style={distance}>📍 {myRegularStore.distance} km</div>
+              </div>
+            </div>
+
+            <div style={reasonText}>
+              {myRegularStore.reason?.join(" • ")}
+            </div>
+
+            {myRegularStore.items.map((item,i)=>(
+              <div key={i} style={itemBlock}>
+                <div>
+                  <div>{item.name}</div>
+                  <div style={itemMeta}>
+                    {item.packs||1} × {item.size}{item.unit}
+                  </div>
+                </div>
+                <div>₹{format(item.price)}</div>
+              </div>
+            ))}
+
+            <button style={orderButton} onClick={()=>placeOrder([myRegularStore])}>
+              🛒 Place Order
+            </button>
+          </div>
+        );
+      })()}
 
       {/* 🧩 MANUAL */}
       {!loading && mode==="manual" && Object.entries(result?.store_view || {}).map(([store, items])=>(
