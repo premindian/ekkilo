@@ -40,14 +40,21 @@ app = FastAPI(lifespan=lifespan)
 
 
 # -----------------------------------------
-# ✅ CORS
+# ✅ CORS (EXPLICIT FOR RENDER)
 # -----------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 🔥 tighten later
+    allow_origins=[
+        "https://ekkilo-1.onrender.com",
+        "https://ekkilo.onrender.com",
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "*"  # Allow all as fallback
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
