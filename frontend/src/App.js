@@ -6,6 +6,10 @@ import GroceryListsPage from './pages/GroceryListsPage';
 import OrderHistoryPage from './pages/OrderHistoryPage';
 import ProfilePage from './pages/ProfilePage';
 import Onboarding from './components/Onboarding';
+import StoreDashboard from './pages/StoreDashboard';
+import StoreProducts from './pages/StoreProducts';
+import StoreOrders from './pages/StoreOrders';
+import StoreReports from './pages/StoreReports';
 
 const API_BASE = "";
 
@@ -15,6 +19,14 @@ function App() {
   const [searchText, setSearchText] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
+
+  // Handle routing based on URL path
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/store')) {
+      setCurrentPage(path); // Store the full path for store routes
+    }
+  }, []);
 
   useEffect(() => {
     // Wait for auth to finish loading first
@@ -67,6 +79,22 @@ function App() {
 
   if (!isAuthenticated) {
     return <LoginPage />;
+  }
+
+  // Check if this is a store portal route
+  if (currentPage.startsWith('/store')) {
+    if (currentPage === '/store/products') {
+      return <StoreProducts />;
+    }
+    if (currentPage === '/store/orders') {
+      return <StoreOrders />;
+    }
+    if (currentPage === '/store/reports') {
+      return <StoreReports />;
+    }
+    if (currentPage === '/store') {
+      return <StoreDashboard />;
+    }
   }
 
   return (
