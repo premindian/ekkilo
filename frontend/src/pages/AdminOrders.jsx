@@ -16,17 +16,21 @@ export default function AdminOrders() {
   }, [token, filter]);
 
   const loadOrders = async () => {
+    console.log('🔍 Loading orders... token:', token ? 'exists' : 'missing');
     setLoading(true);
     try {
       const url = filter === 'ALL'
         ? `${API_BASE}/api/admin/orders?token=${token}`
         : `${API_BASE}/api/admin/orders?token=${token}&status=${filter}`;
       
+      console.log('📡 Fetching:', url);
       const res = await fetch(url);
+      console.log('📊 Response status:', res.status);
       const data = await res.json();
+      console.log('✅ Orders loaded:', data.length, 'orders');
       setOrders(data);
     } catch (err) {
-      console.error('Failed to load orders:', err);
+      console.error('❌ Failed to load orders:', err);
     } finally {
       setLoading(false);
     }
