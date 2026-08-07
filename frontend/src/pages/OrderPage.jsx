@@ -331,6 +331,56 @@ export default function OrderPage({ initialSearchText }) {
         </div>
       )}
 
+      {/* 💡 SAVINGS HINT */}
+      {!loading && result && stores.length > 0 && mode !== "smart" && splitTotal > 0 && (() => {
+        let currentTotal = 0;
+        
+        // Calculate current mode's total
+        if (mode === "regular") {
+          const myRegularStore = stores.find(s => s.store === regularStore);
+          currentTotal = myRegularStore?.total || 0;
+        } else if (mode === "favorites") {
+          const favoriteStoreNames = favorites.map(f => f.store_name);
+          const filteredStores = stores.filter(s => favoriteStoreNames.includes(s.store));
+          const bestFavorite = filteredStores.sort((a, b) => a.total - b.total)[0];
+          currentTotal = bestFavorite?.total || 0;
+        } else if (mode === "manual") {
+          currentTotal = manualTotal;
+        }
+        
+        const savings = currentTotal - splitTotal;
+        
+        if (savings > 5) { // Only show if savings is significant (>₹5)
+          return (
+            <div 
+              onClick={() => setMode("smart")}
+              style={{ 
+                marginTop: 10,
+                padding: 12, 
+                background: '#fff8e1', 
+                borderRadius: 8, 
+                borderLeft: '4px solid #FFC107',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#fff3cd'}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#fff8e1'}
+            >
+              <div style={{ fontWeight: 'bold', color: '#f57c00', marginBottom: 4 }}>
+                💡 Savings Tip
+              </div>
+              <div style={{ fontSize: 14, color: '#666' }}>
+                Switch to <strong>Smart Buy</strong> mode to save ₹{format(savings)}
+                <span style={{ marginLeft: 8, fontSize: 12, color: '#999' }}>
+                  👆 Click here to switch
+                </span>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       {/* 🧠 SMART */}
       {!loading && mode==="smart" && splitStores.map((s,i)=>(
         <div key={i} style={card}>
