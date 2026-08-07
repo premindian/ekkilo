@@ -305,9 +305,19 @@ async def search_products(data: dict):
     db = await get_db()
 
     # -----------------------------
-    # 🏪 FETCH STORES
+    # 🏪 FETCH ALL STORES (not just optimized ones!)
     # -----------------------------
-    store_names = list(optimized.keys())
+    # Get ALL stores from price_matrix, not just optimized plan
+    all_store_names = set()
+    for item, options in price_matrix.items():
+        for opt in options:
+            store_name = opt.get("store")
+            if store_name:
+                all_store_names.add(store_name)
+    
+    store_names = list(all_store_names)
+    print(f"🏪 ALL STORES from price_matrix: {store_names}")
+    print(f"🏪 OPTIMIZED STORES: {list(optimized.keys())}")
 
     if user_lat and user_lng and store_names:
         rows = await db.fetch("""
@@ -361,10 +371,11 @@ async def search_products(data: dict):
         }
 
     # -----------------------------
-    # 🏪 BUILD STORE PLAN
+    # 🏪 BUILD STORE PLAN (Include ALL stores, not just optimized)
     # -----------------------------
     stores = []
 
+    # First, add optimized stores with their optimized items
     for store, products in optimized.items():
 
         store_data = store_map.get(store, {})
@@ -402,13 +413,57 @@ async def search_products(data: dict):
             "store_id": store_data.get("id"),
             "store_phone": store_phone,
             "items": items,
-            "total": store_total
+            "total": store_total,
+            "is_optimized": True  # Mark as part of optimized plan
         }
 
         if store_data.get("distance") is not None:
             store_obj["distance"] = round(store_data["distance"], 2)
 
         stores.append(store_obj)
+    
+    # Then, add ALL other stores from store_view (for Manual/Regular/Favorites modes)
+    optimized_store_names = set(optimized.keys())
+    for store_name in store_names:
+        if store_name not in optimized_store_names:
+            store_data = store_map.get(store_name, {})
+            
+            # Get items for this store from store_view
+            store_items_data = store_view.get(store_name, {})
+            if not store_items_data:
+                continue
+            
+            items = []
+            store_total = 0
+            
+            for item_name, item_data in store_items_data.items():
+                price = item_data.get("price", 0)
+                items.append({
+                    "name": item_name,
+                    "packs": item_data.get("packs", 1),
+                    "size": item_data.get("size", 1),
+                    "unit": item_data.get("unit", ""),
+                    "price": price,
+                    "phone": item_data.get("phone"),
+                    "available": item_data.get("available", True)
+                })
+                store_total += price
+            
+            store_obj = {
+                "store": store_name,
+                "store_id": store_data.get("id"),
+                "store_phone": store_data.get("phone"),
+                "items": items,
+                "total": store_total,
+                "is_optimized": False  # Not part of optimized plan
+            }
+            
+            if store_data.get("distance") is not None:
+                store_obj["distance"] = round(store_data["distance"], 2)
+            
+            stores.append(store_obj)
+    
+    print(f"🏪 TOTAL STORES in response: {len(stores)} (optimized: {len(optimized)}, all: {len(store_names)})")
 
     # -----------------------------
     # 📍 FILTER BY DISTANCE

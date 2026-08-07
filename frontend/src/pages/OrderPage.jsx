@@ -560,13 +560,12 @@ export default function OrderPage({ initialSearchText }) {
       })()}
 
       {/* 🧠 SMART */}
-      {!loading && mode==="smart" && splitStores.map((s,i)=>{
-        // More robust store lookup (case-insensitive, trimmed)
-        const storeData = stores.find(st => 
-          st.store?.toLowerCase().trim() === s.store?.toLowerCase().trim()
-        );
+      {!loading && mode==="smart" && (() => {
+        // Show only optimized stores in Smart mode
+        const optimizedStores = stores.filter(s => s.is_optimized !== false);
+        console.log('🧠 Smart mode: Showing optimized stores:', optimizedStores);
         
-        return (
+        return optimizedStores.map((store, i) => (
           <div key={i} style={card}>
             <div 
               style={{ 
@@ -577,12 +576,12 @@ export default function OrderPage({ initialSearchText }) {
                 cursor: 'pointer',
                 padding: '4px 0'
               }}
-              onClick={() => storeData && setSelectedStoreDetails(storeData)}
+              onClick={() => setSelectedStoreDetails(store)}
             >
-              <b style={{ fontSize: 16 }}>🏪 {s.store}</b>
-              {storeData?.distance !== undefined ? (
+              <b style={{ fontSize: 16 }}>🏪 {store.store}</b>
+              {store.distance !== undefined ? (
                 <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
-                  📍 {storeData.distance} km
+                  📍 {store.distance} km
                 </span>
               ) : (
                 <span style={{ fontSize: 13, color: '#999' }}>
@@ -591,7 +590,7 @@ export default function OrderPage({ initialSearchText }) {
               )}
             </div>
 
-            {s.items.map((it,j)=>(
+            {store.items.map((it,j)=>(
               <div key={j} style={row}>
                 <span>
                   {it.name} ({it.packs||1} × {it.size}{it.unit})
@@ -601,10 +600,10 @@ export default function OrderPage({ initialSearchText }) {
               </div>
             ))}
 
-            <b>Subtotal: ₹{format(s.total)}</b>
+            <b>Subtotal: ₹{format(store.total)}</b>
           </div>
-        );
-      })}
+        ));
+      })()}
 
       {/* ⭐ FAVORITES MODE */}
       {!loading && mode==="favorites" && (() => {
