@@ -199,32 +199,55 @@ function FavoritesTab({ token }) {
           </div>
         ))}
 
-        {favorites.length < 3 && !showAddStore && (
-          <button onClick={() => setShowAddStore(true)} style={styles.addFavBtn}>
-            ➕ Add Favorite Store
-          </button>
-        )}
-
-        {showAddStore && (
-          <div style={styles.addStoreBox}>
-            <p style={styles.addStoreTitle}>Select a store:</p>
-            {allStores
-              .filter(s => !favorites.find(f => f.store_name === s.store))
-              .slice(0, 5)
-              .map((store) => (
-                <button
-                  key={store.store}
-                  onClick={() => addFavorite(store.store_id || store.store)}
-                  style={styles.storeOption}
-                >
-                  {store.store}
-                </button>
-              ))}
-            <button onClick={() => setShowAddStore(false)} style={styles.cancelBtn}>
-              Cancel
+        {favorites.length < 3 && !showAddStore && (() => {
+          const availableStores = allStores.filter(s => !favorites.find(f => f.store_name === s.store));
+          
+          if (availableStores.length === 0) {
+            return (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#666', background: '#f9f9f9', borderRadius: 12 }}>
+                <p>🔍 No stores available yet</p>
+                <p style={{ fontSize: 14, marginTop: 8 }}>Search for products on the home page to discover stores</p>
+              </div>
+            );
+          }
+          
+          return (
+            <button onClick={() => setShowAddStore(true)} style={styles.addFavBtn}>
+              ➕ Add Favorite Store
             </button>
-          </div>
-        )}
+          );
+        })()}
+
+        {showAddStore && (() => {
+          const availableStores = allStores.filter(s => !favorites.find(f => f.store_name === s.store));
+          
+          return (
+            <div style={styles.addStoreBox}>
+              <p style={styles.addStoreTitle}>Select a store:</p>
+              
+              {availableStores.length === 0 ? (
+                <div style={{ padding: '20px 0', color: '#666', textAlign: 'center' }}>
+                  <p>🔍 No stores available</p>
+                  <p style={{ fontSize: 14 }}>Search for products on the home page first to discover stores</p>
+                </div>
+              ) : (
+                availableStores.slice(0, 5).map((store) => (
+                  <button
+                    key={store.store}
+                    onClick={() => addFavorite(store.store_id)}
+                    style={styles.storeOption}
+                  >
+                    {store.store}
+                  </button>
+                ))
+              )}
+              
+              <button onClick={() => setShowAddStore(false)} style={styles.cancelBtn}>
+                Cancel
+              </button>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
