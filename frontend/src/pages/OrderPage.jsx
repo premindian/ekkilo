@@ -287,6 +287,50 @@ export default function OrderPage({ initialSearchText }) {
         </div>
       )}
 
+      {/* MODE INDICATOR */}
+      {!loading && result && stores.length > 0 && (
+        <div style={{ 
+          marginTop: 20, 
+          padding: 12, 
+          background: '#f0f8ff', 
+          borderRadius: 8, 
+          borderLeft: '4px solid #4CAF50' 
+        }}>
+          {mode === "smart" && (
+            <>
+              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>💰 Smart Buy Mode</div>
+              <div style={{ fontSize: 14, color: '#666' }}>
+                Showing optimal split across stores for best price + convenience
+              </div>
+            </>
+          )}
+          {mode === "favorites" && (
+            <>
+              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>⭐ Favorites Mode</div>
+              <div style={{ fontSize: 14, color: '#666' }}>
+                Showing only your favorite stores
+              </div>
+            </>
+          )}
+          {mode === "regular" && (
+            <>
+              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>🏪 Regular Store Mode</div>
+              <div style={{ fontSize: 14, color: '#666' }}>
+                Showing your trusted regular store: <strong>{regularStore || "Not set"}</strong>
+              </div>
+            </>
+          )}
+          {mode === "manual" && (
+            <>
+              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>✋ Manual Mode</div>
+              <div style={{ fontSize: 14, color: '#666' }}>
+                Pick items yourself from any store
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* 🧠 SMART */}
       {!loading && mode==="smart" && splitStores.map((s,i)=>(
         <div key={i} style={card}>
