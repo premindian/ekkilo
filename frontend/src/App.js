@@ -3,11 +3,12 @@ import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import OrderPage from './pages/OrderPage';
 import GroceryListsPage from './pages/GroceryListsPage';
+import OrderHistoryPage from './pages/OrderHistoryPage';
 import ProfilePage from './pages/ProfilePage';
 
 function App() {
   const { isAuthenticated, loading, user } = useAuth();
-  const [currentPage, setCurrentPage] = useState('order'); // order, lists, profile
+  const [currentPage, setCurrentPage] = useState('order'); // order, lists, history, profile
   const [searchText, setSearchText] = useState('');
 
   if (loading) {
@@ -44,7 +45,13 @@ function App() {
           onClick={() => setCurrentPage('lists')}
           style={currentPage === 'lists' ? styles.navBtnActive : styles.navBtn}
         >
-          📋 My Lists
+          📋 Lists
+        </button>
+        <button
+          onClick={() => setCurrentPage('history')}
+          style={currentPage === 'history' ? styles.navBtnActive : styles.navBtn}
+        >
+          📜 Orders
         </button>
         <button
           onClick={() => setCurrentPage('profile')}
@@ -62,6 +69,14 @@ function App() {
         {currentPage === 'lists' && (
           <GroceryListsPage
             onSelectList={(text) => {
+              setSearchText(text);
+              setCurrentPage('order');
+            }}
+          />
+        )}
+        {currentPage === 'history' && (
+          <OrderHistoryPage
+            onReorder={(text) => {
               setSearchText(text);
               setCurrentPage('order');
             }}
