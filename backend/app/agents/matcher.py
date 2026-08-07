@@ -2,6 +2,14 @@ from app.db.database import get_db
 
 
 class Matcher:
+    # Common brand names to strip from search queries
+    BRAND_KEYWORDS = [
+        'amul', 'mother dairy', 'britannia', 'parle', 'nestle', 'maggi',
+        'tata', 'fortune', 'saffola', 'sundrop', 'dalda', 'aashirvaad',
+        'india gate', 'kohinoor', 'daawat', 'basmati', 'annapurna',
+        'pillsbury', 'horlicks', 'bournvita', 'complan', 'boost'
+    ]
+    
     async def run(self, context):
         parsed = context.get("parsed_items")
 
@@ -56,9 +64,24 @@ class Matcher:
         context.set("matched_products", matched)
         return context
     
+    def _strip_brand_keywords(self, search_name):
+        """Remove common brand names from search query"""
+        cleaned = search_name.lower().strip()
+        
+        for brand in self.BRAND_KEYWORDS:
+            # Remove brand at start
+            if cleaned.startswith(brand + ' '):
+                cleaned = cleaned[len(brand)+1:].strip()
+            # Remove brand at end
+            if cleaned.endswith(' ' + brand):
+                cleaned = cleaned[:-len(brand)-1].strip()
+        
+        return cleaned if cleaned else search_name
+    
     async def _fallback_match(self, db, search_name):
-        """Direct fuzzy matching against products table"""
-        # Try exact match first
+        """Direct fuzzy matching against products table with smart brand stripping"""
+        
+        # STRATEGY 1: Try exact match first
         exact = await db.fetchval("""
             SELECT name FROM products 
             WHERE LOWER(name) = LOWER($1)
@@ -69,19 +92,34 @@ class Matcher:
             print(f"  ✓ Exact match: '{search_name}' → '{exact}'")
             return exact
         
-        # Try partial match (contains)
+        # STRATEGY 2: Strip brand keywords and try again
+        cleaned_name = self._strip_brand_keywords(search_name)
+        if cleaned_name != search_name:
+            print(f"  🧹 Stripped brands: '{search_name}' → '{cleaned_name}'")
+            
+            exact_cleaned = await db.fetchval("""
+                SELECT name FROM products 
+                WHERE LOWER(name) = LOWER($1)
+                LIMIT 1
+            """, cleaned_name)
+            
+            if exact_cleaned:
+                print(f"  ✓ Exact match after cleaning: '{cleaned_name}' → '{exact_cleaned}'")
+                return exact_cleaned
+        
+        # STRATEGY 3: Partial match on cleaned name (contains)
         partial = await db.fetchval("""
             SELECT name FROM products 
             WHERE LOWER(name) LIKE LOWER($1)
             ORDER BY LENGTH(name)
             LIMIT 1
-        """, f"%{search_name}%")
+        """, f"%{cleaned_name}%")
         
         if partial:
-            print(f"  ✓ Partial match: '{search_name}' → '{partial}'")
+            print(f"  ✓ Partial match: '{cleaned_name}' → '{partial}'")
             return partial
         
-        # Try reverse partial match (product name is in search query)
+        # STRATEGY 4: Reverse partial match (product name is in search query)
         reverse = await db.fetchval("""
             SELECT name FROM products 
             WHERE LOWER($1) LIKE LOWER('%' || name || '%')
@@ -92,6 +130,48 @@ class Matcher:
         if reverse:
             print(f"  ✓ Reverse match: '{search_name}' → '{reverse}'")
             return reverse
+        
+        # STRATEGY 5: Try common product synonyms
+        synonyms = {
+            'basmati': 'rice',
+            'atta': 'wheat flour',
+            'maida': 'refined flour',
+            'besan': 'gram flour',
+            'doodh': 'milk',
+            'tel': 'oil',
+            'cheeni': 'sugar',
+            'namak': 'salt',
+            'chawal': 'rice'
+        }
+        
+        for key, value in synonyms.items():
+            if key in search_name.lower():
+                synonym_match = await db.fetchval("""
+                    SELECT name FROM products 
+                    WHERE LOWER(name) LIKE LOWER($1)
+                    ORDER BY LENGTH(name)
+                    LIMIT 1
+                """, f"%{value}%")
+                
+                if synonym_match:
+                    print(f"  ✓ Synonym match: '{search_name}' ({key}) → '{synonym_match}'")
+                    return synonym_match
+        
+        # STRATEGY 6: Try word-by-word matching (last resort)
+        words = cleaned_name.split()
+        if len(words) > 1:
+            for word in sorted(words, key=len, reverse=True):  # Try longest words first
+                if len(word) > 2:  # Skip very short words
+                    word_match = await db.fetchval("""
+                        SELECT name FROM products 
+                        WHERE LOWER(name) LIKE LOWER($1)
+                        ORDER BY LENGTH(name)
+                        LIMIT 1
+                    """, f"%{word}%")
+                    
+                    if word_match:
+                        print(f"  ✓ Word match: '{search_name}' (word: '{word}') → '{word_match}'")
+                        return word_match
         
         # No match found, use original
         print(f"  ⚠️ No fuzzy match for '{search_name}', using as-is")
