@@ -291,30 +291,48 @@ export default function OrderPage({ initialSearchText }) {
         background: location ? '#f0fdf4' : (showCitySelector ? '#fef2f2' : '#fff8e1'),
         borderRadius: 8,
         marginTop: 10,
-        border: `1px solid ${location ? '#22c55e' : (showCitySelector ? '#ef4444' : '#fbbf24')}`
+        border: `1px solid ${location ? '#22c55e' : (showCitySelector ? '#ef4444' : '#fbbf24')}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8
       }}>
         {location ? (
           selectedCity ? (
-            <span style={{ color: '#166534' }}>
-              ✓ Showing stores in {cities[selectedCity].name}
-            </span>
+            <>
+              <span style={{ fontSize: 18 }}>🏙️</span>
+              <span style={{ color: '#166534', flex: 1 }}>
+                <strong>{cities[selectedCity].name}</strong> • Showing stores in this city
+              </span>
+            </>
           ) : localStorage.getItem('lastLocation') && gpsError ? (
-            <span style={{ color: '#166534' }}>
-              ✓ Using last known location • Showing nearby stores
-            </span>
+            <>
+              <span style={{ fontSize: 18 }}>📍</span>
+              <span style={{ color: '#166534', flex: 1 }}>
+                <strong>Last Known Location</strong> • Showing nearby stores
+              </span>
+            </>
           ) : (
-            <span style={{ color: '#166534' }}>
-              ✓ Location detected • Showing nearby stores
-            </span>
+            <>
+              <span style={{ fontSize: 18 }}>🛰️</span>
+              <span style={{ color: '#166534', flex: 1 }}>
+                <strong>GPS Active</strong> • Showing nearby stores
+              </span>
+            </>
           )
         ) : showCitySelector ? (
-          <span style={{ color: '#991b1b' }}>
-            ⚠️ Location needed • Select your city below
-          </span>
+          <>
+            <span style={{ fontSize: 18 }}>⚠️</span>
+            <span style={{ color: '#991b1b', flex: 1 }}>
+              Location needed • Select your city below
+            </span>
+          </>
         ) : (
-          <span style={{ color: '#92400e' }}>
-            ⏳ Fetching location... Distances will update shortly
-          </span>
+          <>
+            <span style={{ fontSize: 18 }}>⏳</span>
+            <span style={{ color: '#92400e', flex: 1 }}>
+              Getting GPS location... Distances will update shortly
+            </span>
+          </>
         )}
       </div>
 
@@ -528,7 +546,21 @@ export default function OrderPage({ initialSearchText }) {
       {/* 🧠 SMART */}
       {!loading && mode==="smart" && splitStores.map((s,i)=>(
         <div key={i} style={card}>
-          <b>🏪 {s.store}</b>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <b style={{ fontSize: 16 }}>🏪 {s.store}</b>
+            {(() => {
+              const storeData = stores.find(st => st.store === s.store);
+              return storeData?.distance !== undefined ? (
+                <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
+                  📍 {storeData.distance} km
+                </span>
+              ) : (
+                <span style={{ fontSize: 13, color: '#999' }}>
+                  ⏳ Distance...
+                </span>
+              );
+            })()}
+          </div>
 
           {s.items.map((it,j)=>(
             <div key={j} style={row}>
@@ -662,7 +694,21 @@ export default function OrderPage({ initialSearchText }) {
       {/* 🧩 MANUAL */}
       {!loading && mode==="manual" && Object.entries(result?.store_view || {}).map(([store, items])=>(
         <div key={store} style={premiumCard}>
-          <b>🏪 {store}</b>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f0f0f0' }}>
+            <b style={{ fontSize: 16 }}>🏪 {store}</b>
+            {(() => {
+              const storeData = stores.find(s => s.store === store);
+              return storeData?.distance !== undefined ? (
+                <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
+                  📍 {storeData.distance} km
+                </span>
+              ) : (
+                <span style={{ fontSize: 13, color: '#999' }}>
+                  ⏳ Distance...
+                </span>
+              );
+            })()}
+          </div>
 
           {Object.values(items).map((it,i)=>{
             const key=`${store}-${it.name}`;
