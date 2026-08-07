@@ -347,7 +347,10 @@ async def get_all_orders(token: str, status: str = None, limit: int = 50, offset
     db = await get_db()
     
     query = """
-        SELECT fo.*, 
+        SELECT fo.id, 
+               fo.customer_phone,
+               fo.created_at,
+               fo.status,
                COUNT(DISTINCT so.id) as store_count,
                COALESCE(SUM(so.total_amount), 0) as total_amount
         FROM final_orders fo
@@ -358,10 +361,10 @@ async def get_all_orders(token: str, status: str = None, limit: int = 50, offset
     if status:
         query += " WHERE so.status = $1"
         params.append(status.upper())
-        query += " GROUP BY fo.id ORDER BY fo.created_at DESC LIMIT $2 OFFSET $3"
+        query += " GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status ORDER BY fo.created_at DESC LIMIT $2 OFFSET $3"
         params.extend([limit, offset])
     else:
-        query += " GROUP BY fo.id ORDER BY fo.created_at DESC LIMIT $1 OFFSET $2"
+        query += " GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status ORDER BY fo.created_at DESC LIMIT $1 OFFSET $2"
         params.extend([limit, offset])
     
     orders = await db.fetch(query, *params)
