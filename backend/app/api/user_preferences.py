@@ -6,6 +6,38 @@ router = APIRouter()
 
 
 # -----------------------------
+# 🔍 FIND STORE BY PHONE
+# -----------------------------
+@router.get("/stores/by-phone/{phone}")
+async def find_store_by_phone(phone: str):
+    """Find store by WhatsApp number"""
+    db = await get_db()
+    
+    # Normalize phone
+    if not phone.startswith("91"):
+        phone = "91" + phone
+    
+    store = await db.fetchrow("""
+        SELECT 
+            id,
+            name,
+            phone,
+            lat,
+            lng
+        FROM stores
+        WHERE phone = $1
+    """, phone)
+    
+    if not store:
+        return {"found": False}
+    
+    return {
+        "found": True,
+        "store": dict(store)
+    }
+
+
+# -----------------------------
 # ⭐ GET FAVORITE STORES
 # -----------------------------
 @router.get("/favorites/stores")

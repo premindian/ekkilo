@@ -122,6 +122,9 @@ function FavoritesTab({ token }) {
   const [allStores, setAllStores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddStore, setShowAddStore] = useState(false);
+  const [phoneSearch, setPhoneSearch] = useState('');
+  const [phoneSearchResult, setPhoneSearchResult] = useState(null);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     loadFavorites();
@@ -154,6 +157,22 @@ function FavoritesTab({ token }) {
     }
   };
 
+  const searchByPhone = async () => {
+    if (!phoneSearch || phoneSearch.length < 10) return;
+
+    setSearching(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/stores/by-phone/${phoneSearch}`);
+      const data = await res.json();
+      setPhoneSearchResult(data);
+    } catch (err) {
+      console.error('Search failed:', err);
+      setPhoneSearchResult({ found: false });
+    } finally {
+      setSearching(false);
+    }
+  };
+
   const addFavorite = async (storeId) => {
     try {
       await fetch(`${API_BASE}/api/favorites/stores?token=${token}`, {
@@ -163,6 +182,8 @@ function FavoritesTab({ token }) {
       });
       loadFavorites();
       setShowAddStore(false);
+      setPhoneSearch('');
+      setPhoneSearchResult(null);
     } catch (err) {
       alert('Failed to add favorite');
     }
@@ -218,20 +239,83 @@ function FavoritesTab({ token }) {
           );
         })()}
 
-        {showAddStore && (() => {
-          const availableStores = allStores.filter(s => !favorites.find(f => f.store_name === s.store));
-          
-          return (
-            <div style={styles.addStoreBox}>
-              <p style={styles.addStoreTitle}>Select a store:</p>
+        {showAddStore && (
+          <div style={styles.addStoreBox}>
+            <p style={styles.addStoreTitle}>Add Favorite Store</p>
+            
+            {/* Phone Search */}
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 14, marginBottom: 8, color: '#666' }}>
+                📱 Search by WhatsApp Number:
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="tel"
+                  placeholder="10-digit number"
+                  value={phoneSearch}
+                  onChange={(e) => setPhoneSearch(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  style={{ ...styles.input, flex: 1 }}
+                  maxLength={10}
+                />
+                <button
+                  onClick={searchByPhone}
+                  disabled={phoneSearch.length !== 10 || searching}
+                  style={{
+                    ...styles.saveBtn,
+                    flex: 'none',
+                    width: 'auto',
+                    padding: '0 20px',
+                    opacity: phoneSearch.length !== 10 ? 0.5 : 1
+                  }}
+                >
+                  {searching ? '...' : '🔍'}
+                </button>
+              </div>
+
+              {/* Phone Search Result */}
+              {phoneSearchResult && (
+                phoneSearchResult.found ? (
+                  <div style={{ marginTop: 12, padding: 12, background: '#f0fdf4', borderRadius: 8, border: '1px solid #22c55e' }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                      ✅ Found: {phoneSearchResult.store.name}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
+                      {phoneSearchResult.store.phone}
+                    </div>
+                    <button
+                      onClick={() => addFavorite(phoneSearchResult.store.id)}
+                      style={{ ...styles.saveBtn, width: '100%', padding: '10px' }}
+                    >
+                      ⭐ Add to Favorites
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 12, padding: 12, background: '#fef2f2', borderRadius: 8, border: '1px solid #ef4444' }}>
+                    <div style={{ fontSize: 14, color: '#dc2626' }}>
+                      ❌ Store not found
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+              <p style={{ fontSize: 14, marginBottom: 12, color: '#666' }}>
+                Or browse available stores:
+              </p>
               
-              {availableStores.length === 0 ? (
-                <div style={{ padding: '20px 0', color: '#666', textAlign: 'center' }}>
-                  <p>🔍 No stores available</p>
-                  <p style={{ fontSize: 14 }}>Search for products on the home page first to discover stores</p>
-                </div>
-              ) : (
-                availableStores.slice(0, 5).map((store) => (
+              {(() => {
+                const availableStores = allStores.filter(s => !favorites.find(f => f.store_name === s.store));
+                
+                if (availableStores.length === 0) {
+                  return (
+                    <div style={{ padding: '20px 0', color: '#666', textAlign: 'center' }}>
+                      <p style={{ fontSize: 14 }}>Search for products on the home page first</p>
+                    </div>
+                  );
+                }
+                
+                return availableStores.slice(0, 5).map((store) => (
                   <button
                     key={store.store}
                     onClick={() => addFavorite(store.store_id)}
@@ -239,15 +323,22 @@ function FavoritesTab({ token }) {
                   >
                     {store.store}
                   </button>
-                ))
-              )}
-              
-              <button onClick={() => setShowAddStore(false)} style={styles.cancelBtn}>
-                Cancel
-              </button>
+                ));
+              })()}
             </div>
-          );
-        })()}
+            
+            <button 
+              onClick={() => {
+                setShowAddStore(false);
+                setPhoneSearch('');
+                setPhoneSearchResult(null);
+              }} 
+              style={styles.cancelBtn}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

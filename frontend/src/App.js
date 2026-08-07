@@ -76,6 +76,7 @@ function App() {
         <Onboarding
           onComplete={completeOnboarding}
           onSkip={completeOnboarding}
+          token={token}
         />
       )}
       {/* Header */}
