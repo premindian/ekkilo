@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 
-// Use relative URL to avoid CORS issues (same domain)
+// Backend is on separate domain
 const API_BASE = window.location.hostname.includes('localhost') 
   ? "http://localhost:8000" 
-  : "";
+  : "https://ekkilo.onrender.com";
 
 export default function OrderPage({ initialSearchText }) {
   const { user, token } = useAuth();

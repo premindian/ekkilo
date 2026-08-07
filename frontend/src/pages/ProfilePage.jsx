@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-const API_BASE = window.location.hostname.includes("localhost") ? "http://localhost:8000" : "";
+const API_BASE = window.location.hostname.includes("localhost") ? "http://localhost:8000" : "https://ekkilo.onrender.com";
 
 export default function ProfilePage({ onClose }) {
   const { user, token, logout, updateUser } = useAuth();

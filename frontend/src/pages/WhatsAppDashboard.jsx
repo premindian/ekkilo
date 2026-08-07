@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip
 } from "recharts";
 
-const API_BASE = window.location.hostname.includes("localhost") ? "http://localhost:8000" : "";
+const API_BASE = window.location.hostname.includes("localhost") ? "http://localhost:8000" : "https://ekkilo.onrender.com";
 const WS_BASE = "wss://ekkilo.onrender.com";
 
 export default function AdminDashboard() {
