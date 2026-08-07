@@ -1,5 +1,6 @@
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from contextlib import asynccontextmanager
 import asyncio
 
@@ -52,11 +53,20 @@ app.add_middleware(
 
 
 # -----------------------------------------
-# ✅ PREFLIGHT (OPTIONAL)
+# ✅ PREFLIGHT WITH EXPLICIT CORS HEADERS
 # -----------------------------------------
+from fastapi.responses import Response
+
 @app.options("/{full_path:path}")
 async def preflight_handler():
-    return {"ok": True}
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 
 # -----------------------------------------
