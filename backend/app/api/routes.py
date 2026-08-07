@@ -312,6 +312,7 @@ async def search_products(data: dict):
     if user_lat and user_lng and store_names:
         rows = await db.fetch("""
             SELECT 
+                id,
                 name,
                 phone,
                 lat,
@@ -329,6 +330,7 @@ async def search_products(data: dict):
 
         store_map = {
             r["name"]: {
+                "id": r["id"],
                 "phone": r["phone"],
                 "lat": r["lat"],
                 "lng": r["lng"],
@@ -339,13 +341,14 @@ async def search_products(data: dict):
 
     else:
         rows = await db.fetch("""
-            SELECT name, phone, lat, lng 
+            SELECT id, name, phone, lat, lng 
             FROM stores 
             WHERE name = ANY($1)
         """, store_names)
 
         store_map = {
             r["name"]: {
+                "id": r["id"],
                 "phone": r["phone"],
                 "lat": r["lat"],
                 "lng": r["lng"]
@@ -391,6 +394,7 @@ async def search_products(data: dict):
 
         store_obj = {
             "store": store,
+            "store_id": store_data.get("id"),
             "store_phone": store_phone,
             "items": items,
             "total": store_total
