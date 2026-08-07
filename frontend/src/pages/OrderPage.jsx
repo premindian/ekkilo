@@ -238,14 +238,14 @@ export default function OrderPage({ initialSearchText }) {
 
       {/* MODES */}
       <div style={{ marginTop: 10, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        <button onClick={() => setMode("smart")} style={mode==="smart"?active:tab}>
-          💰 Smart Buy
+        <button onClick={() => setMode("regular")} style={mode==="regular"?active:tab}>
+          🏪 Regular
         </button>
         <button onClick={() => setMode("favorites")} style={mode==="favorites"?active:tab}>
           ⭐ Favorites
         </button>
-        <button onClick={() => setMode("regular")} style={mode==="regular"?active:tab}>
-          🏪 Regular
+        <button onClick={() => setMode("smart")} style={mode==="smart"?active:tab}>
+          💰 Smart Buy
         </button>
         <button onClick={() => setMode("manual")} style={mode==="manual"?active:tab}>
           ✋ Manual
