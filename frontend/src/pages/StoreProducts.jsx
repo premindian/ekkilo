@@ -13,8 +13,10 @@ export default function StoreProducts() {
   const [editStock, setEditStock] = useState('');
 
   useEffect(() => {
-    loadProducts();
-  }, [search]);
+    if (token) {
+      loadProducts();
+    }
+  }, [search, token]);
 
   const loadProducts = async () => {
     console.log('🔍 Loading products...');
