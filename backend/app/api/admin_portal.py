@@ -343,7 +343,6 @@ async def delete_product(product_id: int, token: str):
 async def get_all_orders(token: str, status: str = None, limit: int = 50, offset: int = 0):
     """Get all orders platform-wide"""
     admin = await check_admin(token)
-    print(f"🔍 Admin user: {admin['phone']}")
     
     db = await get_db()
     
@@ -368,9 +367,6 @@ async def get_all_orders(token: str, status: str = None, limit: int = 50, offset
         query += " GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status ORDER BY fo.created_at DESC LIMIT $1 OFFSET $2"
         params.extend([limit, offset])
     
-    print(f"📊 Query: {query}")
-    print(f"📊 Params: {params}")
     orders = await db.fetch(query, *params)
-    print(f"✅ Orders fetched: {len(orders)}")
     
     return [dict(o) for o in orders]

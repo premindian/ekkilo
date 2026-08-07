@@ -5,37 +5,28 @@ const API_BASE = "";
 
 export default function AdminOrders() {
   const { token } = useAuth();
-  console.log('🎬 AdminOrders component rendered, token:', token ? 'exists' : 'missing', 'actual token:', token);
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('⚡ useEffect triggered, token:', token ? 'exists' : 'missing', 'filter:', filter);
     if (token) {
-      console.log('✅ Token exists, calling loadOrders()');
       loadOrders();
-    } else {
-      console.log('❌ Token missing, not calling loadOrders()');
     }
   }, [token, filter]);
 
   const loadOrders = async () => {
-    console.log('🔍 Loading orders... token:', token ? 'exists' : 'missing');
     setLoading(true);
     try {
       const url = filter === 'ALL'
         ? `${API_BASE}/api/admin/orders?token=${token}`
         : `${API_BASE}/api/admin/orders?token=${token}&status=${filter}`;
       
-      console.log('📡 Fetching:', url);
       const res = await fetch(url);
-      console.log('📊 Response status:', res.status);
       const data = await res.json();
-      console.log('✅ Orders loaded:', data.length, 'orders');
       setOrders(data);
     } catch (err) {
-      console.error('❌ Failed to load orders:', err);
+      console.error('Failed to load orders:', err);
     } finally {
       setLoading(false);
     }
@@ -43,11 +34,6 @@ export default function AdminOrders() {
 
   return (
     <div style={styles.container}>
-      {/* DEBUG INFO */}
-      <div style={{background: 'yellow', padding: '10px', margin: '10px', fontWeight: 'bold'}}>
-        🔍 DEBUG: Token: {token ? 'EXISTS' : 'MISSING'} | Orders: {orders.length} | Filter: {filter}
-      </div>
-      
       {/* Header */}
       <div style={styles.header}>
         <div>
