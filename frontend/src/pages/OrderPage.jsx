@@ -583,34 +583,187 @@ export default function OrderPage({ initialSearchText }) {
   );
 }
 
-// 🎨 styles
-const container={maxWidth:520,margin:"auto",padding:16,paddingBottom:90};
-const searchBox={display:"flex",gap:8,background:"#fff",padding:10,borderRadius:12,marginTop:10};
-const card={background:"#fff",padding:12,marginTop:10,borderRadius:12};
-const row={display:"flex",justifyContent:"space-between"};
-const btn={background:"#22c55e",color:"#fff",border:"none",padding:10,borderRadius:10};
-const tab={marginRight:10};
-const active={marginRight:10,fontWeight:"bold"};
+// 🎨 Mobile-First Responsive Styles
+const container={
+  maxWidth:520,
+  margin:"auto",
+  padding:"12px",
+  paddingBottom:100,
+  fontSize:"16px", // Prevents iOS zoom on input focus
+};
+
+const searchBox={
+  display:"flex",
+  gap:8,
+  background:"#fff",
+  padding:"12px",
+  borderRadius:12,
+  marginTop:10,
+  boxShadow:"0 2px 8px rgba(0,0,0,0.06)"
+};
+
+const card={
+  background:"#fff",
+  padding:"14px",
+  marginTop:10,
+  borderRadius:12,
+  boxShadow:"0 2px 6px rgba(0,0,0,0.04)"
+};
+
+const row={
+  display:"flex",
+  justifyContent:"space-between",
+  alignItems:"center",
+  padding:"8px 0"
+};
+
+const btn={
+  background:"#22c55e",
+  color:"#fff",
+  border:"none",
+  padding:"12px 20px",
+  borderRadius:10,
+  fontSize:16,
+  fontWeight:600,
+  cursor:"pointer",
+  minHeight:44, // Touch-friendly
+  touchAction:"manipulation" // Prevents double-tap zoom
+};
+
+const tab={
+  padding:"10px 16px",
+  marginRight:6,
+  marginBottom:6,
+  border:"1px solid #ddd",
+  borderRadius:8,
+  background:"#fff",
+  fontSize:14,
+  cursor:"pointer",
+  minHeight:44, // Touch-friendly
+  touchAction:"manipulation"
+};
+
+const active={
+  padding:"10px 16px",
+  marginRight:6,
+  marginBottom:6,
+  border:"2px solid #22c55e",
+  borderRadius:8,
+  background:"#f0fdf4",
+  fontSize:14,
+  fontWeight:"bold",
+  cursor:"pointer",
+  minHeight:44,
+  touchAction:"manipulation"
+};
 
 const bottom={
   position:"fixed",
-  bottom:0,left:0,right:0,
+  bottom:0,
+  left:0,
+  right:0,
   background:"#000",
   color:"#fff",
   display:"flex",
   justifyContent:"space-between",
-  padding:12
+  alignItems:"center",
+  padding:"14px 16px",
+  boxShadow:"0 -4px 12px rgba(0,0,0,0.15)",
+  zIndex:1000,
+  minHeight:70 // Comfortable for thumbs
 };
 
-const popup={position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",justifyContent:"center",alignItems:"center"};
-const popupBox={background:"#fff",padding:20,borderRadius:10,width:300};
-const input={width:"100%",padding:10};
+const popup={
+  position:"fixed",
+  top:0,left:0,right:0,bottom:0,
+  background:"rgba(0,0,0,0.5)",
+  display:"flex",
+  justifyContent:"center",
+  alignItems:"center",
+  padding:16,
+  zIndex:2000
+};
 
-const premiumCard={background:"#fff",padding:16,borderRadius:16,marginTop:14,boxShadow:"0 4px 14px rgba(0,0,0,0.08)"};
-const headerRow={display:"flex",justifyContent:"space-between"};
-const bestBadge={marginLeft:8,background:"#22c55e",color:"#fff",padding:"2px 6px",borderRadius:6,fontSize:10};
-const distance={fontSize:12,color:"#666"};
-const reasonText={fontSize:12,color:"#666",marginTop:6};
-const itemBlock={display:"flex",justifyContent:"space-between",marginTop:10};
-const itemMeta={fontSize:12,color:"#888"};
-const orderButton={marginTop:12,width:"100%",padding:12,background:"#22c55e",color:"#fff",border:"none",borderRadius:12};
+const popupBox={
+  background:"#fff",
+  padding:"24px",
+  borderRadius:12,
+  maxWidth:340,
+  width:"100%"
+};
+
+const input={
+  width:"100%",
+  padding:"12px",
+  fontSize:16,
+  border:"1px solid #ddd",
+  borderRadius:8
+};
+
+const premiumCard={
+  background:"#fff",
+  padding:"16px",
+  borderRadius:12,
+  marginTop:12,
+  boxShadow:"0 2px 8px rgba(0,0,0,0.06)"
+};
+
+const headerRow={
+  display:"flex",
+  justifyContent:"space-between",
+  alignItems:"flex-start",
+  gap:12
+};
+
+const bestBadge={
+  marginLeft:6,
+  background:"#22c55e",
+  color:"#fff",
+  padding:"4px 8px",
+  borderRadius:6,
+  fontSize:11,
+  fontWeight:600
+};
+
+const distance={
+  fontSize:13,
+  color:"#666",
+  marginTop:4
+};
+
+const reasonText={
+  fontSize:13,
+  color:"#666",
+  marginTop:8,
+  lineHeight:1.4
+};
+
+const itemBlock={
+  display:"flex",
+  justifyContent:"space-between",
+  alignItems:"center",
+  marginTop:12,
+  padding:"10px 0",
+  borderBottom:"1px solid #f0f0f0"
+};
+
+const itemMeta={
+  fontSize:13,
+  color:"#888",
+  marginTop:4
+};
+
+const orderButton={
+  marginTop:16,
+  width:"100%",
+  padding:"14px",
+  background:"#22c55e",
+  color:"#fff",
+  border:"none",
+  borderRadius:10,
+  fontSize:16,
+  fontWeight:600,
+  cursor:"pointer",
+  minHeight:48,
+  touchAction:"manipulation"
+};
