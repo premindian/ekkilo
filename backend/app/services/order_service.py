@@ -39,11 +39,18 @@ async def create_full_order(stores, customer_phone):
         # -----------------------------
         # 🏪 INSERT STORE ORDER
         # -----------------------------
+        # Get store_id from stores table
+        store_record = await db.fetchrow("""
+            SELECT id FROM stores WHERE phone = $1 LIMIT 1
+        """, store_phone)
+        
+        store_id = store_record["id"] if store_record else None
+        
         so = await db.fetchrow("""
-            INSERT INTO store_orders (final_order_id, store_name, store_phone)
-            VALUES ($1, $2, $3)
+            INSERT INTO store_orders (final_order_id, store_name, store_phone, store_id)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
-        """, final_order_id, store.get("store"), store_phone)
+        """, final_order_id, store.get("store"), store_phone, store_id)
 
         store_order_id = so["id"]
 

@@ -64,14 +64,13 @@ async def get_store_dashboard(token: str):
     pending_orders = await db.fetch("""
         SELECT 
             so.id,
-            so.store_order_id,
-            o.id as order_id,
-            o.customer_phone,
-            so.store_items,
+            fo.id as final_order_id,
+            fo.customer_phone,
+            so.store_name,
             so.status,
             so.created_at
         FROM store_orders so
-        JOIN orders o ON so.order_id = o.id
+        JOIN final_orders fo ON so.final_order_id = fo.id
         WHERE so.store_id = $1 
         AND so.status IN ('PENDING', 'ACCEPTED')
         ORDER BY so.created_at DESC
@@ -127,15 +126,14 @@ async def get_store_orders(
     query = """
         SELECT 
             so.id,
-            so.store_order_id,
-            o.id as order_id,
-            o.customer_phone,
-            so.store_items,
+            fo.id as final_order_id,
+            fo.customer_phone,
+            so.store_name,
             so.status,
             so.created_at,
             so.updated_at
         FROM store_orders so
-        JOIN orders o ON so.order_id = o.id
+        JOIN final_orders fo ON so.final_order_id = fo.id
         WHERE so.store_id = $1
     """
     
