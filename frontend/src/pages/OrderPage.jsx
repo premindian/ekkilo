@@ -282,57 +282,69 @@ export default function OrderPage({ initialSearchText }) {
   return (
     <div style={container}>
 
-      <h2>🛒 Smart Kirana</h2>
-
       {/* GPS STATUS */}
       <div style={{ 
         fontSize: 13, 
-        padding: '10px 12px', 
+        padding: '12px 14px', 
         background: location ? '#f0fdf4' : (showCitySelector ? '#fef2f2' : '#fff8e1'),
-        borderRadius: 8,
-        marginTop: 10,
-        border: `1px solid ${location ? '#22c55e' : (showCitySelector ? '#ef4444' : '#fbbf24')}`,
+        borderRadius: 10,
+        border: `2px solid ${location ? '#22c55e' : (showCitySelector ? '#ef4444' : '#fbbf24')}`,
         display: 'flex',
-        alignItems: 'center',
-        gap: 8
+        flexDirection: 'column',
+        gap: 6
       }}>
         {location ? (
           selectedCity ? (
             <>
-              <span style={{ fontSize: 18 }}>🏙️</span>
-              <span style={{ color: '#166534', flex: 1 }}>
-                <strong>{cities[selectedCity].name}</strong> • Showing stores in this city
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>🏙️</span>
+                <span style={{ color: '#166534', fontWeight: 600 }}>
+                  {cities[selectedCity].name}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
+                📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
+              </div>
             </>
           ) : localStorage.getItem('lastLocation') && gpsError ? (
             <>
-              <span style={{ fontSize: 18 }}>📍</span>
-              <span style={{ color: '#166534', flex: 1 }}>
-                <strong>Last Known Location</strong> • Showing nearby stores
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>📍</span>
+                <span style={{ color: '#166534', fontWeight: 600 }}>
+                  Last Known Location
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
+                📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
+              </div>
             </>
           ) : (
             <>
-              <span style={{ fontSize: 18 }}>🛰️</span>
-              <span style={{ color: '#166534', flex: 1 }}>
-                <strong>GPS Active</strong> • Showing nearby stores
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>🛰️</span>
+                <span style={{ color: '#166534', fontWeight: 600 }}>
+                  GPS Active
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
+                📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
+              </div>
             </>
           )
         ) : showCitySelector ? (
-          <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 18 }}>⚠️</span>
-            <span style={{ color: '#991b1b', flex: 1 }}>
+            <span style={{ color: '#991b1b', fontWeight: 600 }}>
               Location needed • Select your city below
             </span>
-          </>
+          </div>
         ) : (
-          <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 18 }}>⏳</span>
-            <span style={{ color: '#92400e', flex: 1 }}>
-              Getting GPS location... Distances will update shortly
+            <span style={{ color: '#92400e', fontWeight: 600 }}>
+              Getting GPS location... Please wait
             </span>
-          </>
+          </div>
         )}
       </div>
 
