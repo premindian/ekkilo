@@ -87,9 +87,14 @@ export default function StoreDashboard() {
           <h1 style={styles.title}>🏪 {store.name}</h1>
           <p style={styles.subtitle}>{store.phone}</p>
         </div>
-        <button onClick={logout} style={styles.logoutBtn}>
-          🚪 Logout
-        </button>
+        <div style={styles.headerActions}>
+          <button onClick={() => window.location.href = '/store/settings'} style={styles.settingsBtn}>
+            ⚙️
+          </button>
+          <button onClick={logout} style={styles.logoutBtn}>
+            🚪 Logout
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -263,6 +268,18 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 20,
+  },
+  headerActions: {
+    display: 'flex',
+    gap: 8,
+  },
+  settingsBtn: {
+    padding: '8px 12px',
+    background: '#f3f4f6',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 18,
+    cursor: 'pointer',
   },
   title: {
     margin: 0,

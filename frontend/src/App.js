@@ -10,6 +10,7 @@ import StoreDashboard from './pages/StoreDashboard';
 import StoreProducts from './pages/StoreProducts';
 import StoreOrders from './pages/StoreOrders';
 import StoreReports from './pages/StoreReports';
+import StoreSettings from './pages/StoreSettings';
 
 const API_BASE = "";
 
@@ -91,6 +92,9 @@ function App() {
     }
     if (currentPage === '/store/reports') {
       return <StoreReports />;
+    }
+    if (currentPage === '/store/settings') {
+      return <StoreSettings />;
     }
     if (currentPage === '/store') {
       return <StoreDashboard />;

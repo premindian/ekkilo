@@ -341,6 +341,153 @@ async def remove_store_product(product_id: int, token: str):
 
 
 # ============================================
+# SETTINGS - Store Configuration
+# ============================================
+@router.get("/settings")
+async def get_store_settings(token: str):
+    """Get store settings and profile"""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    
+    db = await get_db()
+    
+    # Get store info
+    store = await db.fetchrow("""
+        SELECT * FROM stores WHERE id = $1
+    """, store_id)
+    
+    # Get store settings (if table exists)
+    settings = await db.fetchrow("""
+        SELECT * FROM store_settings WHERE store_id = $1
+    """, store_id) if await db.fetchval("SELECT EXISTS(SELECT FROM information_schema.tables WHERE table_name = 'store_settings')") else None
+    
+    # Get notification settings
+    notifications = await db.fetchrow("""
+        SELECT * FROM store_notifications WHERE store_id = $1
+    """, store_id) if await db.fetchval("SELECT EXISTS(SELECT FROM information_schema.tables WHERE table_name = 'store_notifications')") else None
+    
+    return {
+        "store": dict(store) if store else {},
+        "settings": dict(settings) if settings else {},
+        "notifications": dict(notifications) if notifications else {}
+    }
+
+
+@router.patch("/settings/profile")
+async def update_store_profile(data: dict, token: str):
+    """Update store profile information"""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    
+    db = await get_db()
+    
+    name = data.get("name")
+    phone = data.get("phone")
+    address = data.get("address")
+    lat = data.get("lat")
+    lng = data.get("lng")
+    description = data.get("description")
+    open_time = data.get("open_time")
+    close_time = data.get("close_time")
+    
+    await db.execute("""
+        UPDATE stores
+        SET name = COALESCE($1, name),
+            phone = COALESCE($2, phone),
+            address = COALESCE($3, address),
+            lat = COALESCE($4, lat),
+            lng = COALESCE($5, lng),
+            description = COALESCE($6, description),
+            open_time = COALESCE($7, open_time),
+            close_time = COALESCE($8, close_time)
+        WHERE id = $9
+    """, name, phone, address, lat, lng, description, open_time, close_time, store_id)
+    
+    return {"status": "success"}
+
+
+@router.patch("/settings/store")
+async def update_store_settings(data: dict, token: str):
+    """Update store operational settings"""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    
+    db = await get_db()
+    
+    # Create store_settings table if doesn't exist
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS store_settings (
+            id SERIAL PRIMARY KEY,
+            store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
+            delivery_radius DECIMAL(10,2) DEFAULT 5.0,
+            min_order DECIMAL(10,2) DEFAULT 0,
+            is_open BOOLEAN DEFAULT TRUE,
+            auto_accept_orders BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+    
+    delivery_radius = data.get("delivery_radius")
+    min_order = data.get("min_order")
+    is_open = data.get("is_open")
+    auto_accept = data.get("auto_accept_orders")
+    
+    # Upsert settings
+    await db.execute("""
+        INSERT INTO store_settings (store_id, delivery_radius, min_order, is_open, auto_accept_orders)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (store_id) DO UPDATE SET
+            delivery_radius = COALESCE($2, store_settings.delivery_radius),
+            min_order = COALESCE($3, store_settings.min_order),
+            is_open = COALESCE($4, store_settings.is_open),
+            auto_accept_orders = COALESCE($5, store_settings.auto_accept_orders),
+            updated_at = NOW()
+    """, store_id, delivery_radius, min_order, is_open, auto_accept)
+    
+    return {"status": "success"}
+
+
+@router.patch("/settings/notifications")
+async def update_notification_settings(data: dict, token: str):
+    """Update notification preferences"""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    
+    db = await get_db()
+    
+    # Create store_notifications table if doesn't exist
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS store_notifications (
+            id SERIAL PRIMARY KEY,
+            store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
+            whatsapp_enabled BOOLEAN DEFAULT TRUE,
+            low_stock_alert BOOLEAN DEFAULT TRUE,
+            low_stock_threshold INTEGER DEFAULT 5,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+    
+    whatsapp_enabled = data.get("whatsapp_enabled")
+    low_stock_alert = data.get("low_stock_alert")
+    low_stock_threshold = data.get("low_stock_threshold")
+    
+    # Upsert notification settings
+    await db.execute("""
+        INSERT INTO store_notifications (store_id, whatsapp_enabled, low_stock_alert, low_stock_threshold)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (store_id) DO UPDATE SET
+            whatsapp_enabled = COALESCE($2, store_notifications.whatsapp_enabled),
+            low_stock_alert = COALESCE($3, store_notifications.low_stock_alert),
+            low_stock_threshold = COALESCE($4, store_notifications.low_stock_threshold),
+            updated_at = NOW()
+    """, store_id, whatsapp_enabled, low_stock_alert, low_stock_threshold)
+    
+    return {"status": "success"}
+
+
+# ============================================
 # REPORTS - Sales & Analytics
 # ============================================
 @router.get("/reports/sales")
