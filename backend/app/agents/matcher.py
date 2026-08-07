@@ -137,17 +137,27 @@ class Matcher:
             print(f"  ✓ Reverse match: '{search_name}' → '{reverse}'")
             return reverse
         
-        # STRATEGY 5: Try common product synonyms
+        # STRATEGY 5: Try common product synonyms + typos
         synonyms = {
+            # Common synonyms (Hindi/English)
             'basmati': 'rice',
+            'basmathi': 'rice',  # Common typo
+            'basumati': 'rice',  # Common typo
             'atta': 'wheat flour',
             'maida': 'refined flour',
             'besan': 'gram flour',
             'doodh': 'milk',
+            'dhood': 'milk',  # Common typo
             'tel': 'oil',
+            'tail': 'oil',  # Common typo
             'cheeni': 'sugar',
+            'chini': 'sugar',  # Common typo
             'namak': 'salt',
-            'chawal': 'rice'
+            'chawal': 'rice',
+            'chaawal': 'rice',  # Common typo
+            # Brand name typos
+            'amool': 'milk',
+            'ammul': 'milk',
         }
         
         for key, value in synonyms.items():
