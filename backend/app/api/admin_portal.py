@@ -39,24 +39,24 @@ async def get_admin_dashboard(token: str):
     db = await get_db()
     
     # Total stats
-    total_stores = await db.fetchval("SELECT COUNT(*) FROM stores")
-    total_users = await db.fetchval("SELECT COUNT(*) FROM users")
-    total_orders = await db.fetchval("SELECT COUNT(*) FROM store_orders")
-    total_revenue = await db.fetchval("""
-        SELECT COALESCE(SUM(total_amount), 0) FROM store_orders 
+    total_stores = await db.fetchrow("SELECT COUNT(*) as count FROM stores")
+    total_users = await db.fetchrow("SELECT COUNT(*) as count FROM users")
+    total_orders = await db.fetchrow("SELECT COUNT(*) as count FROM store_orders")
+    total_revenue = await db.fetchrow("""
+        SELECT COALESCE(SUM(total_amount), 0) as revenue FROM store_orders 
         WHERE status = 'COMPLETED'
     """)
     
     # Today's stats
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_orders = await db.fetchval("""
-        SELECT COUNT(*) FROM store_orders WHERE created_at >= $1
+    today_orders = await db.fetchrow("""
+        SELECT COUNT(*) as count FROM store_orders WHERE created_at >= $1
     """, today_start)
-    today_users = await db.fetchval("""
-        SELECT COUNT(*) FROM users WHERE created_at >= $1
+    today_users = await db.fetchrow("""
+        SELECT COUNT(*) as count FROM users WHERE created_at >= $1
     """, today_start)
-    today_revenue = await db.fetchval("""
-        SELECT COALESCE(SUM(total_amount), 0) FROM store_orders 
+    today_revenue = await db.fetchrow("""
+        SELECT COALESCE(SUM(total_amount), 0) as revenue FROM store_orders 
         WHERE created_at >= $1 AND status = 'COMPLETED'
     """, today_start)
     
@@ -76,13 +76,13 @@ async def get_admin_dashboard(token: str):
     """)
     
     return {
-        "total_stores": total_stores,
-        "total_users": total_users,
-        "total_orders": total_orders,
-        "total_revenue": float(total_revenue) if total_revenue else 0,
-        "today_orders": today_orders,
-        "today_users": today_users,
-        "today_revenue": float(today_revenue) if today_revenue else 0,
+        "total_stores": total_stores["count"] if total_stores else 0,
+        "total_users": total_users["count"] if total_users else 0,
+        "total_orders": total_orders["count"] if total_orders else 0,
+        "total_revenue": float(total_revenue["revenue"]) if total_revenue else 0,
+        "today_orders": today_orders["count"] if today_orders else 0,
+        "today_users": today_users["count"] if today_users else 0,
+        "today_revenue": float(today_revenue["revenue"]) if today_revenue else 0,
         "top_stores": [dict(s) for s in top_stores]
     }
 
