@@ -2,9 +2,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from app.db.database import get_db
 import random
 import secrets
+import os
 from datetime import datetime, timedelta
 
 router = APIRouter()
+
+# Development mode - set to False in production
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
 
 # -----------------------------
@@ -35,19 +39,31 @@ async def send_otp(data: dict):
         VALUES ($1, $2, $3)
     """, phone, otp, expires_at)
     
-    # TODO: Send OTP via SMS/WhatsApp
-    # For now, we'll just return it in development
-    print(f"🔐 OTP for {phone}: {otp}")
+    # Send OTP via WhatsApp
+    from app.services.whatsapp.send_message import send_message
     
-    # In production, send via SMS API
-    # from app.services.whatsapp import send_message
-    # await send_message(phone, f"Your Ekkilo OTP is: {otp}")
+    otp_sent = False
+    try:
+        await send_message(phone, f"🔐 Your Ekkilo verification code is: {otp}\n\nThis code expires in 10 minutes.")
+        print(f"✅ OTP sent to {phone}: {otp}")
+        otp_sent = True
+    except Exception as e:
+        print(f"❌ Failed to send OTP to {phone}: {e}")
+        print(f"📝 OTP for manual testing: {otp}")
+        # Still allow registration to proceed even if SMS fails
     
-    return {
+    response = {
         "status": "sent",
         "phone": phone,
-        "otp": otp  # Remove this in production!
+        "otp_sent": otp_sent
     }
+    
+    # Include OTP in response ONLY in development mode
+    if DEV_MODE or not otp_sent:
+        response["otp"] = otp
+        print(f"⚠️ DEV MODE: OTP included in response")
+    
+    return response
 
 
 # -----------------------------

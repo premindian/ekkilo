@@ -31,7 +31,12 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        setSentOtp(data.otp); // Remove in production!
+        // OTP will be sent via WhatsApp in production
+        // Only available in response during development
+        if (data.otp) {
+          setSentOtp(data.otp); // Development mode
+          console.log('🔐 DEV OTP:', data.otp);
+        }
         setStep('otp');
       } else {
         setError(data.detail || 'Failed to send OTP');
