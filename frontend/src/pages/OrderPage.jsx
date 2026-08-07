@@ -649,7 +649,10 @@ export default function OrderPage({ initialSearchText }) {
         
         return filteredStores.map((store, idx) => (
           <div key={idx} style={premiumCard}>
-            <div style={headerRow}>
+            <div 
+              style={{...headerRow, cursor: 'pointer'}}
+              onClick={() => setSelectedStoreDetails(store)}
+            >
               <div>
                 <b>⭐ {store.store}</b>
                 {store.is_best && <span style={bestBadge}>Best Price</span>}
@@ -717,7 +720,10 @@ export default function OrderPage({ initialSearchText }) {
         
         return (
           <div style={premiumCard}>
-            <div style={headerRow}>
+            <div 
+              style={{...headerRow, cursor: 'pointer'}}
+              onClick={() => setSelectedStoreDetails(myRegularStore)}
+            >
               <div>
                 <b>🏪 {myRegularStore.store}</b>
                 <span style={{ fontSize: 12, color: '#666', marginLeft: 8 }}>Your Regular Store</span>
@@ -758,7 +764,21 @@ export default function OrderPage({ initialSearchText }) {
       {/* 🧩 MANUAL */}
       {!loading && mode==="manual" && Object.entries(result?.store_view || {}).map(([store, items])=>(
         <div key={store} style={premiumCard}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f0f0f0' }}>
+          <div 
+            style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: 12, 
+              paddingBottom: 12, 
+              borderBottom: '1px solid #f0f0f0',
+              cursor: 'pointer'
+            }}
+            onClick={() => {
+              const storeData = stores.find(s => s.store?.toLowerCase().trim() === store?.toLowerCase().trim());
+              if (storeData) setSelectedStoreDetails(storeData);
+            }}
+          >
             <b style={{ fontSize: 16 }}>🏪 {store}</b>
             {(() => {
               // More robust store lookup (case-insensitive, trimmed)
