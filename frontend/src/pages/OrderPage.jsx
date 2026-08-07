@@ -298,63 +298,87 @@ export default function OrderPage({ initialSearchText }) {
         flexDirection: 'column',
         gap: 6
       }}>
-        {location ? (
-          selectedCity ? (
-            <>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ flex: 1 }}>
+            {location ? (
+              selectedCity ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>🏙️</span>
+                    <span style={{ color: '#166534', fontWeight: 600 }}>
+                      {cities[selectedCity].name}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
+                    📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
+                  </div>
+                </>
+              ) : localStorage.getItem('lastLocation') && gpsError ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>📍</span>
+                    <span style={{ color: '#166534', fontWeight: 600 }}>
+                      Last Known Location
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
+                    📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>🛰️</span>
+                    <span style={{ color: '#166534', fontWeight: 600 }}>
+                      GPS Active
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
+                    📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
+                  </div>
+                </>
+              )
+            ) : showCitySelector ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18 }}>🏙️</span>
-                <span style={{ color: '#166534', fontWeight: 600 }}>
-                  {cities[selectedCity].name}
+                <span style={{ fontSize: 18 }}>⚠️</span>
+                <span style={{ color: '#991b1b', fontWeight: 600 }}>
+                  Location needed • Select your city below
                 </span>
               </div>
-              <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
-                📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
-              </div>
-            </>
-          ) : localStorage.getItem('lastLocation') && gpsError ? (
-            <>
+            ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18 }}>📍</span>
-                <span style={{ color: '#166534', fontWeight: 600 }}>
-                  Last Known Location
+                <span style={{ fontSize: 18 }}>⏳</span>
+                <span style={{ color: '#92400e', fontWeight: 600 }}>
+                  Getting GPS location... Please wait
                 </span>
               </div>
-              <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
-                📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18 }}>🛰️</span>
-                <span style={{ color: '#166534', fontWeight: 600 }}>
-                  GPS Active
-                </span>
-              </div>
-              <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
-                📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
-              </div>
-            </>
-          )
-        ) : showCitySelector ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 18 }}>⚠️</span>
-            <span style={{ color: '#991b1b', fontWeight: 600 }}>
-              Location needed • Select your city below
-            </span>
+            )}
           </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 18 }}>⏳</span>
-            <span style={{ color: '#92400e', fontWeight: 600 }}>
-              Getting GPS location... Please wait
-            </span>
-          </div>
-        )}
+          
+          {/* Change Location Button */}
+          {location && (
+            <button
+              onClick={() => setShowCitySelector(!showCitySelector)}
+              style={{
+                background: '#667eea',
+                color: '#fff',
+                border: 'none',
+                padding: '6px 12px',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              📍 Change
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* CITY SELECTOR */}
-      {showCitySelector && (
+      {/* CITY SELECTOR - Always show if toggled OR if GPS error */}
+      {(showCitySelector || gpsError) && (
         <div style={{
           marginTop: 12,
           padding: 16,
