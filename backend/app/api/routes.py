@@ -317,17 +317,19 @@ async def search_products(data: dict):
                 phone,
                 lat,
                 lng,
-                (
-                    6371 * acos(
-                        cos(radians($1)) * cos(radians(lat)) *
-                        cos(radians(lng) - radians($2)) +
-                        sin(radians($1)) * sin(radians(lat))
-                    )
-                ) AS distance
+                CASE 
+                    WHEN lat IS NOT NULL AND lng IS NOT NULL THEN
+                        (
+                            6371 * acos(
+                                cos(radians($1)) * cos(radians(lat)) *
+                                cos(radians(lng) - radians($2)) +
+                                sin(radians($1)) * sin(radians(lat))
+                            )
+                        )
+                    ELSE NULL
+                END AS distance
             FROM stores
             WHERE name = ANY($3)
-            AND lat IS NOT NULL 
-            AND lng IS NOT NULL
         """, user_lat, user_lng, store_names)
 
         store_map = {
@@ -346,8 +348,6 @@ async def search_products(data: dict):
             SELECT id, name, phone, lat, lng 
             FROM stores 
             WHERE name = ANY($1)
-            AND lat IS NOT NULL 
-            AND lng IS NOT NULL
         """, store_names)
 
         store_map = {
@@ -391,7 +391,8 @@ async def search_products(data: dict):
                 "size": p.get("size", 1),
                 "unit": p.get("unit", ""),
                 "price": price,
-                "phone": p.get("phone")   # 🔥 IMPORTANT
+                "phone": p.get("phone"),   # 🔥 IMPORTANT
+                "available": p.get("available", True)  # Stock status
             })
 
             store_total += price

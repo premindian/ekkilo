@@ -35,16 +35,18 @@ class Pricing:
                 WHERE LOWER(pr.name) = LOWER($1)
             """, name)
 
-            print("🧠 PRICING ROWS:", rows)
+            print(f"🔍 '{name}': Found {len(rows)} options across stores")
 
             if not rows:
-                print(f"⚠️ No pricing found for {name}")
+                print(f"⚠️ No pricing found for '{name}' - product not in any store")
                 price_matrix[name] = []
                 continue
 
             options = []
 
             for r in rows:
+                stock_emoji = '✅' if (r.get("stock", 0) or 0) > 0 else '❌'
+                print(f"  {stock_emoji} {r.get('store')}: {r.get('brand')} {r.get('variant')} {r.get('size')}{r.get('unit')} - ₹{r.get('price')} (stock: {r.get('stock', 0)})")
 
                 base_unit = (r.get("base_unit") or "").lower()
 
@@ -74,8 +76,9 @@ class Pricing:
                 total_price = packs * unit_price
 
                 # 🔥 KEY: DO NOT REMOVE — JUST DEPRIORITIZE
+                # Reduced penalty to still show out-of-stock items at bottom
                 if not is_available:
-                    total_price = total_price + 100000  # push down in optimizer
+                    total_price = total_price + 500  # push down but still visible
 
                 options.append({
                     "name": name,

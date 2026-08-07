@@ -590,7 +590,10 @@ export default function OrderPage({ initialSearchText }) {
 
             {s.items.map((it,j)=>(
               <div key={j} style={row}>
-                <span>{it.name} ({it.packs||1} × {it.size}{it.unit})</span>
+                <span>
+                  {it.name} ({it.packs||1} × {it.size}{it.unit})
+                  {it.available === false && <span style={{ fontSize: 11, color: '#ef4444', marginLeft: 6 }}>⚠️ Limited</span>}
+                </span>
                 <span>₹{format(it.price)}</span>
               </div>
             ))}
