@@ -43,6 +43,11 @@ export default function AdminOrders() {
 
   return (
     <div style={styles.container}>
+      {/* DEBUG INFO */}
+      <div style={{background: 'yellow', padding: '10px', margin: '10px', fontWeight: 'bold'}}>
+        🔍 DEBUG: Token: {token ? 'EXISTS' : 'MISSING'} | Orders: {orders.length} | Filter: {filter}
+      </div>
+      
       {/* Header */}
       <div style={styles.header}>
         <div>
