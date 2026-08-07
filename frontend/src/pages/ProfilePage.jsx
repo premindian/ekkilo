@@ -256,10 +256,12 @@ function FavoritesTab({ token }) {
 // Preferences Tab
 function PreferencesTab({ token }) {
   const [prefs, setPrefs] = useState(null);
+  const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadPreferences();
+    loadFavorites();
   }, []);
 
   const loadPreferences = async () => {
@@ -271,6 +273,16 @@ function PreferencesTab({ token }) {
       console.error('Failed to load preferences');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFavorites = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/favorites/stores?token=${token}`);
+      const data = await res.json();
+      setFavorites(data);
+    } catch (err) {
+      console.error('Failed to load favorites');
     }
   };
 
@@ -339,6 +351,32 @@ function PreferencesTab({ token }) {
           <option value="7">7 km</option>
           <option value="10">10 km</option>
         </select>
+      </div>
+
+      {/* Regular Store Selection */}
+      <div style={styles.prefItem}>
+        <div>
+          <p style={styles.prefTitle}>🏪 My Regular Store</p>
+          <p style={styles.prefDesc}>Your go-to trusted kirana</p>
+        </div>
+        {favorites.length === 0 ? (
+          <p style={{ fontSize: 14, color: '#999', fontStyle: 'italic' }}>
+            Add favorites first →
+          </p>
+        ) : (
+          <select
+            value={prefs?.regular_store_id || ''}
+            onChange={(e) => updatePref('regular_store_id', e.target.value ? parseInt(e.target.value) : null)}
+            style={styles.select}
+          >
+            <option value="">None selected</option>
+            {favorites.map(fav => (
+              <option key={fav.id} value={fav.store_id}>
+                {fav.store_name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
     </div>
   );

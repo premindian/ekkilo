@@ -62,26 +62,36 @@ export default function OrderPage({ initialSearchText }) {
     );
   }, []);
 
-  // ⭐ LOAD FAVORITES
+  // ⭐ LOAD FAVORITES & PREFERENCES
   useEffect(() => {
     if (!token) return;
     
     const loadFavorites = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/favorite-stores?token=${token}`);
+        const res = await fetch(`${API_BASE}/api/favorites/stores?token=${token}`);
         const data = await res.json();
         setFavorites(data);
-        
-        // Set first favorite as regular store by default
-        if (data.length > 0) {
-          setRegularStore(data[0].store_name);
-        }
       } catch (err) {
         console.error("Failed to load favorites:", err);
       }
     };
+
+    const loadPreferences = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/preferences?token=${token}`);
+        const data = await res.json();
+        
+        // Set regular store from preferences
+        if (data.regular_store_name) {
+          setRegularStore(data.regular_store_name);
+        }
+      } catch (err) {
+        console.error("Failed to load preferences:", err);
+      }
+    };
     
     loadFavorites();
+    loadPreferences();
   }, [token]);
 
   // 🔍 SEARCH
@@ -242,19 +252,13 @@ export default function OrderPage({ initialSearchText }) {
         </button>
       </div>
 
-      {/* REGULAR STORE SELECTOR */}
-      {mode === "regular" && favorites.length > 0 && (
-        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}>
-          <span>My regular store:</span>
-          <select 
-            value={regularStore || ''} 
-            onChange={(e) => setRegularStore(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', flex: 1 }}
-          >
-            {favorites.map(f => (
-              <option key={f.id} value={f.store_name}>{f.store_name}</option>
-            ))}
-          </select>
+      {/* REGULAR STORE INFO */}
+      {mode === "regular" && regularStore && (
+        <div style={{ marginTop: 10, padding: 10, background: '#f0f8ff', borderRadius: 8, fontSize: 14 }}>
+          🏪 Ordering from: <strong>{regularStore}</strong>
+          <span style={{ fontSize: 12, color: '#666', marginLeft: 8 }}>
+            (Change in Profile → Settings)
+          </span>
         </div>
       )}
 

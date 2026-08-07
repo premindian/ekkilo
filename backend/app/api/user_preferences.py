@@ -117,8 +117,13 @@ async def get_preferences(token: str):
     user = await get_current_user(token, db)
     
     prefs = await db.fetchrow("""
-        SELECT * FROM user_preferences
-        WHERE user_id = $1
+        SELECT 
+            up.*,
+            s.name as regular_store_name,
+            s.phone as regular_store_phone
+        FROM user_preferences up
+        LEFT JOIN stores s ON up.regular_store_id = s.id
+        WHERE up.user_id = $1
     """, user["id"])
     
     if not prefs:
@@ -144,15 +149,17 @@ async def update_preferences(data: dict, token: str):
     show_pictures = data.get("show_product_pictures")
     view_mode = data.get("default_view_mode")
     radius = data.get("default_radius")
+    regular_store_id = data.get("regular_store_id")
     
     await db.execute("""
         UPDATE user_preferences
         SET show_product_pictures = COALESCE($1, show_product_pictures),
             default_view_mode = COALESCE($2, default_view_mode),
             default_radius = COALESCE($3, default_radius),
+            regular_store_id = COALESCE($4, regular_store_id),
             updated_at = NOW()
-        WHERE user_id = $4
-    """, show_pictures, view_mode, radius, user["id"])
+        WHERE user_id = $5
+    """, show_pictures, view_mode, radius, regular_store_id, user["id"])
     
     return {"status": "updated"}
 
