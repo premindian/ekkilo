@@ -14,6 +14,7 @@ import StoreSettings from './pages/StoreSettings';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminStores from './pages/AdminStores';
 import AdminUsers from './pages/AdminUsers';
+import AdminOrders from './pages/AdminOrders';
 
 const API_BASE = "";
 
@@ -91,6 +92,9 @@ function App() {
     }
     if (currentPage === '/admin/users') {
       return <AdminUsers />;
+    }
+    if (currentPage === '/admin/orders') {
+      return <AdminOrders />;
     }
     return <AdminDashboard />;
   }
