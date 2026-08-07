@@ -16,6 +16,7 @@ from app.api.grocery_lists import router as grocery_lists_router
 from app.api.user_preferences import router as preferences_router
 from app.api.orders import router as orders_router
 from app.api.store_portal import router as store_portal_router
+from app.api.admin_portal import router as admin_portal_router
 
 # services
 from app.services.whatsapp_retry import retry_failed_messages
@@ -92,6 +93,7 @@ app.include_router(grocery_lists_router, prefix="/api")
 app.include_router(preferences_router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
 app.include_router(store_portal_router, prefix="/api")
+app.include_router(admin_portal_router, prefix="/api")
 
 
 # -----------------------------------------

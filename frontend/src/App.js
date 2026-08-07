@@ -11,6 +11,7 @@ import StoreProducts from './pages/StoreProducts';
 import StoreOrders from './pages/StoreOrders';
 import StoreReports from './pages/StoreReports';
 import StoreSettings from './pages/StoreSettings';
+import AdminDashboard from './pages/AdminDashboard';
 
 const API_BASE = "";
 
@@ -80,6 +81,11 @@ function App() {
 
   if (!isAuthenticated) {
     return <LoginPage />;
+  }
+
+  // Check if this is an admin portal route
+  if (currentPage.startsWith('/admin')) {
+    return <AdminDashboard />;
   }
 
   // Check if this is a store portal route
