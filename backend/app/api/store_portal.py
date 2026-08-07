@@ -315,21 +315,18 @@ async def get_sales_report(
         AND status = 'COMPLETED'
     """, store_id, start_date)
     
-    # Top products
+    # Top products (simplified - using order_items directly)
     top_products = await db.fetch("""
         SELECT 
-            p.name as product_name,
-            sp.brand,
-            COUNT(*) as quantity,
-            COALESCE(SUM(sp.price), 0) as revenue
-        FROM store_order_items soi
-        JOIN store_orders so ON soi.store_order_id = so.id
-        JOIN store_products sp ON soi.product_id = sp.id
-        JOIN products p ON sp.product_id = p.id
+            oi.product_name,
+            SUM(oi.quantity) as quantity,
+            COALESCE(SUM(oi.price * oi.quantity), 0) as revenue
+        FROM order_items oi
+        JOIN store_orders so ON oi.store_order_id = so.id
         WHERE so.store_id = $1 
         AND so.created_at >= $2
         AND so.status = 'COMPLETED'
-        GROUP BY p.name, sp.brand
+        GROUP BY oi.product_name
         ORDER BY quantity DESC
         LIMIT 10
     """, store_id, start_date)
