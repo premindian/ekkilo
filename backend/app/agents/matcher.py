@@ -84,13 +84,14 @@ class Matcher:
         """Direct fuzzy matching against products table with smart brand stripping"""
         
         # STRATEGY 1: Try exact match first
-        exact = await db.fetchval("""
+        row = await db.fetchrow("""
             SELECT name FROM products 
             WHERE LOWER(name) = LOWER($1)
             LIMIT 1
         """, search_name)
         
-        if exact:
+        if row:
+            exact = row['name']
             print(f"  ✓ Exact match: '{search_name}' → '{exact}'")
             return exact
         
@@ -99,37 +100,40 @@ class Matcher:
         if cleaned_name != search_name:
             print(f"  🧹 Stripped brands: '{search_name}' → '{cleaned_name}'")
             
-            exact_cleaned = await db.fetchval("""
+            row = await db.fetchrow("""
                 SELECT name FROM products 
                 WHERE LOWER(name) = LOWER($1)
                 LIMIT 1
             """, cleaned_name)
             
-            if exact_cleaned:
+            if row:
+                exact_cleaned = row['name']
                 print(f"  ✓ Exact match after cleaning: '{cleaned_name}' → '{exact_cleaned}'")
                 return exact_cleaned
         
         # STRATEGY 3: Partial match on cleaned name (contains)
-        partial = await db.fetchval("""
+        row = await db.fetchrow("""
             SELECT name FROM products 
             WHERE LOWER(name) LIKE LOWER($1)
             ORDER BY LENGTH(name)
             LIMIT 1
         """, f"%{cleaned_name}%")
         
-        if partial:
+        if row:
+            partial = row['name']
             print(f"  ✓ Partial match: '{cleaned_name}' → '{partial}'")
             return partial
         
         # STRATEGY 4: Reverse partial match (product name is in search query)
-        reverse = await db.fetchval("""
+        row = await db.fetchrow("""
             SELECT name FROM products 
             WHERE LOWER($1) LIKE LOWER('%' || name || '%')
             ORDER BY LENGTH(name) DESC
             LIMIT 1
         """, search_name)
         
-        if reverse:
+        if row:
+            reverse = row['name']
             print(f"  ✓ Reverse match: '{search_name}' → '{reverse}'")
             return reverse
         
@@ -148,14 +152,15 @@ class Matcher:
         
         for key, value in synonyms.items():
             if key in search_name.lower():
-                synonym_match = await db.fetchval("""
+                row = await db.fetchrow("""
                     SELECT name FROM products 
                     WHERE LOWER(name) LIKE LOWER($1)
                     ORDER BY LENGTH(name)
                     LIMIT 1
                 """, f"%{value}%")
                 
-                if synonym_match:
+                if row:
+                    synonym_match = row['name']
                     print(f"  ✓ Synonym match: '{search_name}' ({key}) → '{synonym_match}'")
                     return synonym_match
         
@@ -164,14 +169,15 @@ class Matcher:
         if len(words) > 1:
             for word in sorted(words, key=len, reverse=True):  # Try longest words first
                 if len(word) > 2:  # Skip very short words
-                    word_match = await db.fetchval("""
+                    row = await db.fetchrow("""
                         SELECT name FROM products 
                         WHERE LOWER(name) LIKE LOWER($1)
                         ORDER BY LENGTH(name)
                         LIMIT 1
                     """, f"%{word}%")
                     
-                    if word_match:
+                    if row:
+                        word_match = row['name']
                         print(f"  ✓ Word match: '{search_name}' (word: '{word}') → '{word_match}'")
                         return word_match
         
