@@ -326,6 +326,8 @@ async def search_products(data: dict):
                 ) AS distance
             FROM stores
             WHERE name = ANY($3)
+            AND lat IS NOT NULL 
+            AND lng IS NOT NULL
         """, user_lat, user_lng, store_names)
 
         store_map = {
@@ -344,6 +346,8 @@ async def search_products(data: dict):
             SELECT id, name, phone, lat, lng 
             FROM stores 
             WHERE name = ANY($1)
+            AND lat IS NOT NULL 
+            AND lng IS NOT NULL
         """, store_names)
 
         store_map = {
