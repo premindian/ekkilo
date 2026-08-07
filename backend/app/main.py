@@ -18,7 +18,6 @@ from app.services.whatsapp_retry import retry_failed_messages
 # websocket manager
 from app.core.ws_manager import manager
 
-
 # -----------------------------------------
 # ✅ LIFESPAN (MODERN STARTUP)
 # -----------------------------------------
@@ -58,6 +57,14 @@ app.add_middleware(
 @app.options("/{full_path:path}")
 async def preflight_handler():
     return {"ok": True}
+
+
+# -----------------------------------------
+# ✅ HEALTH CHECK
+# -----------------------------------------
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "message": "Backend is running"}
 
 
 # -----------------------------------------
