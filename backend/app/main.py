@@ -86,7 +86,7 @@ async def health_check():
 # ✅ ROUTERS (API ROUTES FIRST!)
 # -----------------------------------------
 app.include_router(router)
-app.include_router(admin_router)
+app.include_router(admin_router, prefix="/api")  # FIX: Add /api prefix to avoid conflict with React routes
 app.include_router(whatsapp_router, prefix="/whatsapp")
 app.include_router(auth_router, prefix="/api")
 app.include_router(grocery_lists_router, prefix="/api")
