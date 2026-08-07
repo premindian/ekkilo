@@ -291,15 +291,16 @@ async def get_sales_report(
     
     start_date = datetime.now() - timedelta(days=days)
     
-    # Daily sales
+    # Daily sales with revenue
     daily_sales = await db.fetch("""
         SELECT 
             DATE(created_at) as date,
-            COUNT(*) as order_count,
-            COUNT(*) FILTER (WHERE status = 'COMPLETED') as completed_orders
+            COUNT(*) as orders,
+            COALESCE(SUM(total_amount), 0) as sales
         FROM store_orders
         WHERE store_id = $1 
         AND created_at >= $2
+        AND status = 'COMPLETED'
         GROUP BY DATE(created_at)
         ORDER BY date DESC
     """, store_id, start_date)
@@ -308,15 +309,38 @@ async def get_sales_report(
     summary = await db.fetchrow("""
         SELECT 
             COUNT(*) as total_orders,
-            COUNT(*) FILTER (WHERE status = 'COMPLETED') as completed_orders,
-            COUNT(*) FILTER (WHERE status = 'REJECTED') as rejected_orders
+            COALESCE(SUM(total_amount), 0) as total_sales,
+            COALESCE(AVG(total_amount), 0) as avg_order
         FROM store_orders
         WHERE store_id = $1 
         AND created_at >= $2
+        AND status = 'COMPLETED'
+    """, store_id, start_date)
+    
+    # Top products
+    top_products = await db.fetch("""
+        SELECT 
+            p.name as product_name,
+            sp.brand,
+            COUNT(*) as quantity,
+            COALESCE(SUM(sp.price), 0) as revenue
+        FROM store_order_items soi
+        JOIN store_orders so ON soi.store_order_id = so.id
+        JOIN store_products sp ON soi.product_id = sp.id
+        JOIN products p ON sp.product_id = p.id
+        WHERE so.store_id = $1 
+        AND so.created_at >= $2
+        AND so.status = 'COMPLETED'
+        GROUP BY p.name, sp.brand
+        ORDER BY quantity DESC
+        LIMIT 10
     """, store_id, start_date)
     
     return {
         "period_days": days,
-        "summary": dict(summary) if summary else {},
-        "daily_sales": [dict(d) for d in daily_sales]
+        "total_sales": float(summary["total_sales"]) if summary else 0,
+        "total_orders": summary["total_orders"] if summary else 0,
+        "avg_order": float(summary["avg_order"]) if summary else 0,
+        "daily_breakdown": [dict(d) for d in daily_sales],
+        "top_products": [dict(p) for p in top_products]
     }
