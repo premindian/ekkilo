@@ -150,6 +150,7 @@ async def update_preferences(data: dict, token: str):
     view_mode = data.get("default_view_mode")
     radius = data.get("default_radius")
     regular_store_id = data.get("regular_store_id")
+    onboarding_completed = data.get("onboarding_completed")
     
     await db.execute("""
         UPDATE user_preferences
@@ -157,9 +158,10 @@ async def update_preferences(data: dict, token: str):
             default_view_mode = COALESCE($2, default_view_mode),
             default_radius = COALESCE($3, default_radius),
             regular_store_id = COALESCE($4, regular_store_id),
+            onboarding_completed = COALESCE($5, onboarding_completed),
             updated_at = NOW()
-        WHERE user_id = $5
-    """, show_pictures, view_mode, radius, regular_store_id, user["id"])
+        WHERE user_id = $6
+    """, show_pictures, view_mode, radius, regular_store_id, onboarding_completed, user["id"])
     
     return {"status": "updated"}
 

@@ -1,17 +1,57 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import OrderPage from './pages/OrderPage';
 import GroceryListsPage from './pages/GroceryListsPage';
 import OrderHistoryPage from './pages/OrderHistoryPage';
 import ProfilePage from './pages/ProfilePage';
+import Onboarding from './components/Onboarding';
+
+const API_BASE = "https://ekkilo.onrender.com";
 
 function App() {
-  const { isAuthenticated, loading, user } = useAuth();
+  const { isAuthenticated, loading, user, token } = useAuth();
   const [currentPage, setCurrentPage] = useState('order'); // order, lists, history, profile
   const [searchText, setSearchText] = useState('');
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
 
-  if (loading) {
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      checkOnboardingStatus();
+    }
+  }, [isAuthenticated, token]);
+
+  const checkOnboardingStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/preferences?token=${token}`);
+      const prefs = await res.json();
+      
+      if (!prefs.onboarding_completed) {
+        setShowOnboarding(true);
+      }
+    } catch (err) {
+      console.error('Failed to check onboarding:', err);
+    } finally {
+      setCheckingOnboarding(false);
+    }
+  };
+
+  const completeOnboarding = async () => {
+    try {
+      await fetch(`${API_BASE}/api/preferences?token=${token}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onboarding_completed: true })
+      });
+      setShowOnboarding(false);
+    } catch (err) {
+      console.error('Failed to complete onboarding:', err);
+      setShowOnboarding(false);
+    }
+  };
+
+  if (loading || checkingOnboarding) {
     return (
       <div style={styles.loadingContainer}>
         <p>Loading...</p>
@@ -25,6 +65,13 @@ function App() {
 
   return (
     <div style={styles.app}>
+      {/* Onboarding */}
+      {showOnboarding && (
+        <Onboarding
+          onComplete={completeOnboarding}
+          onSkip={completeOnboarding}
+        />
+      )}
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.logo}>🛒 Ekkilo</h1>
