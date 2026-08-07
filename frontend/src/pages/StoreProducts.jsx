@@ -17,16 +17,21 @@ export default function StoreProducts() {
   }, [search]);
 
   const loadProducts = async () => {
+    console.log('🔍 Loading products...');
+    console.log('Token:', token);
     try {
       const url = search 
         ? `${API_BASE}/api/store/products?token=${token}&search=${search}`
         : `${API_BASE}/api/store/products?token=${token}`;
       
+      console.log('📡 Fetching:', url);
       const res = await fetch(url);
+      console.log('📊 Response status:', res.status);
       const data = await res.json();
+      console.log('✅ Products loaded:', data);
       setProducts(data);
     } catch (err) {
-      console.error('Failed to load products:', err);
+      console.error('❌ Failed to load products:', err);
     } finally {
       setLoading(false);
     }
