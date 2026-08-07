@@ -15,6 +15,8 @@ export default function OrderPage({ initialSearchText }) {
   const [favorites, setFavorites] = useState([]);
   const [regularStore, setRegularStore] = useState(null);
   const [gpsError, setGpsError] = useState(false);
+  const [showCitySelector, setShowCitySelector] = useState(false);
+  const [selectedCity, setSelectedCity] = useState('');
   
   // Auto-search when initialSearchText is provided
   useEffect(() => {
@@ -48,28 +50,84 @@ export default function OrderPage({ initialSearchText }) {
 
   const format = (n) => Number(n || 0).toFixed(2);
 
+  // City coordinates (approximate city centers)
+  const cities = {
+    'vizag': { lat: 17.6868, lng: 83.2185, name: 'Visakhapatnam' },
+    'vijayawada': { lat: 16.5062, lng: 80.6480, name: 'Vijayawada' },
+    'guntur': { lat: 16.3067, lng: 80.4365, name: 'Guntur' },
+    'tirupati': { lat: 13.6288, lng: 79.4192, name: 'Tirupati' },
+    'nellore': { lat: 14.4426, lng: 79.9865, name: 'Nellore' },
+    'kakinada': { lat: 16.9891, lng: 82.2475, name: 'Kakinada' },
+    'rajahmundry': { lat: 17.0005, lng: 81.8040, name: 'Rajahmundry' },
+    'hyderabad': { lat: 17.3850, lng: 78.4867, name: 'Hyderabad' }
+  };
+
+  const selectCity = (cityKey) => {
+    const city = cities[cityKey];
+    if (city) {
+      setLocation({ lat: city.lat, lng: city.lng });
+      setSelectedCity(cityKey);
+      setShowCitySelector(false);
+      setGpsError(false);
+    }
+  };
+
   // 📍 LOCATION
   useEffect(() => {
+    // Try to get current GPS location
     if (!navigator.geolocation) {
-      setGpsError(true);
+      // No geolocation support - try last known location
+      tryLastKnownLocation();
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setLocation({
+        const newLocation = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-        });
+        };
+        setLocation(newLocation);
         setGpsError(false);
+        
+        // Save to localStorage for future use
+        localStorage.setItem('lastLocation', JSON.stringify(newLocation));
+        localStorage.setItem('lastLocationTime', Date.now().toString());
       },
       (err) => {
         console.log("GPS denied:", err);
-        setGpsError(true);
+        // GPS failed - try last known location
+        tryLastKnownLocation();
       },
       { timeout: 10000 } // 10 second timeout
     );
   }, []);
+
+  const tryLastKnownLocation = () => {
+    try {
+      const lastLoc = localStorage.getItem('lastLocation');
+      const lastTime = localStorage.getItem('lastLocationTime');
+      
+      if (lastLoc) {
+        const loc = JSON.parse(lastLoc);
+        const timeAgo = Date.now() - parseInt(lastTime || '0');
+        const daysAgo = timeAgo / (1000 * 60 * 60 * 24);
+        
+        // Use last location if less than 30 days old
+        if (daysAgo < 30) {
+          setLocation(loc);
+          console.log('Using last known location from', Math.floor(daysAgo), 'days ago');
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load last location:', err);
+    }
+    
+    // No last location or too old - show city selector
+    setGpsError(true);
+    setShowCitySelector(true);
+  };
 
   // ⭐ LOAD FAVORITES & PREFERENCES
   useEffect(() => {
@@ -230,18 +288,28 @@ export default function OrderPage({ initialSearchText }) {
       <div style={{ 
         fontSize: 13, 
         padding: '10px 12px', 
-        background: location ? '#f0fdf4' : (gpsError ? '#fef2f2' : '#fff8e1'),
+        background: location ? '#f0fdf4' : (showCitySelector ? '#fef2f2' : '#fff8e1'),
         borderRadius: 8,
         marginTop: 10,
-        border: `1px solid ${location ? '#22c55e' : (gpsError ? '#ef4444' : '#fbbf24')}`
+        border: `1px solid ${location ? '#22c55e' : (showCitySelector ? '#ef4444' : '#fbbf24')}`
       }}>
         {location ? (
-          <span style={{ color: '#166534' }}>
-            ✓ Location detected • Showing nearby stores
-          </span>
-        ) : gpsError ? (
+          selectedCity ? (
+            <span style={{ color: '#166534' }}>
+              ✓ Showing stores in {cities[selectedCity].name}
+            </span>
+          ) : localStorage.getItem('lastLocation') && gpsError ? (
+            <span style={{ color: '#166534' }}>
+              ✓ Using last known location • Showing nearby stores
+            </span>
+          ) : (
+            <span style={{ color: '#166534' }}>
+              ✓ Location detected • Showing nearby stores
+            </span>
+          )
+        ) : showCitySelector ? (
           <span style={{ color: '#991b1b' }}>
-            ⚠️ Location disabled • Showing all stores (distances unavailable)
+            ⚠️ Location needed • Select your city below
           </span>
         ) : (
           <span style={{ color: '#92400e' }}>
@@ -249,6 +317,56 @@ export default function OrderPage({ initialSearchText }) {
           </span>
         )}
       </div>
+
+      {/* CITY SELECTOR */}
+      {showCitySelector && (
+        <div style={{
+          marginTop: 12,
+          padding: 16,
+          background: '#fff',
+          borderRadius: 12,
+          border: '2px solid #ef4444',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1f2937' }}>
+            📍 Select Your City
+          </div>
+          <div style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
+            Choose your city to see nearby stores:
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+            {Object.entries(cities).map(([key, city]) => (
+              <button
+                key={key}
+                onClick={() => selectCity(key)}
+                style={{
+                  padding: '12px',
+                  background: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 8,
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  minHeight: 44,
+                  touchAction: 'manipulation'
+                }}
+              >
+                📍 {city.name}
+              </button>
+            ))}
+          </div>
+          <div style={{ 
+            marginTop: 12, 
+            padding: 12, 
+            background: '#fffbeb', 
+            borderRadius: 8,
+            fontSize: 13,
+            color: '#92400e'
+          }}>
+            💡 Tip: Enable GPS in your browser for more accurate results
+          </div>
+        </div>
+      )}
 
       {/* SEARCH */}
       <div style={searchBox}>
