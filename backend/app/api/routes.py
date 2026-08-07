@@ -664,10 +664,10 @@ async def update_product(data: dict):
     return {"status": "ok"}
 
 # -----------------------------
-#  PRODUCT listing by store
+#  PRODUCT listing by store (OLD - renamed to avoid conflict with Store Portal)
 # -----------------------------
-@router.get("/store/products")
-async def get_store_products(store_id: int):
+@router.get("/api/products-by-store")
+async def get_store_products_old(store_id: int):
     from app.db.database import get_db
     db = await get_db()
 
