@@ -1,8 +1,11 @@
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import asyncio
+import os
+from pathlib import Path
 
 # routers
 from app.api.routes import router
@@ -78,7 +81,7 @@ async def health_check():
 
 
 # -----------------------------------------
-# ✅ ROUTERS
+# ✅ ROUTERS (API ROUTES FIRST!)
 # -----------------------------------------
 app.include_router(router)
 app.include_router(admin_router)
@@ -87,6 +90,34 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(grocery_lists_router, prefix="/api")
 app.include_router(preferences_router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
+
+
+# -----------------------------------------
+# ✅ SERVE REACT FRONTEND (STATIC FILES)
+# -----------------------------------------
+# Path to built React app
+frontend_build_path = Path(__file__).parent.parent.parent / "frontend" / "build"
+
+if frontend_build_path.exists():
+    print(f"✅ Serving React frontend from: {frontend_build_path}")
+    
+    # Mount static files (JS, CSS, images)
+    app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
+    
+    # Catch-all route for React Router (MUST be last!)
+    @app.get("/{full_path:path}")
+    async def serve_react_app(full_path: str):
+        """Serve React app for all non-API routes"""
+        # If requesting a specific file that exists, serve it
+        file_path = frontend_build_path / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        
+        # Otherwise serve index.html (React handles routing)
+        return FileResponse(frontend_build_path / "index.html")
+else:
+    print(f"⚠️ Frontend build not found at: {frontend_build_path}")
+    print("   Run 'npm run build' in frontend folder to build React app")
 
 
 # -----------------------------------------

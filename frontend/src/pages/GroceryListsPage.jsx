@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-const API_BASE = window.location.hostname.includes("localhost") ? "http://localhost:8000" : "https://ekkilo.onrender.com";
+const API_BASE = "";
 
 export default function GroceryListsPage({ onSelectList }) {
   const { token } = useAuth();

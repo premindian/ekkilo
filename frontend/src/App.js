@@ -7,7 +7,7 @@ import OrderHistoryPage from './pages/OrderHistoryPage';
 import ProfilePage from './pages/ProfilePage';
 import Onboarding from './components/Onboarding';
 
-const API_BASE = window.location.hostname.includes("localhost") ? "http://localhost:8000" : "https://ekkilo.onrender.com";
+const API_BASE = "";
 
 function App() {
   const { isAuthenticated, loading, user, token } = useAuth();

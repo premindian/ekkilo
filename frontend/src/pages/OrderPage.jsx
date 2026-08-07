@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 
-// Backend is on separate domain
-const API_BASE = window.location.hostname.includes('localhost') 
-  ? "http://localhost:8000" 
-  : "https://ekkilo.onrender.com";
+// Backend and frontend on SAME domain now!
+const API_BASE = "";
 
 export default function OrderPage({ initialSearchText }) {
   const { user, token } = useAuth();
