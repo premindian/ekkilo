@@ -189,6 +189,9 @@ export default function OrderPage({ initialSearchText }) {
 
   const stores = result?.stores || [];
   console.log('🏪 Rendering stores:', stores.length, stores);
+  console.log('🏪 Store names from API:', stores.map(s => s.store));
+  console.log('🏪 Regular store setting:', regularStore);
+  console.log('🏪 Favorites:', favorites.map(f => f.store_name));
 
   // 🧠 SMART SPLIT
   const splitMap = {};
@@ -605,8 +608,11 @@ export default function OrderPage({ initialSearchText }) {
 
       {/* ⭐ FAVORITES MODE */}
       {!loading && mode==="favorites" && (() => {
-        const favoriteStoreNames = favorites.map(f => f.store_name);
-        const filteredStores = stores.filter(s => favoriteStoreNames.includes(s.store));
+        const favoriteStoreNames = favorites.map(f => f.store_name?.toLowerCase().trim());
+        const filteredStores = stores.filter(s => 
+          favoriteStoreNames.includes(s.store?.toLowerCase().trim())
+        );
+        console.log(`🔍 Favorites mode: Looking for stores in ${JSON.stringify(favoriteStoreNames)}, found:`, filteredStores);
         
         if (filteredStores.length === 0 && stores.length > 0) {
           return (
@@ -668,7 +674,11 @@ export default function OrderPage({ initialSearchText }) {
           );
         }
         
-        const myRegularStore = stores.find(s => s.store === regularStore);
+        // More robust store lookup (case-insensitive, trimmed)
+        const myRegularStore = stores.find(s => 
+          s.store?.toLowerCase().trim() === regularStore?.toLowerCase().trim()
+        );
+        console.log(`🔍 Regular mode: Looking for "${regularStore}", found:`, myRegularStore);
         
         if (!myRegularStore && stores.length > 0) {
           return (
@@ -727,7 +737,11 @@ export default function OrderPage({ initialSearchText }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f0f0f0' }}>
             <b style={{ fontSize: 16 }}>🏪 {store}</b>
             {(() => {
-              const storeData = stores.find(s => s.store === store);
+              // More robust store lookup (case-insensitive, trimmed)
+              const storeData = stores.find(s => 
+                s.store?.toLowerCase().trim() === store?.toLowerCase().trim()
+              );
+              console.log(`🔍 Looking for store "${store}" in manual mode, found:`, storeData);
               return storeData?.distance !== undefined ? (
                 <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
                   📍 {storeData.distance} km
