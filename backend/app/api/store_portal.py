@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.db.database import get_db
-from app.core.auth import decode_token
+from app.api.auth import get_current_user
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/store", tags=["store-portal"])
@@ -11,11 +11,12 @@ router = APIRouter(prefix="/store", tags=["store-portal"])
 # ============================================
 async def get_store_from_token(token: str):
     """Verify user is a store owner and return store info"""
-    user = decode_token(token)
+    db = await get_db()
+    
+    # Get current user
+    user = await get_current_user(token, db)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
-    
-    db = await get_db()
     
     # Check if user is a store owner
     user_data = await db.fetchrow("""
