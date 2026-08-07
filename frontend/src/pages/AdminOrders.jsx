@@ -5,13 +5,18 @@ const API_BASE = "";
 
 export default function AdminOrders() {
   const { token } = useAuth();
+  console.log('🎬 AdminOrders component rendered, token:', token ? 'exists' : 'missing', 'actual token:', token);
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('⚡ useEffect triggered, token:', token ? 'exists' : 'missing', 'filter:', filter);
     if (token) {
+      console.log('✅ Token exists, calling loadOrders()');
       loadOrders();
+    } else {
+      console.log('❌ Token missing, not calling loadOrders()');
     }
   }, [token, filter]);
 
