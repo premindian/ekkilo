@@ -14,6 +14,7 @@ export default function OrderPage({ initialSearchText }) {
   const [manualCart, setManualCart] = useState({});
   const [favorites, setFavorites] = useState([]);
   const [regularStore, setRegularStore] = useState(null);
+  const [gpsError, setGpsError] = useState(false);
   
   // Auto-search when initialSearchText is provided
   useEffect(() => {
@@ -49,7 +50,10 @@ export default function OrderPage({ initialSearchText }) {
 
   // 📍 LOCATION
   useEffect(() => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      setGpsError(true);
+      return;
+    }
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -57,8 +61,13 @@ export default function OrderPage({ initialSearchText }) {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         });
+        setGpsError(false);
       },
-      () => console.log("GPS denied")
+      (err) => {
+        console.log("GPS denied:", err);
+        setGpsError(true);
+      },
+      { timeout: 10000 } // 10 second timeout
     );
   }, []);
 
@@ -217,11 +226,28 @@ export default function OrderPage({ initialSearchText }) {
 
       <h2>🛒 Smart Kirana</h2>
 
-      {/* GPS */}
-      <div style={{ fontSize: 12 }}>
-        📍 {location
-          ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
-          : "Fetching location..."}
+      {/* GPS STATUS */}
+      <div style={{ 
+        fontSize: 13, 
+        padding: '10px 12px', 
+        background: location ? '#f0fdf4' : (gpsError ? '#fef2f2' : '#fff8e1'),
+        borderRadius: 8,
+        marginTop: 10,
+        border: `1px solid ${location ? '#22c55e' : (gpsError ? '#ef4444' : '#fbbf24')}`
+      }}>
+        {location ? (
+          <span style={{ color: '#166534' }}>
+            ✓ Location detected • Showing nearby stores
+          </span>
+        ) : gpsError ? (
+          <span style={{ color: '#991b1b' }}>
+            ⚠️ Location disabled • Showing all stores (distances unavailable)
+          </span>
+        ) : (
+          <span style={{ color: '#92400e' }}>
+            ⏳ Fetching location... Distances will update shortly
+          </span>
+        )}
       </div>
 
       {/* SEARCH */}
@@ -420,7 +446,11 @@ export default function OrderPage({ initialSearchText }) {
               </div>
               <div>
                 ₹{format(store.total)}
-                <div style={distance}>📍 {store.distance} km</div>
+                <div style={distance}>
+                  {store.distance !== undefined 
+                    ? `📍 ${store.distance} km` 
+                    : '⏳ Calculating...'}
+                </div>
               </div>
             </div>
 
@@ -480,7 +510,11 @@ export default function OrderPage({ initialSearchText }) {
               </div>
               <div>
                 ₹{format(myRegularStore.total)}
-                <div style={distance}>📍 {myRegularStore.distance} km</div>
+                <div style={distance}>
+                  {myRegularStore.distance !== undefined 
+                    ? `📍 ${myRegularStore.distance} km` 
+                    : '⏳ Calculating...'}
+                </div>
               </div>
             </div>
 
