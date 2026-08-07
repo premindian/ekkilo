@@ -18,6 +18,7 @@ class Matcher:
             context.set("matched_products", [])
             return context
 
+        print(f"🔍 MATCHER: Processing {len(parsed)} items")
         matched = []
         db = await get_db()
 
@@ -27,6 +28,7 @@ class Matcher:
             if not name:
                 continue
 
+            print(f"🔍 MATCHER: Searching for '{name}'")
             matched_name = name
             
             # Try using search_products function if it exists

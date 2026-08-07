@@ -16,6 +16,8 @@ class Pricing:
 
         for p in products:
             name = p.get("name")
+            
+            print(f"\n💰 PRICING: Looking up '{name}' in database...")
 
             # 🔥 FETCH FROM DB (WITH STOCK)
             rows = await db.fetch("""
