@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.db.database import get_db
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin-legacy", tags=["admin-legacy"])
 
 
 # -----------------------------
