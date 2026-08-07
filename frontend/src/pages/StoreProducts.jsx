@@ -6,11 +6,27 @@ const API_BASE = "";
 export default function StoreProducts() {
   const { token } = useAuth();
   const [products, setProducts] = useState([]);
+  const [allProducts, setAllProducts] = useState([]); // For add product
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [editPrice, setEditPrice] = useState('');
   const [editStock, setEditStock] = useState('');
+  
+  // Bulk actions
+  const [selectedProducts, setSelectedProducts] = useState(new Set());
+  const [bulkPriceChange, setBulkPriceChange] = useState('');
+  const [bulkStockChange, setBulkStockChange] = useState('');
+  
+  // Add product
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [addProductSearch, setAddProductSearch] = useState('');
+  const [selectedNewProduct, setSelectedNewProduct] = useState(null);
+  const [newPrice, setNewPrice] = useState('');
+  const [newStock, setNewStock] = useState('');
+  
+  // Filters
+  const [filterLowStock, setFilterLowStock] = useState(false);
 
   useEffect(() => {
     if (token) {
@@ -20,22 +36,166 @@ export default function StoreProducts() {
 
   const loadProducts = async () => {
     console.log('🔍 Loading products...');
-    console.log('Token:', token);
     try {
       const url = search 
         ? `${API_BASE}/api/store/products?token=${token}&search=${search}`
         : `${API_BASE}/api/store/products?token=${token}`;
       
-      console.log('📡 Fetching:', url);
       const res = await fetch(url);
-      console.log('📊 Response status:', res.status);
       const data = await res.json();
-      console.log('✅ Products loaded:', data);
       setProducts(data);
     } catch (err) {
       console.error('❌ Failed to load products:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAllProducts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products?search=${addProductSearch}`);
+      const data = await res.json();
+      setAllProducts(data);
+    } catch (err) {
+      console.error('Failed to load master products:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (showAddProduct && addProductSearch) {
+      loadAllProducts();
+    }
+  }, [addProductSearch, showAddProduct]);
+
+  const toggleSelect = (productId) => {
+    const newSelected = new Set(selectedProducts);
+    if (newSelected.has(productId)) {
+      newSelected.delete(productId);
+    } else {
+      newSelected.add(productId);
+    }
+    setSelectedProducts(newSelected);
+  };
+
+  const selectAll = () => {
+    const filtered = getFilteredProducts();
+    if (selectedProducts.size === filtered.length) {
+      setSelectedProducts(new Set());
+    } else {
+      setSelectedProducts(new Set(filtered.map(p => p.id)));
+    }
+  };
+
+  const applyBulkPriceChange = async () => {
+    if (!bulkPriceChange || selectedProducts.size === 0) {
+      alert('Select products and enter percentage');
+      return;
+    }
+
+    const change = parseFloat(bulkPriceChange);
+    if (isNaN(change)) {
+      alert('Enter valid percentage');
+      return;
+    }
+
+    try {
+      for (const productId of selectedProducts) {
+        const product = products.find(p => p.id === productId);
+        if (!product) continue;
+        
+        const newPrice = product.price * (1 + change / 100);
+        
+        await fetch(`${API_BASE}/api/store/products/${productId}?token=${token}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ price: newPrice })
+        });
+      }
+      
+      alert(`✅ Updated ${selectedProducts.size} products!`);
+      setSelectedProducts(new Set());
+      setBulkPriceChange('');
+      loadProducts();
+    } catch (err) {
+      alert('❌ Failed to update prices');
+    }
+  };
+
+  const applyBulkStockChange = async () => {
+    if (!bulkStockChange || selectedProducts.size === 0) {
+      alert('Select products and enter stock change');
+      return;
+    }
+
+    const change = parseInt(bulkStockChange);
+    if (isNaN(change)) {
+      alert('Enter valid stock number');
+      return;
+    }
+
+    try {
+      for (const productId of selectedProducts) {
+        const product = products.find(p => p.id === productId);
+        if (!product) continue;
+        
+        const newStock = Math.max(0, product.stock + change);
+        
+        await fetch(`${API_BASE}/api/store/products/${productId}?token=${token}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stock: newStock })
+        });
+      }
+      
+      alert(`✅ Updated ${selectedProducts.size} products!`);
+      setSelectedProducts(new Set());
+      setBulkStockChange('');
+      loadProducts();
+    } catch (err) {
+      alert('❌ Failed to update stock');
+    }
+  };
+
+  const addProduct = async () => {
+    if (!selectedNewProduct || !newPrice || !newStock) {
+      alert('Please fill all fields');
+      return;
+    }
+
+    try {
+      await fetch(`${API_BASE}/api/store/products?token=${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: selectedNewProduct.id,
+          price: parseFloat(newPrice),
+          stock: parseInt(newStock)
+        })
+      });
+      
+      alert('✅ Product added!');
+      setShowAddProduct(false);
+      setSelectedNewProduct(null);
+      setNewPrice('');
+      setNewStock('');
+      setAddProductSearch('');
+      loadProducts();
+    } catch (err) {
+      alert('❌ Failed to add product');
+    }
+  };
+
+  const removeProduct = async (productId) => {
+    if (!window.confirm('Remove this product from your store?')) return;
+    
+    try {
+      await fetch(`${API_BASE}/api/store/products/${productId}?token=${token}`, {
+        method: 'DELETE'
+      });
+      alert('✅ Product removed!');
+      loadProducts();
+    } catch (err) {
+      alert('❌ Failed to remove product');
     }
   };
 
@@ -70,6 +230,16 @@ export default function StoreProducts() {
     setEditStock('');
   };
 
+  const getFilteredProducts = () => {
+    let filtered = products;
+    if (filterLowStock) {
+      filtered = filtered.filter(p => p.stock < 5);
+    }
+    return filtered;
+  };
+
+  const filteredProducts = getFilteredProducts();
+
   return (
     <div style={styles.container}>
       {/* Header */}
@@ -79,6 +249,83 @@ export default function StoreProducts() {
           ← Back
         </button>
       </div>
+
+      {/* Action Bar */}
+      <div style={styles.actionBar}>
+        <button 
+          onClick={() => setShowAddProduct(!showAddProduct)} 
+          style={styles.addBtn}
+        >
+          ➕ Add Product
+        </button>
+        <div style={styles.filterChips}>
+          <button 
+            onClick={() => setFilterLowStock(!filterLowStock)}
+            style={filterLowStock ? styles.filterChipActive : styles.filterChip}
+          >
+            {filterLowStock ? '✓ ' : ''}Low Stock
+          </button>
+        </div>
+      </div>
+
+      {/* Add Product Modal */}
+      {showAddProduct && (
+        <div style={styles.modal}>
+          <div style={styles.modalContent}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>Add Product</h2>
+              <button onClick={() => setShowAddProduct(false)} style={styles.closeBtn}>✕</button>
+            </div>
+            
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={addProductSearch}
+              onChange={(e) => setAddProductSearch(e.target.value)}
+              style={styles.input}
+            />
+
+            {addProductSearch && allProducts.length > 0 && (
+              <div style={styles.productList}>
+                {allProducts.map(p => (
+                  <div 
+                    key={p.id} 
+                    onClick={() => setSelectedNewProduct(p)}
+                    style={selectedNewProduct?.id === p.id ? styles.productItemActive : styles.productItem}
+                  >
+                    {p.name}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedNewProduct && (
+              <div style={styles.addProductForm}>
+                <div style={styles.selectedProduct}>
+                  ✅ {selectedNewProduct.name}
+                </div>
+                <input
+                  type="number"
+                  placeholder="Price (₹)"
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  style={styles.input}
+                />
+                <input
+                  type="number"
+                  placeholder="Initial Stock"
+                  value={newStock}
+                  onChange={(e) => setNewStock(e.target.value)}
+                  style={styles.input}
+                />
+                <button onClick={addProduct} style={styles.submitBtn}>
+                  Add to Store
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div style={styles.searchBox}>
@@ -91,19 +338,80 @@ export default function StoreProducts() {
         />
       </div>
 
+      {/* Bulk Actions */}
+      {selectedProducts.size > 0 && (
+        <div style={styles.bulkActions}>
+          <div style={styles.bulkHeader}>
+            <span style={styles.bulkCount}>{selectedProducts.size} selected</span>
+            <button onClick={() => setSelectedProducts(new Set())} style={styles.clearBtn}>
+              Clear
+            </button>
+          </div>
+          
+          <div style={styles.bulkRow}>
+            <input
+              type="number"
+              placeholder="Price change %"
+              value={bulkPriceChange}
+              onChange={(e) => setBulkPriceChange(e.target.value)}
+              style={styles.bulkInput}
+            />
+            <button onClick={applyBulkPriceChange} style={styles.bulkBtn}>
+              Apply %
+            </button>
+          </div>
+
+          <div style={styles.bulkRow}>
+            <input
+              type="number"
+              placeholder="Stock +/-"
+              value={bulkStockChange}
+              onChange={(e) => setBulkStockChange(e.target.value)}
+              style={styles.bulkInput}
+            />
+            <button onClick={applyBulkStockChange} style={styles.bulkBtn}>
+              Update Stock
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Select All */}
+      {filteredProducts.length > 0 && (
+        <div style={styles.selectAll}>
+          <label style={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={selectedProducts.size === filteredProducts.length && filteredProducts.length > 0}
+              onChange={selectAll}
+              style={styles.checkbox}
+            />
+            Select All ({filteredProducts.length})
+          </label>
+        </div>
+      )}
+
       {/* Products List */}
       {loading ? (
         <div style={styles.loading}>🔄 Loading...</div>
-      ) : products.length === 0 ? (
+      ) : filteredProducts.length === 0 ? (
         <div style={styles.empty}>No products found</div>
       ) : (
         <div style={styles.productsList}>
-          {products.map(product => (
+          {filteredProducts.map(product => (
             <div key={product.id} style={styles.productCard}>
-              <div style={styles.productInfo}>
-                <div style={styles.productName}>{product.product_name}</div>
-                <div style={styles.productMeta}>
-                  {product.brand} {product.variant} {product.size}{product.unit}
+              <div style={styles.productHeader}>
+                <input
+                  type="checkbox"
+                  checked={selectedProducts.has(product.id)}
+                  onChange={() => toggleSelect(product.id)}
+                  style={styles.checkbox}
+                />
+                <div style={styles.productInfo}>
+                  <div style={styles.productName}>{product.product_name}</div>
+                  <div style={styles.productMeta}>
+                    {product.brand} {product.variant} {product.size}{product.unit}
+                  </div>
                 </div>
               </div>
 
@@ -150,15 +458,23 @@ export default function StoreProducts() {
                   <div style={styles.productDetails}>
                     <div style={styles.priceTag}>₹{product.price}</div>
                     <div style={styles.stockTag}>
-                      Stock: <strong>{product.stock}</strong>
+                      Stock: <strong style={product.stock < 5 ? {color: '#ef4444'} : {}}>{product.stock}</strong>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => startEdit(product)}
-                    style={styles.editButton}
-                  >
-                    ✏️ Edit
-                  </button>
+                  <div style={styles.actions}>
+                    <button 
+                      onClick={() => startEdit(product)}
+                      style={styles.editButton}
+                    >
+                      ✏️
+                    </button>
+                    <button 
+                      onClick={() => removeProduct(product.id)}
+                      style={styles.deleteButton}
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -181,7 +497,7 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   title: {
     margin: 0,
@@ -198,8 +514,45 @@ const styles = {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  actionBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  addBtn: {
+    padding: '10px 20px',
+    background: '#22c55e',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  filterChips: {
+    display: 'flex',
+    gap: 8,
+  },
+  filterChip: {
+    padding: '6px 12px',
+    background: '#f3f4f6',
+    border: 'none',
+    borderRadius: 6,
+    fontSize: 13,
+    cursor: 'pointer',
+  },
+  filterChipActive: {
+    padding: '6px 12px',
+    background: '#3b82f6',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 6,
+    fontSize: 13,
+    cursor: 'pointer',
+  },
   searchBox: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   searchInput: {
     width: '100%',
@@ -208,6 +561,71 @@ const styles = {
     borderRadius: 12,
     fontSize: 16,
     boxSizing: 'border-box',
+  },
+  bulkActions: {
+    background: '#fef3c7',
+    border: '2px solid #fbbf24',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  bulkHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  bulkCount: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#92400e',
+  },
+  clearBtn: {
+    padding: '4px 12px',
+    background: '#fff',
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    fontSize: 12,
+    cursor: 'pointer',
+  },
+  bulkRow: {
+    display: 'flex',
+    gap: 8,
+    marginBottom: 8,
+  },
+  bulkInput: {
+    flex: 1,
+    padding: '8px 12px',
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    fontSize: 14,
+  },
+  bulkBtn: {
+    padding: '8px 16px',
+    background: '#f59e0b',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 6,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  selectAll: {
+    marginBottom: 12,
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    cursor: 'pointer',
   },
   loading: {
     textAlign: 'center',
@@ -230,8 +648,13 @@ const styles = {
     borderRadius: 12,
     padding: 16,
   },
-  productInfo: {
+  productHeader: {
+    display: 'flex',
+    gap: 12,
     marginBottom: 12,
+  },
+  productInfo: {
+    flex: 1,
   },
   productName: {
     fontSize: 16,
@@ -262,14 +685,26 @@ const styles = {
     fontSize: 14,
     color: '#666',
   },
+  actions: {
+    display: 'flex',
+    gap: 8,
+  },
   editButton: {
-    padding: '8px 16px',
+    padding: '8px 12px',
     background: '#3b82f6',
     color: '#fff',
     border: 'none',
     borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 600,
+    fontSize: 16,
+    cursor: 'pointer',
+  },
+  deleteButton: {
+    padding: '8px 12px',
+    background: '#ef4444',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 16,
     cursor: 'pointer',
   },
   editMode: {
@@ -305,6 +740,98 @@ const styles = {
     border: 'none',
     borderRadius: 8,
     fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  modal: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: 20,
+  },
+  modalContent: {
+    background: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    maxWidth: 500,
+    width: '100%',
+    maxHeight: '80vh',
+    overflow: 'auto',
+  },
+  modalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  closeBtn: {
+    padding: '8px 12px',
+    background: 'none',
+    border: 'none',
+    fontSize: 20,
+    cursor: 'pointer',
+    color: '#666',
+  },
+  input: {
+    width: '100%',
+    padding: '12px 16px',
+    border: '2px solid #e5e7eb',
+    borderRadius: 8,
+    fontSize: 14,
+    marginBottom: 12,
+    boxSizing: 'border-box',
+  },
+  productList: {
+    maxHeight: 200,
+    overflowY: 'auto',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  productItem: {
+    padding: '12px 16px',
+    cursor: 'pointer',
+    borderBottom: '1px solid #f3f4f6',
+  },
+  productItemActive: {
+    padding: '12px 16px',
+    cursor: 'pointer',
+    borderBottom: '1px solid #f3f4f6',
+    background: '#dbeafe',
+    fontWeight: 600,
+  },
+  addProductForm: {
+    marginTop: 16,
+  },
+  selectedProduct: {
+    padding: 12,
+    background: '#d1fae5',
+    borderRadius: 8,
+    marginBottom: 12,
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#065f46',
+  },
+  submitBtn: {
+    width: '100%',
+    padding: '12px',
+    background: '#22c55e',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 16,
     fontWeight: 600,
     cursor: 'pointer',
   },

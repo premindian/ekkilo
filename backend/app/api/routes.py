@@ -664,6 +664,32 @@ async def update_product(data: dict):
     return {"status": "ok"}
 
 # -----------------------------
+#  SEARCH MASTER PRODUCTS CATALOG
+# -----------------------------
+@router.get("/api/products")
+async def search_master_products(search: str = ""):
+    from app.db.database import get_db
+    db = await get_db()
+    
+    if search:
+        rows = await db.fetch("""
+            SELECT id, name, brand, variant, size, unit
+            FROM products
+            WHERE LOWER(name) LIKE LOWER($1)
+            ORDER BY name
+            LIMIT 50
+        """, f"%{search}%")
+    else:
+        rows = await db.fetch("""
+            SELECT id, name, brand, variant, size, unit
+            FROM products
+            ORDER BY name
+            LIMIT 50
+        """)
+    
+    return [dict(r) for r in rows]
+
+# -----------------------------
 #  PRODUCT listing by store (OLD - renamed to avoid conflict with Store Portal)
 # -----------------------------
 @router.get("/api/products-by-store")

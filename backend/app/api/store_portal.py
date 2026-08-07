@@ -273,6 +273,73 @@ async def update_store_product(product_id: int, data: dict, token: str):
     return {"status": "success"}
 
 
+@router.post("/products")
+async def add_store_product(data: dict, token: str):
+    """Add new product to store inventory"""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    
+    db = await get_db()
+    
+    product_id = data.get("product_id")
+    price = data.get("price")
+    stock = data.get("stock", 0)
+    
+    if not product_id or not price:
+        raise HTTPException(status_code=400, detail="product_id and price required")
+    
+    # Check if product already exists for this store
+    existing = await db.fetchrow("""
+        SELECT id FROM store_products 
+        WHERE store_id = $1 AND product_id = $2
+    """, store_id, product_id)
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Product already exists in your store")
+    
+    # Get product details
+    product = await db.fetchrow("""
+        SELECT * FROM products WHERE id = $1
+    """, product_id)
+    
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    # Add to store
+    await db.execute("""
+        INSERT INTO store_products (store_id, product_id, brand, variant, size, unit, price, stock, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+    """, store_id, product_id, product.get("brand", ""), product.get("variant", ""), 
+        product.get("size", 1), product.get("unit", "unit"), price, stock)
+    
+    return {"status": "success"}
+
+
+@router.delete("/products/{product_id}")
+async def remove_store_product(product_id: int, token: str):
+    """Remove product from store inventory"""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    
+    db = await get_db()
+    
+    # Verify product belongs to this store
+    product = await db.fetchrow("""
+        SELECT * FROM store_products 
+        WHERE id = $1 AND store_id = $2
+    """, product_id, store_id)
+    
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    # Delete product
+    await db.execute("""
+        DELETE FROM store_products WHERE id = $1
+    """, product_id)
+    
+    return {"status": "success"}
+
+
 # ============================================
 # REPORTS - Sales & Analytics
 # ============================================
