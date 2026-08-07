@@ -86,16 +86,22 @@ function App() {
   }
 
   // Check if this is an admin portal route
+  console.log('🔍 App.js currentPage:', currentPage, 'pathname:', window.location.pathname);
   if (currentPage.startsWith('/admin')) {
+    console.log('✅ Matched /admin route');
     if (currentPage === '/admin/stores') {
+      console.log('📍 Rendering AdminStores');
       return <AdminStores />;
     }
     if (currentPage === '/admin/users') {
+      console.log('📍 Rendering AdminUsers');
       return <AdminUsers />;
     }
     if (currentPage === '/admin/orders') {
+      console.log('📍 Rendering AdminOrders');
       return <AdminOrders />;
     }
+    console.log('📍 Rendering AdminDashboard (default)');
     return <AdminDashboard />;
   }
 
