@@ -106,7 +106,7 @@ async def get_all_stores(token: str, search: str = None, limit: int = 50, offset
             LEFT JOIN store_orders so ON s.id = so.store_id
             WHERE LOWER(s.name) LIKE LOWER($1) OR s.phone LIKE $1
             GROUP BY s.id
-            ORDER BY s.created_at DESC
+            ORDER BY s.id DESC
             LIMIT $2 OFFSET $3
         """, f"%{search}%", limit, offset)
     else:
@@ -117,7 +117,7 @@ async def get_all_stores(token: str, search: str = None, limit: int = 50, offset
             FROM stores s
             LEFT JOIN store_orders so ON s.id = so.store_id
             GROUP BY s.id
-            ORDER BY s.created_at DESC
+            ORDER BY s.id DESC
             LIMIT $1 OFFSET $2
         """, limit, offset)
     
@@ -140,9 +140,13 @@ async def create_store(data: dict, token: str):
     if not name or not phone:
         raise HTTPException(status_code=400, detail="Name and phone required")
     
+    # Ensure optional columns exist on older DBs
+    await db.execute("ALTER TABLE stores ADD COLUMN IF NOT EXISTS address TEXT")
+    await db.execute("ALTER TABLE stores ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
+
     store = await db.fetchrow("""
-        INSERT INTO stores (name, phone, address, lat, lng, created_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
+        INSERT INTO stores (name, phone, address, lat, lng)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING *
     """, name, phone, address, lat, lng)
     
