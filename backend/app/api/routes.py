@@ -719,10 +719,10 @@ async def get_store_products_old(store_id: int):
 # The /whatsapp/webhook endpoint handles all WhatsApp webhook callbacks
 
 #############
-# Admin Messages for WhatsApp Messages
+# Admin Messages for WhatsApp Messages (OLD - consider using /api/admin/whatsapp/messages)
 ##############
-@router.get("/admin/messages")
-async def get_whatsapp_messages():
+@router.get("/api/admin-legacy/messages")
+async def get_whatsapp_messages_legacy():
     from app.db.database import get_db
     db = await get_db()
 
@@ -743,10 +743,10 @@ async def get_whatsapp_messages():
     return [dict(r) for r in rows]
 
 #############
-# Admin Retry Messages from Admin
+# Admin Retry Messages from Admin (OLD - consider using /api/admin/whatsapp/resend/{id})
 ##############
-@router.post("/admin/retry-message/{msg_id}")
-async def retry_message(msg_id: int):
+@router.post("/api/admin-legacy/retry-message/{msg_id}")
+async def retry_message_legacy(msg_id: int):
     from app.db.database import get_db
     from app.services.whatsapp import send_message
 
@@ -766,10 +766,10 @@ async def retry_message(msg_id: int):
     return {"status": "retry_sent"}
 
 #############################
-# Admin Message Analytics
+# Admin Message Analytics (OLD - consider using /api/admin/whatsapp/stats)
 ##############################
-@router.get("/admin/message-analytics")
-async def message_analytics():
+@router.get("/api/admin-legacy/message-analytics")
+async def message_analytics_legacy():
     from app.db.database import get_db
     db = await get_db()
 
@@ -795,10 +795,10 @@ async def message_analytics():
     }
 
 #############################
-# Admin Store Performance
+# Admin Store Performance (OLD)
 ##############################
-@router.get("/admin/store-performance")
-async def store_performance():
+@router.get("/api/admin-legacy/store-performance")
+async def store_performance_legacy():
     from app.db.database import get_db
     db = await get_db()
 
