@@ -5,14 +5,15 @@ const API_BASE = "";
 
 export default function TrackOrder() {
   const params = new URLSearchParams(window.location.search);
-  const initialId = params.get('order_id') || '';
+  // Support both ?order_id=5 and legacy ?order=5 (WhatsApp links)
+  const initialId = params.get('order_id') || params.get('order') || '';
   const [orderId, setOrderId] = useState(initialId);
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const trackOrder = async (idOverride) => {
-    const id = idOverride || orderId;
+    const id = String(idOverride || orderId || '').trim();
     if (!id) {
       setError('Please enter an order ID');
       return;
@@ -23,14 +24,18 @@ export default function TrackOrder() {
     setOrderDetails(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/orders/track?order_id=${id}`);
-      
+      const res = await fetch(`${API_BASE}/api/orders/track?order_id=${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        throw new Error('Order not found');
+        throw new Error(data.detail || data.error || 'Order not found');
       }
 
-      const data = await res.json();
       setOrderDetails(data);
+      // Keep URL shareable with the canonical param
+      if (!params.get('order_id')) {
+        window.history.replaceState({}, '', `/track?order_id=${id}`);
+      }
     } catch (err) {
       setError(err.message || 'Failed to track order');
     } finally {

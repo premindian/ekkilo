@@ -83,7 +83,7 @@ Order ID: {final_order_id}
 
 {summary_text}
 
-Track: https://ekkilo.onrender.com/track?order={final_order_id}
+Track: https://ekkilo.onrender.com/track?order_id={final_order_id}
 
 Commands:
 STATUS#{final_order_id}
@@ -572,7 +572,7 @@ async def track_order(phone: str = None, order_id: int = None):
         # Get store details
         stores = await db.fetch("""
             SELECT so.id, so.store_name, so.store_phone, so.status,
-                   so.total_amount, so.created_at, so.updated_at
+                   so.total_amount, so.created_at
             FROM store_orders so
             WHERE so.final_order_id = $1
             ORDER BY so.id

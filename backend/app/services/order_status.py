@@ -211,11 +211,13 @@ async def notify_customer_status(final_order_id: int, final_status: str, store_n
 
     phone = normalize_phone(customer["customer_phone"])
     status = (final_status or "").upper()
+    track_url = f"https://ekkilo.onrender.com/track?order_id={final_order_id}"
 
     if status == "READY":
         await send_message(
             phone,
-            f"🎉 Great news! Your order #{final_order_id} is READY for pickup!"
+            f"🎉 Order #{final_order_id} is READY for pickup!\n\n"
+            f"Track: {track_url}"
         )
     elif status == "COMPLETED":
         await send_message(
@@ -232,16 +234,44 @@ async def notify_customer_status(final_order_id: int, final_status: str, store_n
             phone,
             f"❌ Order #{final_order_id} has been cancelled."
         )
-    elif status in ("PARTIAL", "PARTIAL_READY"):
+    elif status == "PARTIAL_READY":
         ready_stores = await db.fetch("""
             SELECT store_name FROM store_orders
-            WHERE final_order_id = $1 AND status IN ('READY', 'ACCEPTED', 'COMPLETED')
+            WHERE final_order_id = $1 AND status = 'READY'
+            ORDER BY id
         """, final_order_id)
-        store_list = ", ".join(s["store_name"] for s in ready_stores) or "remaining stores"
-        note = f"\n{store_name} update." if store_name else ""
+        pending_stores = await db.fetch("""
+            SELECT store_name FROM store_orders
+            WHERE final_order_id = $1 AND status IN ('PENDING', 'ACCEPTED', 'PROCESSING')
+            ORDER BY id
+        """, final_order_id)
+        ready_list = ", ".join(s["store_name"] for s in ready_stores) or (
+            store_name or "a store"
+        )
+        pending_list = ", ".join(s["store_name"] for s in pending_stores)
+        msg = (
+            f"📦 Order #{final_order_id} update\n\n"
+            f"✅ Ready for pickup: {ready_list}"
+        )
+        if pending_list:
+            msg += f"\n⏳ Still preparing: {pending_list}"
+        msg += f"\n\nTrack: {track_url}"
+        await send_message(phone, msg)
+    elif status == "PARTIAL":
+        rejected = store_name or "One store"
         await send_message(
             phone,
-            f"📦 Order #{final_order_id} update:{note}\nProceeding with: {store_list}"
+            f"⚠️ Order #{final_order_id} update\n\n"
+            f"{rejected} cannot fulfill their part.\n"
+            f"Other stores are still processing your order.\n\n"
+            f"Track: {track_url}"
+        )
+    elif status == "ACCEPTED":
+        who = store_name or "A store"
+        await send_message(
+            phone,
+            f"👍 Order #{final_order_id}: {who} accepted your order.\n\n"
+            f"Track: {track_url}"
         )
 
 
