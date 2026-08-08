@@ -111,19 +111,11 @@ async def receive(req: Request):
             return [r["status"] for r in rows]
 
         # =========================================================
-        # 🔥 WHATSAPP-ONLY ORDER FLOW (no web UI required)
+        # 🔥 WHATSAPP COMMANDS (updates only — order creation disabled)
         # =========================================================
-        # Customer:
-        #   1) Sends grocery list → order CREATED + quote reply
-        #   2) CONFIRM#{id} → order CONFIRMED, store WhatsApps sent
-        #   3) CANCEL#{id} / STATUS#{id}
-        # Store:
-        #   ACCEPT#{id} → store ACCEPTED
-        #   READY#{id}  → store READY (customer notified when all/partial ready)
-        #   REJECT#{id} → store REJECTED (partial order can still complete)
-        # Final status is aggregated from all store_orders:
-        #   CREATED → CONFIRMED → ACCEPTED/PARTIAL → READY/PARTIAL_READY → COMPLETED
-        # Both status columns AND event tables are updated on every transition.
+        # Order placement: use web portal (see redirect below).
+        # Customer: CANCEL#{id} / STATUS#{id}  (+ CONFIRM#{id} for legacy)
+        # Store: ACCEPT#{id} / READY#{id} / REJECT#{id}
         # =========================================================
         if "#" in text:
 
@@ -364,89 +356,70 @@ async def receive(req: Request):
                 return {"status": "rejected"}
 
         # =========================================================
-        # 🔍 SEARCH FLOW + CREATE ORDER
+        # 🔍 WHATSAPP ORDER CREATION - DISABLED FOR THIS RELEASE
+        # Customers should order via web portal instead.
+        # Store command replies (ACCEPT/READY/REJECT) and customer
+        # STATUS/CANCEL still work above for portal-created orders.
+        # Uncomment block below to re-enable WhatsApp grocery-list ordering.
         # =========================================================
-        context = Context(user_text=text)
+        await send_message(
+            phone,
+            "🛒 Please place orders on the Ekkilo app/website:\n"
+            "https://ekkilo.onrender.com\n\n"
+            "WhatsApp is for order updates only.\n"
+            "Commands: STATUS#orderid  |  CANCEL#orderid"
+        )
+        return {"status": "redirect_to_portal"}
 
-        engine = Engine([
-            ListParser(),
-            Matcher(),
-            Pricing(),
-            Optimizer(),
-        ])
-
-        result = await engine.run(context)
-        data = result.data
-
-        optimized_plan = data.get("optimized_plan", {})
-        
-        if not optimized_plan:
-            await send_message(phone, "❌ No products found. Try again!")
-            return {"status": "no_results"}
-
-        # 🔥 CREATE ORDER IN DB
-        from app.services.order_service import create_full_order
-        
-        # Build stores payload
-        stores_payload = []
-        for store_name, products in optimized_plan.items():
-            # Get store phone from products
-            store_phone = None
-            for p in products:
-                if p.get("phone"):
-                    store_phone = p["phone"]
-                    break
-            
-            # If no phone found, fetch from DB
-            if not store_phone:
-                store_row = await db.fetchrow("""
-                    SELECT phone FROM stores WHERE name = $1
-                """, store_name)
-                if store_row:
-                    store_phone = store_row["phone"]
-            
-            items = []
-            for p in products:
-                items.append({
-                    "name": p.get("name", ""),
-                    "packs": p.get("packs", 1),
-                    "size": p.get("size", 1),
-                    "unit": p.get("unit", ""),
-                    "price": p.get("price", 0),
-                    "phone": p.get("phone")
-                })
-            
-            stores_payload.append({
-                "store": store_name,
-                "store_phone": store_phone,
-                "items": items
-            })
-        
-        # Create the order (but don't send to stores yet - wait for CONFIRM)
-        final_order_id, whatsapp_jobs = await create_full_order(stores_payload, phone)
-
-        # DON'T send store messages yet - wait for customer to CONFIRM
-        # Store the messages are already in whatsapp_messages table via create_full_order
-
-        # Build customer message
-        message = "🧠 Smart Kirana Order\n\n"
-        message += f"📝 Order ID: {final_order_id}\n\n"
-
-        for store_name, items in optimized_plan.items():
-            message += f"🏪 {store_name}\n"
-
-            for i in items:
-                message += f"  {i['name']} x{i['packs']} ₹{i['price']}\n"
-
-            message += "\n"
-
-        message += f"💰 Total: ₹{data.get('optimized_total', 0)}\n\n"
-        message += f"Reply CONFIRM#{final_order_id} to proceed\n"
-        message += f"Or CANCEL#{final_order_id} to cancel"
-
-        await send_message(phone, message)
-
-        return {"status": "order_created", "order_id": final_order_id}
+        # --- DISABLED: WhatsApp grocery-list → create order ---
+        # context = Context(user_text=text)
+        # engine = Engine([ListParser(), Matcher(), Pricing(), Optimizer()])
+        # result = await engine.run(context)
+        # data = result.data
+        # optimized_plan = data.get("optimized_plan", {})
+        # if not optimized_plan:
+        #     await send_message(phone, "❌ No products found. Try again!")
+        #     return {"status": "no_results"}
+        # from app.services.order_service import create_full_order
+        # stores_payload = []
+        # for store_name, products in optimized_plan.items():
+        #     store_phone = None
+        #     for p in products:
+        #         if p.get("phone"):
+        #             store_phone = p["phone"]
+        #             break
+        #     if not store_phone:
+        #         store_row = await db.fetchrow(
+        #             "SELECT phone FROM stores WHERE name = $1", store_name
+        #         )
+        #         if store_row:
+        #             store_phone = store_row["phone"]
+        #     items = [{
+        #         "name": p.get("name", ""),
+        #         "packs": p.get("packs", 1),
+        #         "size": p.get("size", 1),
+        #         "unit": p.get("unit", ""),
+        #         "price": p.get("price", 0),
+        #         "phone": p.get("phone"),
+        #     } for p in products]
+        #     stores_payload.append({
+        #         "store": store_name,
+        #         "store_phone": store_phone,
+        #         "items": items,
+        #     })
+        # final_order_id, whatsapp_jobs = await create_full_order(stores_payload, phone)
+        # message = "🧠 Smart Kirana Order\n\n"
+        # message += f"📝 Order ID: {final_order_id}\n\n"
+        # for store_name, items in optimized_plan.items():
+        #     message += f"🏪 {store_name}\n"
+        #     for i in items:
+        #         message += f"  {i['name']} x{i['packs']} ₹{i['price']}\n"
+        #     message += "\n"
+        # message += f"💰 Total: ₹{data.get('optimized_total', 0)}\n\n"
+        # message += f"Reply CONFIRM#{final_order_id} to proceed\n"
+        # message += f"Or CANCEL#{final_order_id} to cancel"
+        # await send_message(phone, message)
+        # return {"status": "order_created", "order_id": final_order_id}
 
     except Exception as e:
         print("❌ Error:", str(e))
