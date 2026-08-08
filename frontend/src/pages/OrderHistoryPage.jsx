@@ -51,7 +51,7 @@ export default function OrderHistoryPage({ onReorder }) {
         onReorder(data.search_text);
       }
     } catch (err) {
-      alert('Failed to reorder');
+      alert('Failed to load items for shopping');
     }
   };
 
@@ -209,7 +209,7 @@ export default function OrderHistoryPage({ onReorder }) {
                 onClick={() => handleReorder(selectedOrder.order.id)}
                 style={styles.reorderBtn}
               >
-                🔄 Reorder
+                🛒 Shop these items
               </button>
             </div>
           </>
