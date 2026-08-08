@@ -1,14 +1,9 @@
 from app.db.database import get_db
+from app.agents.brands import extract_brand, BRAND_KEYWORDS
 
 
 class Matcher:
-    # Common brand names to strip from search queries
-    BRAND_KEYWORDS = [
-        'amul', 'mother dairy', 'britannia', 'parle', 'nestle', 'maggi',
-        'tata', 'fortune', 'saffola', 'sundrop', 'dalda', 'aashirvaad',
-        'india gate', 'kohinoor', 'daawat', 'basmati', 'annapurna',
-        'pillsbury', 'horlicks', 'bournvita', 'complan', 'boost'
-    ]
+    BRAND_KEYWORDS = BRAND_KEYWORDS
     
     async def run(self, context):
         parsed = context.get("parsed_items")
@@ -24,41 +19,49 @@ class Matcher:
 
         for p in parsed:
             name = (p.get("name") or "").strip().lower()
+            preferred_brand = p.get("preferred_brand")
+            raw_name = (p.get("raw_name") or name).strip().lower()
 
-            if not name:
+            if not name and not raw_name:
                 continue
 
-            print(f"🔍 MATCHER: Searching for '{name}'")
-            matched_name = name
+            # Ensure brand is captured even if parser missed it
+            if not preferred_brand:
+                cleaned, preferred_brand = extract_brand(raw_name or name)
+                if cleaned:
+                    name = cleaned
+
+            search_name = name or raw_name
+            print(f"🔍 MATCHER: Searching for '{search_name}' (brand={preferred_brand})")
+            matched_name = search_name
             
             # Try using search_products function if it exists
             try:
                 product_matches = await db.fetch("""
                     SELECT * FROM search_products($1)
-                """, name)
+                """, search_name)
                 
                 if product_matches:
-                    # Use the best match (first result)
                     best_match = product_matches[0]
                     matched_name = best_match['product_name']
-                    print(f"  ✓ Matched '{name}' → '{matched_name}' (score: {best_match['match_score']:.2f})")
+                    print(f"  ✓ Matched '{search_name}' → '{matched_name}' (score: {best_match['match_score']:.2f})")
                 else:
-                    print(f"  ⚠️ No match via search_products for '{name}', trying direct match")
-                    # Try direct fuzzy match
-                    matched_name = await self._fallback_match(db, name)
+                    print(f"  ⚠️ No match via search_products for '{search_name}', trying direct match")
+                    matched_name = await self._fallback_match(db, search_name)
             except Exception as e:
-                print(f"  ⚠️ search_products error for '{name}': {e}, trying direct match")
-                # Try direct fuzzy match
+                print(f"  ⚠️ search_products error for '{search_name}': {e}, trying direct match")
                 try:
-                    matched_name = await self._fallback_match(db, name)
+                    matched_name = await self._fallback_match(db, search_name)
                 except Exception as e2:
-                    print(f"  ❌ Fallback match error for '{name}': {e2}, using as-is")
-                    matched_name = name
+                    print(f"  ❌ Fallback match error for '{search_name}': {e2}, using as-is")
+                    matched_name = search_name
             
             matched.append({
                 "name": matched_name,
                 "qty": p.get("qty", 1),
-                "unit": p.get("unit", "unit")
+                "unit": p.get("unit", "unit"),
+                "preferred_brand": preferred_brand,
+                "raw_name": raw_name,
             })
 
         print("🧠 MATCHED:", matched)
@@ -67,17 +70,7 @@ class Matcher:
         return context
     
     def _strip_brand_keywords(self, search_name):
-        """Remove common brand names from search query"""
-        cleaned = search_name.lower().strip()
-        
-        for brand in self.BRAND_KEYWORDS:
-            # Remove brand at start
-            if cleaned.startswith(brand + ' '):
-                cleaned = cleaned[len(brand)+1:].strip()
-            # Remove brand at end
-            if cleaned.endswith(' ' + brand):
-                cleaned = cleaned[:-len(brand)-1].strip()
-        
+        cleaned, _ = extract_brand(search_name)
         return cleaned if cleaned else search_name
     
     async def _fallback_match(self, db, search_name):
@@ -139,25 +132,21 @@ class Matcher:
         
         # STRATEGY 5: Try common product synonyms + typos
         synonyms = {
-            # Common synonyms (Hindi/English)
             'basmati': 'rice',
-            'basmathi': 'rice',  # Common typo
-            'basumati': 'rice',  # Common typo
+            'basmathi': 'rice',
+            'basumati': 'rice',
             'atta': 'wheat flour',
             'maida': 'refined flour',
             'besan': 'gram flour',
             'doodh': 'milk',
-            'dhood': 'milk',  # Common typo
+            'dhood': 'milk',
             'tel': 'oil',
-            'tail': 'oil',  # Common typo
+            'tail': 'oil',
             'cheeni': 'sugar',
-            'chini': 'sugar',  # Common typo
+            'chini': 'sugar',
             'namak': 'salt',
             'chawal': 'rice',
-            'chaawal': 'rice',  # Common typo
-            # Brand name typos
-            'amool': 'milk',
-            'ammul': 'milk',
+            'chaawal': 'rice',
         }
         
         for key, value in synonyms.items():
@@ -177,8 +166,8 @@ class Matcher:
         # STRATEGY 6: Try word-by-word matching (last resort)
         words = cleaned_name.split()
         if len(words) > 1:
-            for word in sorted(words, key=len, reverse=True):  # Try longest words first
-                if len(word) > 2:  # Skip very short words
+            for word in sorted(words, key=len, reverse=True):
+                if len(word) > 2:
                     row = await db.fetchrow("""
                         SELECT name FROM products 
                         WHERE LOWER(name) LIKE LOWER($1)
@@ -191,6 +180,5 @@ class Matcher:
                         print(f"  ✓ Word match: '{search_name}' (word: '{word}') → '{word_match}'")
                         return word_match
         
-        # No match found, use original
         print(f"  ⚠️ No fuzzy match for '{search_name}', using as-is")
         return search_name

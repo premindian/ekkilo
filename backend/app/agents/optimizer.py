@@ -42,15 +42,19 @@ class Optimizer:
                 if not opt.get("available", True):
                     availability_penalty += 50
 
-                # 🧠 PREFERENCE MATCHING
+                # 🧠 PREFERENCE MATCHING (brand is a hard preference when requested)
                 pref_brand = (opt.get("preferred_brand") or "").lower()
                 pref_variant = (opt.get("preferred_variant") or "").lower()
 
                 brand = (opt.get("brand") or "").lower()
                 variant = (opt.get("variant") or "").lower()
+                brand_ok = opt.get("brand_match", True)
 
-                if pref_brand and brand == pref_brand:
-                    brand_bonus += 5   # strong signal
+                if pref_brand:
+                    if brand_ok or (brand and (pref_brand in brand or brand in pref_brand)):
+                        brand_bonus += 250  # strongly prefer requested brand (Amul etc.)
+                    else:
+                        availability_penalty += 180  # strongly avoid wrong brand
 
                 if pref_variant and variant == pref_variant:
                     variant_bonus += 3

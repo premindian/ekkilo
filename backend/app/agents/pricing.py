@@ -5,6 +5,7 @@ class Pricing:
     async def run(self, context):
         print("🔥 PRICING RUN STARTED")
         from app.db.database import get_db
+        from app.agents.brands import brand_matches, display_name
         import math
 
         db = await get_db()
@@ -16,26 +17,48 @@ class Pricing:
 
         for p in products:
             name = p.get("name")
+            preferred_brand = (p.get("preferred_brand") or "").strip()
             
-            print(f"\n💰 PRICING: Looking up '{name}' in database...")
+            print(f"\n💰 PRICING: Looking up '{name}' (want brand={preferred_brand or 'any'})...")
 
-            # 🔥 FETCH FROM DB (WITH STOCK)
-            rows = await db.fetch("""
-                SELECT 
-                    s.name as store,
-                    s.phone,
-                    sp.price,
-                    sp.brand,
-                    sp.variant,
-                    sp.size,
-                    sp.unit,
-                    sp.stock,
-                    pr.base_unit
-                FROM store_products sp
-                JOIN stores s ON sp.store_id = s.id
-                JOIN products pr ON sp.product_id = pr.id
-                WHERE LOWER(pr.name) = LOWER($1)
-            """, name)
+            # Prefer exact brand SKUs first when requested
+            if preferred_brand:
+                rows = await db.fetch("""
+                    SELECT 
+                        s.name as store,
+                        s.phone,
+                        sp.price,
+                        sp.brand,
+                        sp.variant,
+                        sp.size,
+                        sp.unit,
+                        sp.stock,
+                        pr.base_unit
+                    FROM store_products sp
+                    JOIN stores s ON sp.store_id = s.id
+                    JOIN products pr ON sp.product_id = pr.id
+                    WHERE LOWER(pr.name) = LOWER($1)
+                    ORDER BY
+                      CASE WHEN LOWER(COALESCE(sp.brand,'')) LIKE LOWER($2) THEN 0 ELSE 1 END,
+                      sp.price ASC
+                """, name, f"%{preferred_brand}%")
+            else:
+                rows = await db.fetch("""
+                    SELECT 
+                        s.name as store,
+                        s.phone,
+                        sp.price,
+                        sp.brand,
+                        sp.variant,
+                        sp.size,
+                        sp.unit,
+                        sp.stock,
+                        pr.base_unit
+                    FROM store_products sp
+                    JOIN stores s ON sp.store_id = s.id
+                    JOIN products pr ON sp.product_id = pr.id
+                    WHERE LOWER(pr.name) = LOWER($1)
+                """, name)
 
             print(f"🔍 '{name}': Found {len(rows)} options across stores")
 
@@ -45,10 +68,14 @@ class Pricing:
                 continue
 
             options = []
+            brand_hit_count = 0
 
             for r in rows:
                 stock_emoji = '✅' if (r.get("stock", 0) or 0) > 0 else '❌'
-                print(f"  {stock_emoji} {r.get('store')}: {r.get('brand')} {r.get('variant')} {r.get('size')}{r.get('unit')} - ₹{r.get('price')} (stock: {r.get('stock', 0)})")
+                is_brand = brand_matches(preferred_brand, r.get("brand"))
+                if preferred_brand and is_brand:
+                    brand_hit_count += 1
+                print(f"  {stock_emoji} {r.get('store')}: {r.get('brand')} {r.get('variant')} {r.get('size')}{r.get('unit')} - ₹{r.get('price')} (stock: {r.get('stock', 0)}) brand_match={is_brand}")
 
                 base_unit = (r.get("base_unit") or "").lower()
 
@@ -82,8 +109,15 @@ class Pricing:
                 if not is_available:
                     total_price = total_price + 500  # push down but still visible
 
+                # Soft penalty when brand requested but this SKU is different
+                if preferred_brand and not is_brand:
+                    total_price = total_price + 300
+
+                label = display_name(name, r.get("brand"), preferred_brand)
+
                 options.append({
                     "name": name,
+                    "display_name": label,
                     "store": r.get("store"),
                     "phone": r.get("phone"),
 
@@ -100,11 +134,16 @@ class Pricing:
 
                     # 🔥 META
                     "brand": r.get("brand"),
+                    "preferred_brand": preferred_brand or None,
+                    "brand_match": bool(is_brand) if preferred_brand else True,
                     "variant": r.get("variant"),
                     "size": r.get("size"),
                     "unit": r.get("unit"),
                     "base_unit": base_unit
                 })
+
+            if preferred_brand:
+                print(f"  🏷️ Brand '{preferred_brand}' matches: {brand_hit_count}/{len(options)}")
 
             price_matrix[name] = options
 

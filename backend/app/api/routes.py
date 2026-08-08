@@ -247,10 +247,16 @@ async def search_products(data: dict):
         items = []
 
         for p in products:
-            price = p.get("price", 0)
+            # Use real_price (excludes internal ranking penalties)
+            price = p.get("real_price", p.get("price", 0))
 
             items.append({
                 "name": p.get("name", ""),
+                "display_name": p.get("display_name") or p.get("name", ""),
+                "brand": p.get("brand"),
+                "variant": p.get("variant"),
+                "preferred_brand": p.get("preferred_brand"),
+                "brand_match": p.get("brand_match", True),
                 "packs": p.get("packs", 1),
                 "size": p.get("size", 1),
                 "unit": p.get("unit", ""),
@@ -348,7 +354,7 @@ async def search_products(data: dict):
     single_store_total = float("inf")
 
     for store, products in optimized.items():
-        total_price = sum(p.get("price", 0) for p in products)
+        total_price = sum(p.get("real_price", p.get("price", 0)) for p in products)
         single_store_total = min(single_store_total, total_price)
 
     if single_store_total == float("inf"):
@@ -387,14 +393,20 @@ async def search_products(data: dict):
         comparison[item] = []
 
         for i, opt in enumerate(sorted_opts):
+            display_price = opt.get("real_price", opt.get("price"))
             comparison[item].append({
                 "store": opt.get("store"),
-                "price": opt.get("price"),
+                "price": display_price,
                 "packs": opt.get("packs"),
                 "size": opt.get("size"),
                 "unit": opt.get("unit"),
+                "brand": opt.get("brand"),
+                "variant": opt.get("variant"),
+                "display_name": opt.get("display_name") or opt.get("name"),
+                "preferred_brand": opt.get("preferred_brand"),
+                "brand_match": opt.get("brand_match", True),
                 "is_best": i == 0,
-                "savings": highest_price - opt.get("price")
+                "savings": highest_price - opt.get("price", 0)
             })
 
     # -----------------------------
@@ -409,11 +421,17 @@ async def search_products(data: dict):
             if store not in store_view:
                 store_view[store] = {}
 
-            if (
-                item not in store_view[store] or
-                opt["price"] < store_view[store][item]["price"]
-            ):
-                store_view[store][item] = opt
+            # Rank with internal price (includes brand preference penalties),
+            # but expose real_price to the UI.
+            rank_price = opt.get("price", 0)
+            existing = store_view[store].get(item)
+            existing_rank = existing.get("_rank_price", existing.get("price", float("inf"))) if existing else float("inf")
+
+            if item not in store_view[store] or rank_price < existing_rank:
+                view_opt = dict(opt)
+                view_opt["_rank_price"] = rank_price
+                view_opt["price"] = opt.get("real_price", opt.get("price", 0))
+                store_view[store][item] = view_opt
 
     # -----------------------------
     # 🏪 ADD NON-OPTIMIZED STORES (for Manual/Regular/Favorites modes)
@@ -432,9 +450,14 @@ async def search_products(data: dict):
             store_total = 0
             
             for item_name, item_data in store_items_data.items():
-                price = item_data.get("price", 0)
+                price = item_data.get("real_price", item_data.get("price", 0))
                 items.append({
                     "name": item_name,
+                    "display_name": item_data.get("display_name") or item_name,
+                    "brand": item_data.get("brand"),
+                    "variant": item_data.get("variant"),
+                    "preferred_brand": item_data.get("preferred_brand"),
+                    "brand_match": item_data.get("brand_match", True),
                     "packs": item_data.get("packs", 1),
                     "size": item_data.get("size", 1),
                     "unit": item_data.get("unit", ""),
@@ -459,6 +482,11 @@ async def search_products(data: dict):
             stores.append(store_obj)
     
     print(f"🏪 TOTAL STORES in response: {len(stores)} (optimized: {len(optimized)}, all: {len(store_names)})")
+
+    # Strip internal ranking keys from store_view before response
+    for store_items in store_view.values():
+        for item_opt in store_items.values():
+            item_opt.pop("_rank_price", None)
 
     # -----------------------------
     # ✅ FINAL RESPONSE

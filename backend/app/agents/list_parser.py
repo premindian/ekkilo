@@ -1,4 +1,5 @@
 import re
+from app.agents.brands import extract_brand
 
 # 🔥 Default quantities for common items
 DEFAULTS = {
@@ -24,18 +25,21 @@ class ListParser:
             item = item.strip().lower()
 
             # 🔍 extract quantity + unit (supports kg, g, l, ml, pcs)
-            match = re.search(r"(\d+)\s*(kg|g|l|ml|pcs)?", item)
+            match = re.search(r"(\d+(?:\.\d+)?)\s*(kg|g|l|ml|pcs)?", item)
 
             if match:
-                qty = int(match.group(1))
+                qty = float(match.group(1))
+                if qty == int(qty):
+                    qty = int(qty)
                 unit = match.group(2) or "unit"
 
                 name = item.replace(match.group(0), "").strip()
             else:
                 name = item.strip()
 
-                # 🔥 apply default if exists
-                default = DEFAULTS.get(name)
+                # 🔥 apply default if exists (after brand strip for lookup)
+                product_only, _ = extract_brand(name)
+                default = DEFAULTS.get(product_only) or DEFAULTS.get(name)
                 if default:
                     qty = default["qty"]
                     unit = default["unit"]
@@ -43,10 +47,17 @@ class ListParser:
                     qty = 1
                     unit = "unit"
 
+            product_name, preferred_brand = extract_brand(name)
+            # Keep a searchable product name; fall back to original if empty
+            if not product_name:
+                product_name = name
+
             parsed.append({
-                "name": name,
+                "name": product_name,
+                "raw_name": name,
                 "qty": qty,
-                "unit": unit
+                "unit": unit,
+                "preferred_brand": preferred_brand,
             })
 
         print("🧠 PARSED:", parsed)

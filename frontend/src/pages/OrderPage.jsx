@@ -5,6 +5,19 @@ import { useAuth } from "../context/AuthContext";
 // Backend and frontend on SAME domain now!
 const API_BASE = "";
 
+function itemLabel(it) {
+  if (!it) return "";
+  if (it.display_name) return it.display_name;
+  if (it.brand) return `${it.brand} ${it.name}`;
+  return it.name || "";
+}
+
+function brandNote(it) {
+  if (!it?.preferred_brand || it.brand_match !== false) return null;
+  const wanted = String(it.preferred_brand).replace(/\b\w/g, (c) => c.toUpperCase());
+  return `${wanted} not available — showing alternative`;
+}
+
 export default function OrderPage({ initialSearchText }) {
   const { user, token } = useAuth();
   const [text, setText] = useState("");
@@ -258,7 +271,7 @@ export default function OrderPage({ initialSearchText }) {
     // Build confirmation message
     const orderSummary = storesPayload.map(store => {
       const itemsList = store.items.map(item => 
-        `  • ${item.name} (${item.packs || 1} × ${item.size}${item.unit})`
+        `  • ${itemLabel(item)} (${item.packs || 1} × ${item.size}${item.unit})`
       ).join('\n');
       return `📍 ${store.store}\n${itemsList}\n💰 Subtotal: ₹${store.total.toFixed(2)}`;
     }).join('\n\n');
@@ -634,8 +647,11 @@ export default function OrderPage({ initialSearchText }) {
             {store.items.map((it,j)=>(
               <div key={j} style={row}>
                 <span>
-                  {it.name} ({it.packs||1} × {it.size}{it.unit})
+                  {itemLabel(it)} ({it.packs||1} × {it.size}{it.unit})
                   {it.available === false && <span style={{ fontSize: 11, color: '#ef4444', marginLeft: 6 }}>⚠️ Limited</span>}
+                  {brandNote(it) && (
+                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>{brandNote(it)}</div>
+                  )}
                 </span>
                 <span>₹{format(it.price)}</span>
               </div>
@@ -690,10 +706,13 @@ export default function OrderPage({ initialSearchText }) {
             {store.items.map((item,i)=>(
               <div key={i} style={itemBlock}>
                 <div>
-                  <div>{item.name}</div>
+                  <div>{itemLabel(item)}</div>
                   <div style={itemMeta}>
-                    {item.packs||1} × {item.size}{item.unit}
+                    {[item.brand, item.variant, `${item.packs||1} × ${item.size}${item.unit}`].filter(Boolean).join(" • ")}
                   </div>
+                  {brandNote(item) && (
+                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>{brandNote(item)}</div>
+                  )}
                 </div>
                 <div>₹{format(item.price)}</div>
               </div>
@@ -761,10 +780,13 @@ export default function OrderPage({ initialSearchText }) {
             {myRegularStore.items.map((item,i)=>(
               <div key={i} style={itemBlock}>
                 <div>
-                  <div>{item.name}</div>
+                  <div>{itemLabel(item)}</div>
                   <div style={itemMeta}>
-                    {item.packs||1} × {item.size}{item.unit}
+                    {[item.brand, item.variant, `${item.packs||1} × ${item.size}${item.unit}`].filter(Boolean).join(" • ")}
                   </div>
+                  {brandNote(item) && (
+                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>{brandNote(item)}</div>
+                  )}
                 </div>
                 <div>₹{format(item.price)}</div>
               </div>
@@ -821,10 +843,13 @@ export default function OrderPage({ initialSearchText }) {
             return (
               <div key={i} style={itemBlock}>
                 <div>
-                  <div>{it.name}</div>
+                  <div>{itemLabel(it)}</div>
                   <div style={itemMeta}>
-                    {it.brand} • {it.variant} • {it.size}{it.unit}
+                    {[it.brand, it.variant, `${it.size}${it.unit}`].filter(Boolean).join(" • ")}
                   </div>
+                  {brandNote(it) && (
+                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>{brandNote(it)}</div>
+                  )}
                 </div>
 
                 <div style={{display:"flex",gap:8}}>
@@ -987,7 +1012,8 @@ export default function OrderPage({ initialSearchText }) {
                   </div>
                   {selectedStoreDetails.items.map((item, i) => (
                     <div key={i} style={{ fontSize: 13, color: '#666', padding: '4px 0' }}>
-                      • {item.name}
+                      • {itemLabel(item)}
+                      {brandNote(item) ? ` (${brandNote(item)})` : ""}
                     </div>
                   ))}
                 </div>
