@@ -225,7 +225,7 @@ async def update_store_order(order_id: int, data: dict, token: str):
         raise HTTPException(status_code=404, detail="Order not found")
     
     new_status = data.get("status", "").upper()
-    allowed_statuses = ["ACCEPTED", "READY", "REJECTED", "COMPLETED"]
+    allowed_statuses = ["ACCEPTED", "READY", "REJECTED", "COMPLETED", "DELAY"]
     
     if new_status not in allowed_statuses:
         raise HTTPException(
@@ -238,15 +238,88 @@ async def update_store_order(order_id: int, data: dict, token: str):
         set_store_order_status,
         update_final_order_status,
         notify_customer_status,
+        notify_customer_accept,
+        apply_store_delay,
+        DEFAULT_ETA_MINUTES,
     )
 
     await ensure_order_schema(db)
-    await set_store_order_status(order_id, new_status, db=db)
-
     final_order_id = order["final_order_id"]
+
+    # Portal "running late" — use store WhatsApp path with owner phone fallback
+    if new_status == "DELAY":
+        store_phone = (
+            order.get("store_phone")
+            or store_owner.get("store_phone")
+            or store_owner.get("phone")
+        )
+        result = await apply_store_delay(
+            final_order_id,
+            store_phone,
+            str(data.get("note") or data.get("eta") or "15m"),
+            db=db,
+        )
+        # If phone match fails, still update this store_order directly
+        if not result.get("ok"):
+            from app.services.order_status import parse_eta_minutes, format_eta_label, get_track_url
+            from app.services.whatsapp import send_message
+            from app.utils.phone import normalize_phone
+
+            rest = str(data.get("note") or data.get("eta") or "15m")
+            extra = parse_eta_minutes(rest) or 15
+            reason = rest if not parse_eta_minutes(rest) else "packing is taking longer than expected"
+            await db.execute("""
+                UPDATE store_orders
+                SET status = CASE WHEN status = 'PENDING' THEN 'ACCEPTED' ELSE status END,
+                    accepted_at = COALESCE(accepted_at, NOW()),
+                    ready_by = NOW() + ($2::text || ' minutes')::interval,
+                    delay_note = $3,
+                    delay_notified_at = NOW(),
+                    late_ping_sent_at = NULL,
+                    updated_at = NOW()
+                WHERE id = $1
+            """, order_id, extra, reason)
+            customer = await db.fetchrow(
+                "SELECT customer_phone FROM final_orders WHERE id = $1", final_order_id
+            )
+            if customer and customer.get("customer_phone"):
+                track_url = await get_track_url(final_order_id, db=db)
+                await send_message(
+                    normalize_phone(customer["customer_phone"]),
+                    f"⏳ Order #{final_order_id} update from {order.get('store_name') or 'your store'}:\n"
+                    f"{reason}.\n"
+                    f"New estimate: about {format_eta_label(extra)} from now.\n\n"
+                    f"Track: {track_url}",
+                )
+            return {"status": "delayed", "message": f"Customer notified (+{format_eta_label(extra)})"}
+        return {"status": "delayed", "message": result.get("message")}
+
+    eta_minutes = data.get("eta_minutes")
+    try:
+        eta_minutes = int(eta_minutes) if eta_minutes is not None else None
+    except (TypeError, ValueError):
+        eta_minutes = None
+
+    if new_status == "ACCEPTED":
+        await set_store_order_status(
+            order_id, new_status, db=db, eta_minutes=eta_minutes or DEFAULT_ETA_MINUTES
+        )
+    else:
+        await set_store_order_status(order_id, new_status, db=db)
+
     final_status, notify_customer = await update_final_order_status(final_order_id, db=db)
 
-    if notify_customer:
+    if new_status == "ACCEPTED":
+        try:
+            await notify_customer_accept(
+                final_order_id,
+                order.get("store_name"),
+                eta_minutes or DEFAULT_ETA_MINUTES,
+                db=db,
+            )
+        except Exception as e:
+            print(f"⚠️ Portal accept notify failed: {e}")
+    elif notify_customer:
         await notify_customer_status(
             final_order_id,
             final_status,

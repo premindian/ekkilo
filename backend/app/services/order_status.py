@@ -2,12 +2,16 @@
 Shared order status helpers for WhatsApp + web portals.
 Ensures schema, updates store/final status, and notifies customers.
 """
+import re
 import secrets
 
 from app.db.database import get_db
 from app.utils.phone import normalize_phone, phone_tail
 
 TRACK_BASE_URL = "https://ekkilo.onrender.com"
+
+# If store accepts without an ETA, assume this many minutes before we warn the customer
+DEFAULT_ETA_MINUTES = 45
 
 
 def new_track_token() -> str:
@@ -44,6 +48,24 @@ async def ensure_order_schema(db=None):
     """)
     await db.execute("""
         ALTER TABLE store_orders ADD COLUMN IF NOT EXISTS store_id INTEGER
+    """)
+    await db.execute("""
+        ALTER TABLE store_orders ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ
+    """)
+    await db.execute("""
+        ALTER TABLE store_orders ADD COLUMN IF NOT EXISTS eta_minutes INTEGER
+    """)
+    await db.execute("""
+        ALTER TABLE store_orders ADD COLUMN IF NOT EXISTS ready_by TIMESTAMPTZ
+    """)
+    await db.execute("""
+        ALTER TABLE store_orders ADD COLUMN IF NOT EXISTS delay_note TEXT
+    """)
+    await db.execute("""
+        ALTER TABLE store_orders ADD COLUMN IF NOT EXISTS delay_notified_at TIMESTAMPTZ
+    """)
+    await db.execute("""
+        ALTER TABLE store_orders ADD COLUMN IF NOT EXISTS late_ping_sent_at TIMESTAMPTZ
     """)
 
     await db.execute("""
@@ -148,20 +170,250 @@ async def find_store_order_for_phone(order_id: int, sender_phone: str, db=None):
     return None, "not_found"
 
 
-async def set_store_order_status(store_order_id: int, status: str, db=None):
+def parse_eta_minutes(text: str):
+    """
+    Parse ETA from free text after a command.
+    Examples: '30m', '30 min', '45mins', '1h', '1.5h', '90'
+    Returns int minutes or None.
+    """
+    if not text:
+        return None
+    cleaned = " ".join(str(text).strip().lower().split())
+    if not cleaned:
+        return None
+
+    # 1h / 1.5h / 2 hr
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)\b", cleaned)
+    if m:
+        hours = float(m.group(1))
+        mins = int(round(hours * 60))
+        return mins if mins > 0 else None
+
+    # 30m / 30 min / 45mins / 30 minutes
+    m = re.match(r"^(\d+)\s*(m|min|mins|minute|minutes)?\b", cleaned)
+    if m:
+        mins = int(m.group(1))
+        # bare number like "30" = minutes; ignore huge numbers that look like order ids
+        if mins <= 0 or mins > 24 * 60:
+            return None
+        return mins
+
+    return None
+
+
+def format_eta_label(minutes: int) -> str:
+    if minutes is None:
+        return ""
+    if minutes < 60:
+        return f"{minutes} min"
+    hours = minutes / 60
+    if abs(hours - round(hours)) < 0.05:
+        h = int(round(hours))
+        return f"{h} hour" if h == 1 else f"{h} hours"
+    return f"{hours:.1f} hours".rstrip("0").rstrip(".") + " hours"
+
+
+async def set_store_order_status(store_order_id: int, status: str, db=None, eta_minutes: int = None):
     db = db or await get_db()
+    await ensure_order_schema(db)
     status = status.upper()
 
-    await db.execute("""
-        UPDATE store_orders
-        SET status = $1, updated_at = NOW()
-        WHERE id = $2
-    """, status, store_order_id)
+    if status == "ACCEPTED":
+        mins = int(eta_minutes) if eta_minutes and int(eta_minutes) > 0 else DEFAULT_ETA_MINUTES
+        await db.execute("""
+            UPDATE store_orders
+            SET status = $1,
+                updated_at = NOW(),
+                accepted_at = COALESCE(accepted_at, NOW()),
+                eta_minutes = $3,
+                ready_by = NOW() + ($3::text || ' minutes')::interval,
+                late_ping_sent_at = NULL
+            WHERE id = $2
+        """, status, store_order_id, mins)
+    else:
+        await db.execute("""
+            UPDATE store_orders
+            SET status = $1, updated_at = NOW()
+            WHERE id = $2
+        """, status, store_order_id)
 
     await db.execute("""
         INSERT INTO store_order_events (store_order_id, status)
         VALUES ($1, $2)
     """, store_order_id, status)
+
+
+async def notify_customer_accept(final_order_id: int, store_name: str, eta_minutes: int, db=None):
+    from app.services.whatsapp import send_message
+
+    db = db or await get_db()
+    customer = await db.fetchrow(
+        "SELECT customer_phone FROM final_orders WHERE id = $1", final_order_id
+    )
+    if not customer or not customer.get("customer_phone"):
+        return
+    phone = normalize_phone(customer["customer_phone"])
+    track_url = await get_track_url(final_order_id, db=db)
+    eta_label = format_eta_label(eta_minutes or DEFAULT_ETA_MINUTES)
+    who = store_name or "Your store"
+    await send_message(
+        phone,
+        f"👍 Order #{final_order_id}: {who} accepted your order.\n"
+        f"⏳ Expected ready in about {eta_label}.\n\n"
+        f"Track: {track_url}",
+    )
+
+
+async def apply_store_delay(order_id: int, sender_phone: str, rest: str = "", db=None):
+    """
+    Store reports packing delay: DELAY#12 [20m] [reason]
+    Extends ready_by and WhatsApps the customer.
+    """
+    db = db or await get_db()
+    await ensure_order_schema(db)
+
+    store_row, match_mode = await find_store_order_for_phone(order_id, sender_phone, db=db)
+    if not store_row:
+        return {
+            "ok": False,
+            "message": f"❌ No store order found for Order {order_id} on this WhatsApp number.",
+            "match_mode": match_mode,
+        }
+
+    store_status = (store_row["status"] or "").upper()
+    if store_status in ("READY", "COMPLETED", "REJECTED", "CANCELLED"):
+        return {
+            "ok": False,
+            "message": f"⚠️ Order {order_id} is already {store_status} — cannot mark delayed",
+            "match_mode": match_mode,
+        }
+    if store_status not in ("ACCEPTED", "PENDING", "PROCESSING"):
+        # Allow delay even if still PENDING (store hasn't accepted formally)
+        pass
+
+    rest = (rest or "").strip()
+    extra_mins = parse_eta_minutes(rest)
+    # Strip ETA token from reason if present
+    reason = rest
+    if extra_mins is not None:
+        reason = re.sub(
+            r"^(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)?\b[:,\-]?\s*",
+            "",
+            rest,
+            flags=re.IGNORECASE,
+        ).strip()
+    if not reason:
+        reason = "packing is taking longer than expected"
+    if extra_mins is None:
+        extra_mins = 15
+
+    store_order_id = store_row["id"]
+    store_name = store_row["store_name"]
+
+    # If not accepted yet, accept with this ETA; else extend from now
+    if store_status != "ACCEPTED":
+        await set_store_order_status(store_order_id, "ACCEPTED", db=db, eta_minutes=extra_mins)
+    else:
+        await db.execute("""
+            UPDATE store_orders
+            SET ready_by = NOW() + ($2::text || ' minutes')::interval,
+                eta_minutes = COALESCE(eta_minutes, 0) + $2,
+                delay_note = $3,
+                delay_notified_at = NOW(),
+                late_ping_sent_at = NULL,
+                updated_at = NOW()
+            WHERE id = $1
+        """, store_order_id, extra_mins, reason)
+
+    await db.execute("""
+        UPDATE store_orders
+        SET delay_note = $2, delay_notified_at = NOW()
+        WHERE id = $1
+    """, store_order_id, reason)
+
+    await update_final_order_status(order_id, db=db)
+
+    from app.services.whatsapp import send_message
+
+    customer = await db.fetchrow(
+        "SELECT customer_phone FROM final_orders WHERE id = $1", order_id
+    )
+    if customer and customer.get("customer_phone"):
+        phone = normalize_phone(customer["customer_phone"])
+        track_url = await get_track_url(order_id, db=db)
+        await send_message(
+            phone,
+            f"⏳ Order #{order_id} update from {store_name or 'your store'}:\n"
+            f"{reason}.\n"
+            f"New estimate: about {format_eta_label(extra_mins)} from now.\n\n"
+            f"Track: {track_url}",
+        )
+
+    return {
+        "ok": True,
+        "message": (
+            f"⏳ Delay noted for Order {order_id}. "
+            f"Customer notified (+{format_eta_label(extra_mins)})."
+        ),
+        "match_mode": match_mode,
+        "store_order_id": store_order_id,
+    }
+
+
+async def send_overdue_order_pings(db=None):
+    """
+    Auto-notify customers when a store's ready_by has passed and order is still packing.
+    Returns number of pings sent.
+    """
+    db = db or await get_db()
+    await ensure_order_schema(db)
+
+    rows = await db.fetch("""
+        SELECT so.id as store_order_id, so.store_name, so.final_order_id, so.ready_by,
+               so.eta_minutes, fo.customer_phone, fo.status as final_status
+        FROM store_orders so
+        JOIN final_orders fo ON fo.id = so.final_order_id
+        WHERE so.status = 'ACCEPTED'
+          AND so.ready_by IS NOT NULL
+          AND so.ready_by <= NOW()
+          AND so.late_ping_sent_at IS NULL
+          AND UPPER(COALESCE(fo.status, '')) NOT IN ('READY', 'COMPLETED', 'CANCELLED', 'REJECTED')
+        ORDER BY so.ready_by ASC
+        LIMIT 30
+    """)
+
+    if not rows:
+        return 0
+
+    from app.services.whatsapp import send_message
+
+    sent = 0
+    for row in rows:
+        phone = normalize_phone(row["customer_phone"])
+        if not phone:
+            continue
+        order_id = row["final_order_id"]
+        store_name = row["store_name"] or "Your store"
+        track_url = await get_track_url(order_id, db=db)
+        try:
+            ok = await send_message(
+                phone,
+                f"⏳ Order #{order_id}: {store_name} is still packing your order "
+                f"(taking longer than expected).\n"
+                f"We'll message you when it's ready.\n\n"
+                f"Track: {track_url}",
+            )
+            await db.execute("""
+                UPDATE store_orders
+                SET late_ping_sent_at = NOW(),
+                    delay_note = COALESCE(delay_note, 'Running late — still packing')
+                WHERE id = $1
+            """, row["store_order_id"])
+            if ok:
+                sent += 1
+        except Exception as e:
+            print(f"⚠️ Late ping failed for order {order_id}: {e}")
+    return sent
 
 
 async def set_final_order_status(final_order_id: int, status: str, db=None):
@@ -319,9 +571,10 @@ async def notify_customer_status(final_order_id: int, final_status: str, store_n
         )
 
 
-async def apply_store_action(order_id: int, action: str, sender_phone: str, db=None):
+async def apply_store_action(order_id: int, action: str, sender_phone: str, db=None, eta_minutes: int = None):
     """
     Apply ACCEPT / READY / REJECT / COMPLETED from WhatsApp or web.
+    Optional eta_minutes on ACCEPT (default DEFAULT_ETA_MINUTES).
     Returns dict: {ok, message, final_status, store_order_id, match_mode}
     """
     db = db or await get_db()
@@ -406,17 +659,33 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
                 "match_mode": match_mode,
             }
 
-    await set_store_order_status(store_order_id, new_status, db=db)
+    accept_eta = None
+    if new_status == "ACCEPTED":
+        accept_eta = int(eta_minutes) if eta_minutes and int(eta_minutes) > 0 else DEFAULT_ETA_MINUTES
+        await set_store_order_status(store_order_id, new_status, db=db, eta_minutes=accept_eta)
+    else:
+        await set_store_order_status(store_order_id, new_status, db=db)
+
     final_status, notify = await update_final_order_status(order_id, db=db)
 
-    if notify:
+    # Always notify customer on ACCEPT (with ETA). Other statuses use aggregate notify flag.
+    if new_status == "ACCEPTED":
+        try:
+            await notify_customer_accept(order_id, store_name, accept_eta, db=db)
+        except Exception as e:
+            print(f"⚠️ Customer accept notify failed: {e}")
+    elif notify:
         try:
             await notify_customer_status(order_id, final_status, store_name=store_name, db=db)
         except Exception as e:
             print(f"⚠️ Customer notify failed: {e}")
 
     label = {
-        "ACCEPTED": f"✅ Order {order_id} accepted",
+        "ACCEPTED": (
+            f"✅ Order {order_id} accepted — ETA {format_eta_label(accept_eta)}. "
+            f"Customer notified.\n"
+            f"Tip: DELAY#{order_id} 15m busy — if packing runs late"
+        ),
         "READY": f"📦 Order {order_id} marked READY",
         "REJECTED": f"❌ Order {order_id} rejected",
         "COMPLETED": f"✅ Order {order_id} completed",
@@ -432,6 +701,7 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
         "store_order_id": store_order_id,
         "store_name": store_name,
         "match_mode": match_mode,
+        "eta_minutes": accept_eta,
     }
 
 

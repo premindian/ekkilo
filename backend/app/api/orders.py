@@ -16,6 +16,10 @@ def _normalize_phone(phone: str) -> str:
 
 
 async def _build_track_payload(db, order_id: int):
+    from datetime import datetime, timezone
+
+    await ensure_order_schema(db)
+
     order = await db.fetchrow("""
         SELECT fo.id, fo.customer_phone, fo.created_at, fo.status as order_status,
                COUNT(DISTINCT so.id) as store_count,
@@ -33,12 +37,15 @@ async def _build_track_payload(db, order_id: int):
 
     stores = await db.fetch("""
         SELECT so.id, so.store_name, so.store_phone, so.status,
-               so.total_amount, so.created_at
+               so.total_amount, so.created_at, so.updated_at,
+               so.accepted_at, so.eta_minutes, so.ready_by,
+               so.delay_note, so.delay_notified_at, so.late_ping_sent_at
         FROM store_orders so
         WHERE so.final_order_id = $1
         ORDER BY so.id
     """, order_id)
 
+    now = datetime.now(timezone.utc)
     stores_with_items = []
     for store in stores:
         items = await db.fetch("""
@@ -47,6 +54,18 @@ async def _build_track_payload(db, order_id: int):
             WHERE store_order_id = $1
         """, store["id"])
 
+        accepted_at = store.get("accepted_at")
+        ready_by = store.get("ready_by")
+        status = (store["status"] or "").upper()
+        preparing_minutes = None
+        if accepted_at and status == "ACCEPTED":
+            aa = accepted_at if accepted_at.tzinfo else accepted_at.replace(tzinfo=timezone.utc)
+            preparing_minutes = max(0, int((now - aa).total_seconds() // 60))
+        is_delayed = False
+        if ready_by and status == "ACCEPTED":
+            rb = ready_by if ready_by.tzinfo else ready_by.replace(tzinfo=timezone.utc)
+            is_delayed = rb <= now
+
         stores_with_items.append({
             "id": store["id"],
             "store_name": store["store_name"],
@@ -54,6 +73,12 @@ async def _build_track_payload(db, order_id: int):
             "status": store["status"],
             "total_amount": float(store["total_amount"] or 0),
             "created_at": store["created_at"].isoformat() if store["created_at"] else None,
+            "accepted_at": accepted_at.isoformat() if accepted_at else None,
+            "eta_minutes": int(store["eta_minutes"]) if store.get("eta_minutes") is not None else None,
+            "ready_by": ready_by.isoformat() if ready_by else None,
+            "delay_note": store.get("delay_note"),
+            "preparing_minutes": preparing_minutes,
+            "is_delayed": is_delayed,
             "items": [
                 {
                     "product_name": item["product_name"],
@@ -64,6 +89,8 @@ async def _build_track_payload(db, order_id: int):
             ],
         })
 
+    any_delayed = any(s.get("is_delayed") for s in stores_with_items)
+
     return {
         "id": order["id"],
         "customer_phone": order["customer_phone"],
@@ -73,6 +100,7 @@ async def _build_track_payload(db, order_id: int):
         "accepted_count": int(order["accepted_count"] or 0),
         "ready_count": int(order["ready_count"] or 0),
         "total_amount": float(order["total_amount"] or 0),
+        "has_delay": any_delayed,
         "stores": stores_with_items,
     }
 

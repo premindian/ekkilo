@@ -1,10 +1,11 @@
 import asyncio
 from app.db.database import get_db
 from app.services.whatsapp import send_message
+from app.services.order_status import send_overdue_order_pings
 
 
 async def retry_failed_messages():
-    print("🚀 Retry worker started")
+    print("🚀 Retry + delay-watch worker started")
 
     while True:
         try:
@@ -30,6 +31,14 @@ async def retry_failed_messages():
                 print(f"🔁 Retry → {phone} (attempt {row['attempts'] + 1})")
 
                 await send_message(phone, message, msg_id)
+
+            # Notify customers when store packing ETA has passed
+            try:
+                pinged = await send_overdue_order_pings(db=db)
+                if pinged:
+                    print(f"⏳ Sent {pinged} late-order WhatsApp ping(s)")
+            except Exception as ping_err:
+                print(f"⚠️ Late-order ping worker error: {ping_err}")
 
         except Exception as e:
             print("❌ Retry worker error:", str(e))

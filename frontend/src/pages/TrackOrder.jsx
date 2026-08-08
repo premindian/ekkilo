@@ -221,6 +221,20 @@ export default function TrackOrder() {
             </p>
           </div>
 
+          {orderDetails.has_delay && (
+            <div style={{
+              background: '#fff7ed',
+              border: '1px solid #fed7aa',
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 20,
+              color: '#9a3412',
+              fontSize: 14,
+            }}>
+              ⏳ A store is taking longer than expected. We’ll notify you on WhatsApp when ready.
+            </div>
+          )}
+
           {/* Stores */}
           <div style={styles.storesSection}>
             <h3 style={styles.sectionTitle}>Stores ({orderDetails.stores.length})</h3>
@@ -230,14 +244,27 @@ export default function TrackOrder() {
                   <div>
                     <div style={styles.storeName}>🏪 {store.store_name}</div>
                     <div style={styles.storeMeta}>📞 {store.store_phone}</div>
+                    {store.status === 'ACCEPTED' && (
+                      <div style={{ ...styles.storeMeta, marginTop: 6, color: store.is_delayed ? '#c2410c' : '#4b5563' }}>
+                        {store.is_delayed
+                          ? `⏳ Delayed — packing for ${store.preparing_minutes ?? '?'} min`
+                          : store.ready_by
+                            ? `⏳ Expected ready by ${new Date(store.ready_by).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+                            : store.preparing_minutes != null
+                              ? `🔄 Preparing — ${store.preparing_minutes} min so far`
+                              : '🔄 Preparing'}
+                        {store.eta_minutes ? ` (ETA ${store.eta_minutes} min)` : ''}
+                        {store.delay_note ? ` — ${store.delay_note}` : ''}
+                      </div>
+                    )}
                   </div>
                   <div
                     style={{
                       ...styles.storeStatus,
-                      background: getStoreStatusColor(store.status)
+                      background: store.is_delayed ? '#f97316' : getStoreStatusColor(store.status)
                     }}
                   >
-                    {store.status}
+                    {store.is_delayed ? 'DELAYED' : store.status}
                   </div>
                 </div>
 

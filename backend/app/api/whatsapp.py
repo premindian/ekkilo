@@ -8,8 +8,10 @@ from app.services.order_status import (
     ensure_order_schema,
     get_final_status,
     apply_store_action,
+    apply_store_delay,
     cancel_final_order,
     set_final_order_status,
+    parse_eta_minutes,
 )
 from app.utils.phone import normalize_phone
 
@@ -35,8 +37,13 @@ def _extract_text(msg: dict) -> str:
 
 
 def _parse_command(text: str):
+    """
+    Returns (action, order_id, rest) where rest is anything after the order id
+    e.g. ACCEPT#12 30m → ('ACCEPT', 12, '30m')
+         DELAY#12 busy → ('DELAY', 12, 'busy')
+    """
     if not text:
-        return None, None
+        return None, None, ""
     # Normalize fullwidth hash and whitespace
     cleaned = (
         text.replace("＃", "#")
@@ -45,13 +52,14 @@ def _parse_command(text: str):
     )
     cleaned = " ".join(cleaned.strip().split())
     match = re.match(
-        r"^(confirm|cancel|status|accept|ready|reject|complete|completed)\s*#\s*(\d+)\b",
+        r"^(confirm|cancel|status|accept|ready|reject|complete|completed|delay)\s*#\s*(\d+)\b(.*)$",
         cleaned,
         flags=re.IGNORECASE,
     )
     if not match:
-        return None, None
-    return match.group(1).upper(), int(match.group(2))
+        return None, None, ""
+    rest = (match.group(3) or "").strip()
+    return match.group(1).upper(), int(match.group(2)), rest
 
 
 async def _safe_reply(phone: str, message: str):
@@ -179,7 +187,7 @@ async def receive(req: Request):
         if not text:
             return {"status": "ignored_non_text"}
 
-        action, order_id = _parse_command(text)
+        action, order_id, cmd_rest = _parse_command(text)
 
         if action and order_id is not None:
             try:
@@ -191,18 +199,26 @@ async def receive(req: Request):
                         return {"status": "not_found"}
 
                     store_rows = await db.fetch("""
-                        SELECT store_name, status
+                        SELECT store_name, status, ready_by, delay_note
                         FROM store_orders
                         WHERE final_order_id = $1
                         ORDER BY id
                     """, order_id)
                     if store_rows:
-                        lines = "\n".join(
-                            f"• {r['store_name']}: {r['status']}" for r in store_rows
-                        )
+                        lines = []
+                        for r in store_rows:
+                            line = f"• {r['store_name']}: {r['status']}"
+                            if (r["status"] or "").upper() == "ACCEPTED" and r.get("ready_by"):
+                                try:
+                                    line += f" (ETA ~{r['ready_by'].strftime('%I:%M %p')})"
+                                except Exception:
+                                    line += " (ETA set)"
+                            if r.get("delay_note"):
+                                line += f" — {r['delay_note']}"
+                            lines.append(line)
                         await _safe_reply(
                             phone,
-                            f"📦 Order {order_id}: {current}\n\n{lines}"
+                            f"📦 Order {order_id}: {current}\n\n" + "\n".join(lines)
                         )
                     else:
                         await _safe_reply(phone, f"📦 Order {order_id}: {current}")
@@ -253,13 +269,27 @@ async def receive(req: Request):
                         await send_message(pending["phone"], pending["message"], pending["id"])
                     return {"status": "confirmed"}
 
+                # -------- STORE: DELAY --------
+                if action == "DELAY":
+                    result = await apply_store_delay(order_id, phone, cmd_rest, db=db)
+                    await _safe_reply(phone, result["message"])
+                    return {
+                        "status": "ok" if result.get("ok") else "error",
+                        "action": action,
+                        "order_id": order_id,
+                    }
+
                 # -------- STORE: ACCEPT / READY / REJECT / COMPLETE --------
                 if action in ("ACCEPT", "READY", "REJECT", "COMPLETE", "COMPLETED"):
-                    result = await apply_store_action(order_id, action, phone, db=db)
+                    eta = parse_eta_minutes(cmd_rest) if action == "ACCEPT" else None
+                    result = await apply_store_action(
+                        order_id, action, phone, db=db, eta_minutes=eta
+                    )
                     await _safe_reply(phone, result["message"])
                     print(
                         f"🏪 Store action {action}#{order_id} → ok={result.get('ok')} "
-                        f"match={result.get('match_mode')} final={result.get('final_status')}"
+                        f"match={result.get('match_mode')} final={result.get('final_status')} "
+                        f"eta={result.get('eta_minutes')}"
                     )
                     return {
                         "status": "ok" if result.get("ok") else "error",
@@ -273,7 +303,7 @@ async def receive(req: Request):
                     phone,
                     "Unknown command.\n"
                     "Customer: STATUS#id | CANCEL#id\n"
-                    "Store: ACCEPT#id | READY#id | REJECT#id"
+                    "Store: ACCEPT#id 30m | DELAY#id 15m busy | READY#id | REJECT#id"
                 )
                 return {"status": "unknown_command"}
 
@@ -295,7 +325,7 @@ async def receive(req: Request):
             "https://ekkilo.onrender.com\n\n"
             "WhatsApp commands:\n"
             "Customer: STATUS#orderid | CANCEL#orderid\n"
-            "Store: ACCEPT#orderid | READY#orderid | REJECT#orderid"
+            "Store: ACCEPT#orderid 30m | DELAY#orderid 15m | READY#orderid | REJECT#orderid"
         )
         return {"status": "redirect_to_portal"}
 

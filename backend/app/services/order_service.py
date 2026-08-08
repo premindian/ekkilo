@@ -144,7 +144,8 @@ Order ID: {final_order_id}
 {item_text}
 
 Reply:
-ACCEPT#{final_order_id} - Accept order
+ACCEPT#{final_order_id} 30m - Accept (ETA 30 min)
+DELAY#{final_order_id} 15m busy - Running late
 READY#{final_order_id} - Mark ready
 REJECT#{final_order_id} - Cannot fulfill
 """
