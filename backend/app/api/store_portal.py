@@ -268,17 +268,19 @@ async def update_store_order(order_id: int, data: dict, token: str):
             rest = str(data.get("note") or data.get("eta") or "15m")
             extra = parse_eta_minutes(rest) or 15
             reason = rest if not parse_eta_minutes(rest) else "packing is taking longer than expected"
+            from datetime import datetime, timedelta, timezone
+            ready_by = datetime.now(timezone.utc) + timedelta(minutes=extra)
             await db.execute("""
                 UPDATE store_orders
                 SET status = CASE WHEN status = 'PENDING' THEN 'ACCEPTED' ELSE status END,
                     accepted_at = COALESCE(accepted_at, NOW()),
-                    ready_by = NOW() + ($2::text || ' minutes')::interval,
+                    ready_by = $2,
                     delay_note = $3,
                     delay_notified_at = NOW(),
                     late_ping_sent_at = NULL,
                     updated_at = NOW()
                 WHERE id = $1
-            """, order_id, extra, reason)
+            """, order_id, ready_by, reason)
             customer = await db.fetchrow(
                 "SELECT customer_phone FROM final_orders WHERE id = $1", final_order_id
             )

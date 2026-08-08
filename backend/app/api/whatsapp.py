@@ -311,10 +311,12 @@ async def receive(req: Request):
                 print(f"❌ Command error {action}#{order_id}:", cmd_err)
                 import traceback
                 traceback.print_exc()
+                err_short = str(cmd_err).replace("\n", " ")[:160]
                 await _safe_reply(
                     phone,
-                    f"⚠️ Could not process {action}#{order_id}. "
-                    f"Please try again or use the Store Portal."
+                    f"⚠️ Could not process {action}#{order_id}.\n"
+                    f"{err_short}\n"
+                    f"Try again, or use the Store Portal."
                 )
                 return {"status": "command_error", "error": str(cmd_err)}
 

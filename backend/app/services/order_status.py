@@ -4,6 +4,7 @@ Ensures schema, updates store/final status, and notifies customers.
 """
 import re
 import secrets
+from datetime import datetime, timedelta, timezone
 
 from app.db.database import get_db
 from app.utils.phone import normalize_phone, phone_tail
@@ -220,16 +221,26 @@ async def set_store_order_status(store_order_id: int, status: str, db=None, eta_
 
     if status == "ACCEPTED":
         mins = int(eta_minutes) if eta_minutes and int(eta_minutes) > 0 else DEFAULT_ETA_MINUTES
-        await db.execute("""
-            UPDATE store_orders
-            SET status = $1,
-                updated_at = NOW(),
-                accepted_at = COALESCE(accepted_at, NOW()),
-                eta_minutes = $3,
-                ready_by = NOW() + ($3::text || ' minutes')::interval,
-                late_ping_sent_at = NULL
-            WHERE id = $2
-        """, status, store_order_id, mins)
+        ready_by = datetime.now(timezone.utc) + timedelta(minutes=mins)
+        try:
+            await db.execute("""
+                UPDATE store_orders
+                SET status = $1,
+                    updated_at = NOW(),
+                    accepted_at = COALESCE(accepted_at, NOW()),
+                    eta_minutes = $3,
+                    ready_by = $4,
+                    late_ping_sent_at = NULL
+                WHERE id = $2
+            """, status, store_order_id, mins, ready_by)
+        except Exception as e:
+            # Older DB without ETA columns — still accept the order
+            print(f"⚠️ ACCEPT with ETA columns failed ({e}); falling back to status-only update")
+            await db.execute("""
+                UPDATE store_orders
+                SET status = $1, updated_at = NOW()
+                WHERE id = $2
+            """, status, store_order_id)
     else:
         await db.execute("""
             UPDATE store_orders
@@ -237,10 +248,13 @@ async def set_store_order_status(store_order_id: int, status: str, db=None, eta_
             WHERE id = $2
         """, status, store_order_id)
 
-    await db.execute("""
-        INSERT INTO store_order_events (store_order_id, status)
-        VALUES ($1, $2)
-    """, store_order_id, status)
+    try:
+        await db.execute("""
+            INSERT INTO store_order_events (store_order_id, status)
+            VALUES ($1, $2)
+        """, store_order_id, status)
+    except Exception as e:
+        print(f"⚠️ store_order_events insert skipped: {e}")
 
 
 async def notify_customer_accept(final_order_id: int, store_name: str, eta_minutes: int, db=None):
@@ -311,25 +325,31 @@ async def apply_store_delay(order_id: int, sender_phone: str, rest: str = "", db
     store_name = store_row["store_name"]
 
     # If not accepted yet, accept with this ETA; else extend from now
+    ready_by = datetime.now(timezone.utc) + timedelta(minutes=extra_mins)
     if store_status != "ACCEPTED":
         await set_store_order_status(store_order_id, "ACCEPTED", db=db, eta_minutes=extra_mins)
-    else:
+
+    try:
         await db.execute("""
             UPDATE store_orders
-            SET ready_by = NOW() + ($2::text || ' minutes')::interval,
-                eta_minutes = COALESCE(eta_minutes, 0) + $2,
-                delay_note = $3,
+            SET ready_by = $2,
+                eta_minutes = COALESCE(eta_minutes, 0) + $3,
+                delay_note = $4,
                 delay_notified_at = NOW(),
                 late_ping_sent_at = NULL,
                 updated_at = NOW()
             WHERE id = $1
-        """, store_order_id, extra_mins, reason)
-
-    await db.execute("""
-        UPDATE store_orders
-        SET delay_note = $2, delay_notified_at = NOW()
-        WHERE id = $1
-    """, store_order_id, reason)
+        """, store_order_id, ready_by, extra_mins, reason)
+    except Exception as e:
+        print(f"⚠️ DELAY column update failed ({e}); setting delay_note only if possible")
+        try:
+            await db.execute("""
+                UPDATE store_orders
+                SET delay_note = $2, updated_at = NOW()
+                WHERE id = $1
+            """, store_order_id, reason)
+        except Exception:
+            pass
 
     await update_final_order_status(order_id, db=db)
 
