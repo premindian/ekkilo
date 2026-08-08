@@ -95,163 +95,10 @@ We will notify you when ready 🚀
 
     return {"final_order_id": final_order_id}
 
-# -----------------------------
-# ?? ADMIN STORE ORDERS
-# -----------------------------
-@router.get("/admin/store-orders")
-async def get_store_orders():
-    from app.db.database import get_db
-    db = await get_db()
-
-    rows = await db.fetch("""
-        SELECT 
-            so.id,
-            so.store_name,
-            so.store_phone,
-            so.status,
-            fo.customer_phone,
-            fo.id as final_order_id,
-            so.created_at
-        FROM store_orders so
-        JOIN final_orders fo ON so.final_order_id = fo.id
-        ORDER BY so.id DESC
-        LIMIT 50
-    """)
-
-    return [
-        {
-            "id": r["id"],
-            "final_order_id": r["final_order_id"],
-            "store": r["store_name"],
-            "phone": r["store_phone"],
-            "status": r["status"],
-            "customer": r["customer_phone"],
-            "created_at": str(r["created_at"])
-        }
-        for r in rows
-    ]
-
-# -----------------------------
-# ?? UPDATE STORE ORDER STATUS
-# -----------------------------
-@router.patch("/admin/store-orders/{store_order_id}")
-async def update_store_order_status(store_order_id: int, data: dict):
-    from app.db.database import get_db
-    from app.core.ws_manager import manager
-    
-    db = await get_db()
-    new_status = data.get("status")
-    
-    if not new_status:
-        return {"error": "Status required"}
-    
-    # Update store order
-    await db.execute("""
-        UPDATE store_orders
-        SET status = $1, updated_at = NOW()
-        WHERE id = $2
-    """, new_status, store_order_id)
-    
-    # Insert event
-    await db.execute("""
-        INSERT INTO store_order_events (store_order_id, status)
-        VALUES ($1, $2)
-    """, store_order_id, new_status)
-    
-    # Get final order id and all store statuses
-    row = await db.fetchrow("""
-        SELECT final_order_id FROM store_orders WHERE id = $1
-    """, store_order_id)
-    
-    if not row:
-        return {"error": "Store order not found"}
-    
-    final_order_id = row["final_order_id"]
-    
-    # Calculate final status
-    statuses = await db.fetch("""
-        SELECT status FROM store_orders WHERE final_order_id = $1
-    """, final_order_id)
-    
-    status_list = [s["status"] for s in statuses]
-    
-    if all(s == "READY" for s in status_list):
-        final_status = "READY"
-    elif any(s == "READY" for s in status_list):
-        final_status = "PARTIAL_READY"
-    elif all(s == "ACCEPTED" for s in status_list):
-        final_status = "ACCEPTED"
-    else:
-        final_status = "PROCESSING"
-    
-    # Update final order
-    await db.execute("""
-        UPDATE final_orders
-        SET status = $1
-        WHERE id = $2
-    """, final_status, final_order_id)
-    
-    # Broadcast update
-    await manager.broadcast(0, {
-        "type": "status_update",
-        "final_order_id": final_order_id,
-        "store_order_id": store_order_id,
-        "status": final_status
-    })
-    
-    return {"status": "ok", "new_status": new_status, "final_status": final_status}
-
-
-# -----------------------------
-# ?? TRACK ORDER
-# -----------------------------
-@router.get("/track/{final_order_id}")
-async def track_final_order(final_order_id: int):
-    from app.db.database import get_db
-    db = await get_db()
-
-    rows = await db.fetch("""
-        SELECT store_name, status
-        FROM store_orders
-        WHERE final_order_id = $1
-    """, final_order_id)
-
-    return {
-        "final_order_id": final_order_id,
-        "stores": [
-            {"store": r["store_name"], "status": r["status"]}
-            for r in rows
-        ]
-    }
-
-# -----------------------------
-# ?? FINAL TIMELINE (ADD THIS)
-# -----------------------------
-@router.get("/track/{final_order_id}/timeline")
-async def get_final_timeline(final_order_id: int):
-    from app.db.database import get_db
-    db = await get_db()
-
-    rows = await db.fetch("""
-        SELECT 
-            so.store_name,
-            e.status,
-            e.created_at
-        FROM store_orders so
-        JOIN store_order_events e 
-            ON so.id = e.store_order_id
-        WHERE so.final_order_id = $1
-        ORDER BY e.created_at ASC
-    """, final_order_id)
-
-    return [
-        {
-            "store": r["store_name"],
-            "status": r["status"],
-            "time": str(r["created_at"])
-        }
-        for r in rows
-    ]
+# OLD ADMIN & TRACKING ROUTES REMOVED
+# All functionality now available in:
+# - Admin Portal: /api/admin/orders (with authentication)
+# - New Tracking: /api/orders/track (at end of file)
 
 # -----------------------------
 # 🔍 SEARCH PRODUCTS (FINAL WITH STORE VIEW)
@@ -618,50 +465,8 @@ async def search_products(data: dict):
         "store_view": store_view
     }
     
-# -----------------------------
-#  PRODUCT UPDATE
-# -----------------------------
-@router.post("/store/products/update")
-async def update_product(data: dict):
-    from app.db.database import get_db
-    db = await get_db()
-
-    # 🔥 SAFE EXTRACTION
-    store_id = data.get("store_id")
-    product_id = data.get("product_id")
-    brand = data.get("brand")
-    variant = data.get("variant")
-    size = data.get("size")
-    price = data.get("price")
-    stock = data.get("stock", 1)
-
-    print("🧠 UPDATE PAYLOAD:", data)
-
-    # ❌ FAIL FAST (IMPORTANT)
-    if not store_id or not product_id:
-        return {"error": "Missing store_id or product_id"}
-
-    await db.execute("""
-        UPDATE store_products
-        SET price = $1,
-            stock = $2,
-            updated_at = NOW()
-        WHERE store_id = $3
-        AND product_id = $4
-        AND brand IS NOT DISTINCT FROM $5
-        AND variant IS NOT DISTINCT FROM $6
-        AND size IS NOT DISTINCT FROM $7
-    """,
-        price,
-        stock,
-        store_id,
-        product_id,
-        brand,
-        variant,
-        size
-    )
-
-    return {"status": "ok"}
+# OLD STORE PRODUCT UPDATE ROUTE REMOVED
+# Use Store Portal: /api/store/products (PATCH) with authentication
 
 # -----------------------------
 #  SEARCH MASTER PRODUCTS CATALOG
@@ -689,31 +494,8 @@ async def search_master_products(search: str = ""):
     
     return [dict(r) for r in rows]
 
-# -----------------------------
-#  PRODUCT listing by store (OLD - renamed to avoid conflict with Store Portal)
-# -----------------------------
-@router.get("/api/products-by-store")
-async def get_store_products_old(store_id: int):
-    from app.db.database import get_db
-    db = await get_db()
-
-    rows = await db.fetch("""
-        SELECT 
-            pr.id as product_id,
-            pr.name,
-            sp.brand,
-            sp.variant,
-            sp.size,
-            sp.unit,
-            sp.price,
-            sp.stock
-        FROM store_products sp
-        JOIN products pr ON sp.product_id = pr.id
-        WHERE sp.store_id = $1
-        ORDER BY pr.name
-    """, store_id)
-
-    return [dict(r) for r in rows]
+# OLD PRODUCTS BY STORE ROUTE REMOVED
+# Use Store Portal: /api/store/products (GET) with authentication
     
 # Note: Webhook endpoint moved to whatsapp.py for better organization
 # The /whatsapp/webhook endpoint handles all WhatsApp webhook callbacks
