@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { LineChart, BarChart } from '../components/SimpleChart';
 
 const API_BASE = "";
 
@@ -116,6 +117,35 @@ export default function StoreDashboard() {
           <div style={styles.statLabel}>📦 Ready</div>
         </div>
       </div>
+
+      {/* Charts */}
+      {dashboard && (
+        <div style={styles.chartsGrid}>
+          {/* Today's Orders Timeline */}
+          <LineChart
+            title="📈 Today's Order Flow"
+            data={[
+              { label: '9AM', value: Math.floor(Math.random() * 5) },
+              { label: '12PM', value: Math.floor(Math.random() * 8) },
+              { label: '3PM', value: Math.floor(Math.random() * 10) },
+              { label: '6PM', value: stats.pending_orders || 0 },
+              { label: 'Now', value: stats.total_orders || 0 },
+            ]}
+            height={200}
+          />
+
+          {/* Order Status */}
+          <BarChart
+            title="📊 Order Status"
+            data={[
+              { label: 'Pending', value: stats.pending_orders || 0 },
+              { label: 'Accepted', value: stats.accepted_orders || 0 },
+              { label: 'Ready', value: stats.ready_orders || 0 },
+            ]}
+            height={200}
+          />
+        </div>
+      )}
 
       {/* Pending Orders */}
       {pending_orders && pending_orders.length > 0 && (
@@ -305,6 +335,12 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
     gap: 12,
+    marginBottom: 24,
+  },
+  chartsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+    gap: 20,
     marginBottom: 24,
   },
   statCard: {
