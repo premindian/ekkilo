@@ -46,8 +46,17 @@ async def send_message(phone, message, msg_id=None) -> bool:
         print(f"📥 WhatsApp API response ({response.status_code}): {data}")
 
         if "error" in data or response.status_code != 200:
-            error_message = data.get("error", {}).get("message", f"HTTP {response.status_code}")
-            print(f"❌ WhatsApp API Error: {error_message}")
+            err = data.get("error") or {}
+            error_message = err.get("message") or f"HTTP {response.status_code}"
+            error_code = err.get("code")
+            error_details = err.get("error_data", {}).get("details") if isinstance(err.get("error_data"), dict) else None
+            parts = [error_message]
+            if error_code is not None:
+                parts.append(f"code {error_code}")
+            if error_details:
+                parts.append(str(error_details))
+            full_error = " | ".join(parts)
+            print(f"❌ WhatsApp API Error: {full_error}")
 
             if msg_id:
                 await db.execute("""
@@ -56,7 +65,7 @@ async def send_message(phone, message, msg_id=None) -> bool:
                         attempts = attempts + 1,
                         last_error = $2
                     WHERE id = $1
-                """, msg_id, error_message)
+                """, msg_id, full_error)
             return False
 
         wa_id = None

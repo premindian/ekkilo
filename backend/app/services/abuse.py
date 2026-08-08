@@ -130,15 +130,19 @@ async def assert_otp_rate_limit(phone: str, db=None):
     try:
         db = db or await get_db()
         phone = normalize_phone(phone)
+        tail = phone_tail(phone)
         count = await db.fetchval("""
             SELECT COUNT(*) FROM otp_verifications
-            WHERE phone = $1
-              AND created_at > NOW() - ($2::text || ' minutes')::interval
-        """, phone, str(OTP_WINDOW_MINUTES))
+            WHERE (
+                phone = $1
+                OR RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $2
+            )
+              AND created_at > NOW() - ($3::text || ' minutes')::interval
+        """, phone, tail, str(OTP_WINDOW_MINUTES))
         if (count or 0) >= OTP_MAX_PER_WINDOW:
             raise HTTPException(
                 status_code=429,
-                detail=f"Too many OTP requests. Try again in {OTP_WINDOW_MINUTES} minutes.",
+                detail=f"Too many OTP requests for this number. Wait {OTP_WINDOW_MINUTES} minutes, then try once.",
             )
     except HTTPException:
         raise

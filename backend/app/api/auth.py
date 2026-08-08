@@ -137,26 +137,13 @@ async def send_otp(data: dict):
         print(f"⚠️ DEV MODE: OTP for {phone}: {otp}")
 
     if not otp_sent:
-        # Still create OTP in DB so verify can work if admin/dev shares code,
-        # but tell the user WhatsApp did not deliver.
-        hint = (
-            "WhatsApp could not deliver the OTP. "
-            "Open WhatsApp, message our Ekkilo business number once (say Hi), "
-            "then tap Send OTP again. "
-            "If Meta app is in test mode, this number must be added as a test recipient."
-        )
-        if wa_error and ("not in" in wa_error.lower() or "allowed" in wa_error.lower()):
-            hint = (
-                "This phone is not allowed to receive WhatsApp messages yet. "
-                "In Meta Developer → WhatsApp → API Setup, add it under "
-                "\"To\" test numbers, then try again."
-            )
-        elif wa_error and ("24" in wa_error or "experiment" in wa_error.lower() or "template" in wa_error.lower() or "131047" in wa_error):
-            hint = (
-                "WhatsApp blocked the OTP (outside 24-hour chat window). "
-                "Message the Ekkilo WhatsApp number first, then request OTP again."
-            )
-        raise HTTPException(status_code=502, detail=hint)
+        # Always include Meta's exact error — guessing (Hi / test list) is often wrong.
+        detail = f"WhatsApp did not accept OTP for {phone}."
+        if wa_error:
+            detail += f" Meta says: {wa_error}"
+        else:
+            detail += " No error detail from Meta. Check Admin → WhatsApp → FAILED."
+        raise HTTPException(status_code=502, detail=detail)
 
     return response
 
