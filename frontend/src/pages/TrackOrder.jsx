@@ -3,6 +3,26 @@ import { navigate } from '../utils/navigate';
 
 const API_BASE = "";
 
+function formatApiError(detail, fallback = 'Order not found') {
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => (typeof d === 'string' ? d : d?.msg || d?.message))
+      .filter(Boolean)
+      .join(', ') || fallback;
+  }
+  if (typeof detail === 'object') {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  return String(detail);
+}
+
+function money(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(2) : '0.00';
+}
+
 export default function TrackOrder() {
   const params = new URLSearchParams(window.location.search);
   // Support both ?order_id=5 and legacy ?order=5 (WhatsApp links)
@@ -28,7 +48,7 @@ export default function TrackOrder() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data.detail || data.error || 'Order not found');
+        throw new Error(formatApiError(data.detail || data.error));
       }
 
       setOrderDetails(data);
@@ -37,7 +57,7 @@ export default function TrackOrder() {
         window.history.replaceState({}, '', `/track?order_id=${id}`);
       }
     } catch (err) {
-      setError(err.message || 'Failed to track order');
+      setError(formatApiError(err?.message, 'Failed to track order'));
     } finally {
       setLoading(false);
     }
@@ -173,16 +193,16 @@ export default function TrackOrder() {
                 {/* Items */}
                 <div style={styles.itemsList}>
                   <strong>Items:</strong>
-                  {store.items.map((item, i) => (
+                  {(store.items || []).map((item, i) => (
                     <div key={i} style={styles.item}>
-                      • {item.product_name} × {item.quantity} - ₹{item.price}
+                      • {item.product_name} × {item.quantity} - ₹{money(item.price)}
                     </div>
                   ))}
                 </div>
 
-                {store.total_amount > 0 && (
+                {Number(store.total_amount) > 0 && (
                   <div style={styles.storeTotal}>
-                    Total: ₹{store.total_amount}
+                    Total: ₹{money(store.total_amount)}
                   </div>
                 )}
               </div>
@@ -190,10 +210,10 @@ export default function TrackOrder() {
           </div>
 
           {/* Total */}
-          {orderDetails.total_amount > 0 && (
+          {Number(orderDetails.total_amount) > 0 && (
             <div style={styles.totalSection}>
               <div style={styles.totalLabel}>Order Total:</div>
-              <div style={styles.totalAmount}>₹{orderDetails.total_amount}</div>
+              <div style={styles.totalAmount}>₹{money(orderDetails.total_amount)}</div>
             </div>
           )}
 

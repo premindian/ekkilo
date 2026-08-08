@@ -588,13 +588,32 @@ async def track_order(phone: str = None, order_id: int = None):
             """, store["id"])
             
             stores_with_items.append({
-                **dict(store),
-                "items": [dict(item) for item in items]
+                "id": store["id"],
+                "store_name": store["store_name"],
+                "store_phone": store["store_phone"],
+                "status": store["status"],
+                "total_amount": float(store["total_amount"] or 0),
+                "created_at": store["created_at"].isoformat() if store["created_at"] else None,
+                "items": [
+                    {
+                        "product_name": item["product_name"],
+                        "quantity": float(item["quantity"] or 0),
+                        "price": float(item["price"] or 0),
+                    }
+                    for item in items
+                ],
             })
         
         return {
-            **dict(order),
-            "stores": stores_with_items
+            "id": order["id"],
+            "customer_phone": order["customer_phone"],
+            "created_at": order["created_at"].isoformat() if order["created_at"] else None,
+            "order_status": order["order_status"],
+            "store_count": int(order["store_count"] or 0),
+            "accepted_count": int(order["accepted_count"] or 0),
+            "ready_count": int(order["ready_count"] or 0),
+            "total_amount": float(order["total_amount"] or 0),
+            "stores": stores_with_items,
         }
     
     elif phone:
