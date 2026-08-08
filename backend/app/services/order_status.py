@@ -361,7 +361,10 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
     }
 
 
-async def cancel_final_order(order_id: int, db=None):
+async def cancel_final_order(order_id: int, db=None, notify_stores: bool = True):
+    """Cancel order and optionally WhatsApp-notify each store."""
+    from app.services.whatsapp import send_message
+
     db = db or await get_db()
     await ensure_order_schema(db)
 
@@ -375,6 +378,13 @@ async def cancel_final_order(order_id: int, db=None):
             "ok": False,
             "message": f"❌ Cannot cancel Order {order_id} (status: {current})",
         }
+
+    # Capture store phones before status update
+    stores = await db.fetch("""
+        SELECT id, store_name, store_phone, status
+        FROM store_orders
+        WHERE final_order_id = $1
+    """, order_id)
 
     await set_final_order_status(order_id, "CANCELLED", db=db)
     await db.execute("""
@@ -391,4 +401,34 @@ async def cancel_final_order(order_id: int, db=None):
           AND status = 'CANCELLED'
     """, order_id)
 
-    return {"ok": True, "message": f"❌ Order {order_id} cancelled"}
+    notified = []
+    if notify_stores:
+        for store in stores:
+            phone = normalize_phone(store.get("store_phone"))
+            if not phone:
+                continue
+            # Skip stores already finished / rejected
+            if (store.get("status") or "").upper() in ("COMPLETED", "REJECTED"):
+                continue
+            msg = (
+                f"❌ Order #{order_id} CANCELLED by customer\n\n"
+                f"Store: {store.get('store_name')}\n"
+                f"Please do not pack/prepare this order."
+            )
+            try:
+                ok = await send_message(phone, msg)
+                if ok:
+                    notified.append(phone)
+                    # Track outbound cancel notice
+                    await db.execute("""
+                        INSERT INTO whatsapp_messages (phone, message, status, final_order_id)
+                        VALUES ($1, $2, 'SENT', $3)
+                    """, phone, msg, order_id)
+            except Exception as e:
+                print(f"⚠️ Failed to notify store {phone} about cancel: {e}")
+
+    return {
+        "ok": True,
+        "message": f"❌ Order {order_id} cancelled",
+        "stores_notified": notified,
+    }
