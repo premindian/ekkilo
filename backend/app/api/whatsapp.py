@@ -134,6 +134,13 @@ async def receive(req: Request):
                     await send_message(phone, f"⚠️ Order {order_id} already processed")
                     return {"status": "ignored"}
 
+                # Update final order status
+                await db.execute("""
+                    UPDATE final_orders
+                    SET status = 'CONFIRMED', updated_at = NOW()
+                    WHERE id = $1
+                """, order_id)
+                
                 await db.execute("""
                     INSERT INTO final_order_events (final_order_id, status)
                     VALUES ($1, 'CONFIRMED')
@@ -163,11 +170,25 @@ async def receive(req: Request):
                     await send_message(phone, f"❌ Cannot cancel Order {order_id}")
                     return {"status": "blocked"}
 
+                # Update final order status
+                await db.execute("""
+                    UPDATE final_orders
+                    SET status = 'CANCELLED', updated_at = NOW()
+                    WHERE id = $1
+                """, order_id)
+                
                 await db.execute("""
                     INSERT INTO final_order_events (final_order_id, status)
                     VALUES ($1, 'CANCELLED')
                 """, order_id)
 
+                # Update and insert events for all store orders
+                await db.execute("""
+                    UPDATE store_orders
+                    SET status = 'CANCELLED', updated_at = NOW()
+                    WHERE final_order_id = $1
+                """, order_id)
+                
                 await db.execute("""
                     INSERT INTO store_order_events (store_order_id, status)
                     SELECT id, 'CANCELLED'
@@ -201,6 +222,13 @@ async def receive(req: Request):
 
                 store_order_id = store_row["id"]
 
+                # Update store order status
+                await db.execute("""
+                    UPDATE store_orders
+                    SET status = 'ACCEPTED', updated_at = NOW()
+                    WHERE id = $1
+                """, store_order_id)
+                
                 await db.execute("""
                     INSERT INTO store_order_events (store_order_id, status)
                     VALUES ($1, 'ACCEPTED')
@@ -208,12 +236,16 @@ async def receive(req: Request):
 
                 await send_message(phone, f"✅ Order {order_id} accepted")
 
+                # Update final order status based on all stores
+                from app.services.order_service import update_final_order_status
+                await update_final_order_status(order_id)
+
                 return {"status": "accepted"}
 
             if action == "READY":
 
                 store_row = await db.fetchrow("""
-                    SELECT id FROM store_orders
+                    SELECT id, store_name FROM store_orders
                     WHERE final_order_id = $1 AND store_phone = $2
                 """, order_id, phone)
 
@@ -221,15 +253,103 @@ async def receive(req: Request):
                     return {"status": "error"}
 
                 store_order_id = store_row["id"]
+                store_name = store_row["store_name"]
 
+                # Update store order status
+                await db.execute("""
+                    UPDATE store_orders
+                    SET status = 'READY', updated_at = NOW()
+                    WHERE id = $1
+                """, store_order_id)
+                
                 await db.execute("""
                     INSERT INTO store_order_events (store_order_id, status)
                     VALUES ($1, 'READY')
                 """, store_order_id)
 
-                await send_message(phone, f"📦 Order {order_id} READY")
+                await send_message(phone, f"📦 Order {order_id} marked READY")
+
+                # Update final order status and check if should notify customer
+                from app.services.order_service import update_final_order_status
+                final_status, notify_customer = await update_final_order_status(order_id)
+
+                # Notify customer if all stores ready or partial fulfillment
+                if notify_customer:
+                    customer = await db.fetchrow("""
+                        SELECT customer_phone FROM final_orders WHERE id = $1
+                    """, order_id)
+                    
+                    if customer:
+                        if final_status == 'READY':
+                            await send_message(
+                                customer["customer_phone"],
+                                f"🎉 Great news! Your order #{order_id} is READY for pickup at all stores!"
+                            )
+                        elif final_status == 'PARTIAL':
+                            # Get list of ready stores
+                            ready_stores = await db.fetch("""
+                                SELECT store_name FROM store_orders
+                                WHERE final_order_id = $1 AND status = 'READY'
+                            """, order_id)
+                            store_list = ", ".join([s["store_name"] for s in ready_stores])
+                            await send_message(
+                                customer["customer_phone"],
+                                f"📦 Order #{order_id} update:\n✅ Ready at: {store_list}\n\nCheck remaining stores for updates."
+                            )
 
                 return {"status": "ready"}
+
+            if action == "REJECT":
+
+                store_row = await db.fetchrow("""
+                    SELECT id, store_name FROM store_orders
+                    WHERE final_order_id = $1 AND store_phone = $2
+                """, order_id, phone)
+
+                if not store_row:
+                    return {"status": "error"}
+
+                store_order_id = store_row["id"]
+                store_name = store_row["store_name"]
+
+                # Update store order status to REJECTED
+                await db.execute("""
+                    UPDATE store_orders
+                    SET status = 'REJECTED', updated_at = NOW()
+                    WHERE id = $1
+                """, store_order_id)
+                
+                await db.execute("""
+                    INSERT INTO store_order_events (store_order_id, status)
+                    VALUES ($1, 'REJECTED')
+                """, store_order_id)
+
+                await send_message(phone, f"❌ Order {order_id} rejected")
+
+                # Update final order status
+                from app.services.order_service import update_final_order_status
+                final_status, notify_customer = await update_final_order_status(order_id)
+
+                # Notify customer about rejection
+                if notify_customer:
+                    customer = await db.fetchrow("""
+                        SELECT customer_phone FROM final_orders WHERE id = $1
+                    """, order_id)
+                    
+                    if customer:
+                        if final_status == 'REJECTED':
+                            await send_message(
+                                customer["customer_phone"],
+                                f"😔 Sorry, order #{order_id} cannot be fulfilled. All stores are unavailable. Please try again later."
+                            )
+                        elif final_status == 'PARTIAL':
+                            # Some stores still processing
+                            await send_message(
+                                customer["customer_phone"],
+                                f"⚠️ Order #{order_id} update:\n{store_name} cannot fulfill their part.\nOther stores are still processing your order."
+                            )
+
+                return {"status": "rejected"}
 
         # =========================================================
         # 🔍 SEARCH FLOW + CREATE ORDER
