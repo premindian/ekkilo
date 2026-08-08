@@ -153,7 +153,7 @@ export default function OrderPage({ initialSearchText }) {
       try {
         const res = await fetch(`${API_BASE}/api/favorites/stores?token=${token}`);
         const data = await res.json();
-        setFavorites(data);
+        setFavorites(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error("Failed to load favorites:", err);
       }
@@ -202,11 +202,8 @@ export default function OrderPage({ initialSearchText }) {
     setLoading(false);
   };
 
-  const stores = result?.stores || [];
-  console.log('🏪 Rendering stores:', stores.length, stores);
-  console.log('🏪 Store names from API:', stores.map(s => s.store));
-  console.log('🏪 Regular store setting:', regularStore);
-  console.log('🏪 Favorites:', favorites.map(f => f.store_name));
+  const stores = Array.isArray(result?.stores) ? result.stores : [];
+  const favoriteStores = Array.isArray(favorites) ? favorites : [];
 
   // 🧠 SMART SPLIT
   const splitMap = {};
@@ -572,7 +569,7 @@ export default function OrderPage({ initialSearchText }) {
           const myRegularStore = stores.find(s => s.store === regularStore);
           currentTotal = myRegularStore?.total || 0;
         } else if (mode === "favorites") {
-          const favoriteStoreNames = favorites.map(f => f.store_name);
+          const favoriteStoreNames = favoriteStores.map(f => f.store_name);
           const filteredStores = stores.filter(s => favoriteStoreNames.includes(s.store));
           const bestFavorite = filteredStores.sort((a, b) => a.total - b.total)[0];
           currentTotal = bestFavorite?.total || 0;
@@ -664,11 +661,10 @@ export default function OrderPage({ initialSearchText }) {
 
       {/* ⭐ FAVORITES MODE */}
       {!loading && mode==="favorites" && (() => {
-        const favoriteStoreNames = favorites.map(f => f.store_name?.toLowerCase().trim());
+        const favoriteStoreNames = favoriteStores.map(f => f.store_name?.toLowerCase().trim());
         const filteredStores = stores.filter(s => 
           favoriteStoreNames.includes(s.store?.toLowerCase().trim())
         );
-        console.log(`🔍 Favorites mode: Looking for stores in ${JSON.stringify(favoriteStoreNames)}, found:`, filteredStores);
         
         if (filteredStores.length === 0 && stores.length > 0) {
           return (

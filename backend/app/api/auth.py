@@ -248,22 +248,24 @@ async def get_current_user(token: str, db=None):
     if not db:
         db = await get_db()
     
-    session = await db.fetchrow("""
-        SELECT us.*, u.* 
+    row = await db.fetchrow("""
+        SELECT u.*
         FROM user_sessions us
         JOIN users u ON us.user_id = u.id
         WHERE us.token = $1 AND us.expires_at > NOW()
     """, token)
     
-    if not session:
+    if not row:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     
-    return {
-        "id": session["user_id"],
-        "phone": session["phone"],
-        "name": session["name"],
-        "email": session["email"]
-    }
+    return _user_payload(row)
+
+
+@router.get("/auth/me")
+async def auth_me(token: str):
+    """Validate session and return current user (used on app startup)."""
+    db = await get_db()
+    return await get_current_user(token, db)
 
 
 # -----------------------------

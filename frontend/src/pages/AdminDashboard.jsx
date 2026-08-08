@@ -119,7 +119,7 @@ export default function AdminDashboard() {
         
         <div style={styles.statCard}>
           <div style={styles.statIcon}>💰</div>
-          <div style={styles.statValue}>₹{stats.total_revenue?.toFixed(0) || 0}</div>
+          <div style={styles.statValue}>₹{Number(stats.total_revenue || 0).toFixed(0)}</div>
           <div style={styles.statLabel}>Total Revenue</div>
         </div>
       </div>
@@ -138,7 +138,7 @@ export default function AdminDashboard() {
           </div>
           <div style={styles.todayItem}>
             <span style={styles.todayLabel}>Revenue:</span>
-            <span style={styles.todayValue}>₹{stats.today_revenue?.toFixed(0) || 0}</span>
+            <span style={styles.todayValue}>₹{Number(stats.today_revenue || 0).toFixed(0)}</span>
           </div>
         </div>
       </div>

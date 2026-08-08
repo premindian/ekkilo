@@ -56,18 +56,29 @@ function App() {
       // Not authenticated, no need to check onboarding
       setCheckingOnboarding(false);
     }
-  }, [isAuthenticated, token, loading]);
+  }, [isAuthenticated, token, loading, user?.is_admin, user?.is_store_owner]);
 
   const checkOnboardingStatus = async () => {
     try {
+      // Staff portals skip customer onboarding
+      if (user?.is_admin || user?.is_store_owner) {
+        setShowOnboarding(false);
+        return;
+      }
       const res = await fetch(`${API_BASE}/api/preferences?token=${token}`);
+      if (!res.ok) {
+        setShowOnboarding(false);
+        return;
+      }
       const prefs = await res.json();
-      
-      if (!prefs.onboarding_completed) {
+      if (prefs && prefs.onboarding_completed === false) {
         setShowOnboarding(true);
+      } else {
+        setShowOnboarding(false);
       }
     } catch (err) {
       console.error('Failed to check onboarding:', err);
+      setShowOnboarding(false);
     } finally {
       setCheckingOnboarding(false);
     }
@@ -106,6 +117,9 @@ function App() {
 
   // Check if this is an admin portal route
   if (currentPage.startsWith('/admin')) {
+    if (!user?.is_admin) {
+      return <LoginPage />;
+    }
     if (currentPage === '/admin/stores') {
       return <AdminStores />;
     }
@@ -126,21 +140,22 @@ function App() {
 
   // Check if this is a store portal route
   if (currentPage.startsWith('/store')) {
-    if (currentPage === '/store/products') {
+    if (!user?.is_store_owner) {
+      return <LoginPage />;
+    }
+    if (currentPage.startsWith('/store/products')) {
       return <StoreProducts />;
     }
-    if (currentPage === '/store/orders') {
+    if (currentPage.startsWith('/store/orders')) {
       return <StoreOrders />;
     }
-    if (currentPage === '/store/reports') {
+    if (currentPage.startsWith('/store/reports')) {
       return <StoreReports />;
     }
-    if (currentPage === '/store/settings') {
+    if (currentPage.startsWith('/store/settings')) {
       return <StoreSettings />;
     }
-    if (currentPage === '/store') {
-      return <StoreDashboard />;
-    }
+    return <StoreDashboard />;
   }
 
   return (
