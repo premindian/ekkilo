@@ -200,12 +200,20 @@ async def get_all_users(token: str, search: str = None, limit: int = 50, offset:
     admin = await check_admin(token)
     
     db = await get_db()
+    from app.services.abuse import ensure_abuse_schema
+    await ensure_abuse_schema(db)
     
     if search:
         users = await db.fetch("""
             SELECT u.*, 
                    s.name as store_name,
-                   COUNT(DISTINCT fo.id) as total_orders
+                   COUNT(DISTINCT fo.id) as total_orders,
+                   EXISTS (
+                     SELECT 1 FROM blocked_phones bp
+                     WHERE bp.phone = u.phone
+                        OR RIGHT(REGEXP_REPLACE(COALESCE(bp.phone, ''), '[^0-9]', '', 'g'), 10)
+                           = RIGHT(REGEXP_REPLACE(COALESCE(u.phone, ''), '[^0-9]', '', 'g'), 10)
+                   ) AS is_blocked
             FROM users u
             LEFT JOIN stores s ON u.store_id = s.id
             LEFT JOIN final_orders fo ON u.phone = fo.customer_phone
@@ -218,7 +226,13 @@ async def get_all_users(token: str, search: str = None, limit: int = 50, offset:
         users = await db.fetch("""
             SELECT u.*, 
                    s.name as store_name,
-                   COUNT(DISTINCT fo.id) as total_orders
+                   COUNT(DISTINCT fo.id) as total_orders,
+                   EXISTS (
+                     SELECT 1 FROM blocked_phones bp
+                     WHERE bp.phone = u.phone
+                        OR RIGHT(REGEXP_REPLACE(COALESCE(bp.phone, ''), '[^0-9]', '', 'g'), 10)
+                           = RIGHT(REGEXP_REPLACE(COALESCE(u.phone, ''), '[^0-9]', '', 'g'), 10)
+                   ) AS is_blocked
             FROM users u
             LEFT JOIN stores s ON u.store_id = s.id
             LEFT JOIN final_orders fo ON u.phone = fo.customer_phone
@@ -228,6 +242,37 @@ async def get_all_users(token: str, search: str = None, limit: int = 50, offset:
         """, limit, offset)
     
     return [dict(u) for u in users]
+
+
+@router.post("/users/{user_id}/block")
+async def block_user(user_id: int, token: str, data: dict = None):
+    """Block a user's phone from ordering / OTP login"""
+    admin = await check_admin(token)
+    db = await get_db()
+    user = await db.fetchrow("SELECT id, phone, name FROM users WHERE id = $1", user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user["id"] == admin["id"]:
+        raise HTTPException(status_code=400, detail="Cannot block yourself")
+
+    from app.services.abuse import block_phone
+    reason = (data or {}).get("reason") or "Blocked by admin"
+    phone = await block_phone(user["phone"], reason=reason, blocked_by=admin["id"], db=db)
+    return {"status": "blocked", "phone": phone, "user_id": user_id}
+
+
+@router.post("/users/{user_id}/unblock")
+async def unblock_user(user_id: int, token: str):
+    """Unblock a user's phone"""
+    await check_admin(token)
+    db = await get_db()
+    user = await db.fetchrow("SELECT id, phone FROM users WHERE id = $1", user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    from app.services.abuse import unblock_phone
+    await unblock_phone(user["phone"], db=db)
+    return {"status": "unblocked", "user_id": user_id}
 
 
 @router.patch("/users/{user_id}")

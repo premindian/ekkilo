@@ -15,31 +15,50 @@ VERIFY_TOKEN = "Bookofkirana2026"
 # ?? CREATE ORDER
 # -----------------------------
 @router.post("/order")
-async def create_order(data: dict, background_tasks: BackgroundTasks):
+async def create_order(
+    data: dict,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    token: str = None,
+):
     db = await get_db()
 
-    phone = data.get("phone")
+    # Auth required (token via query or body)
+    session_token = token or data.get("token")
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Login required to place an order")
 
-    if not phone:
-        return {"error": "Customer phone missing"}
+    from app.api.auth import get_current_user
+    from app.services.order_status import ensure_order_schema, set_final_order_status
+    from app.services.abuse import (
+        assert_order_rate_limit,
+        assert_phone_not_blocked,
+        client_ip,
+        record_abuse_event,
+    )
+    from app.utils.phone import normalize_phone, phone_tail
+
+    user = await get_current_user(session_token, db)
+    phone = normalize_phone(user["phone"])
+
+    # Ignore/override client-supplied phone — always use the logged-in user
+    body_phone = data.get("phone")
+    if body_phone and phone_tail(body_phone) != phone_tail(phone):
+        raise HTTPException(status_code=403, detail="Phone does not match logged-in user")
 
     stores = data.get("stores", [])
-
     if not stores:
-        return {"error": "No stores"}
+        raise HTTPException(status_code=400, detail="No stores")
 
     print("🔥 ORDER API HIT")
 
-    # -----------------------------
-    # 🧾 CREATE ORDER
-    # -----------------------------
-    from app.services.order_status import ensure_order_schema, set_final_order_status
-    from app.utils.phone import normalize_phone
-
     await ensure_order_schema(db)
-    phone = normalize_phone(phone)
+    await assert_phone_not_blocked(phone, db=db)
+    ip = client_ip(request)
+    await assert_order_rate_limit(phone, ip=ip, db=db)
 
     final_order_id, track_token, whatsapp_jobs = await create_full_order(stores, phone)
+    await record_abuse_event("order", phone=phone, ip=ip, db=db)
     
     # -----------------------------
     # ✅ WEB ORDERS AUTO-CONFIRMED

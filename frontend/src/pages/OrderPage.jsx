@@ -350,7 +350,11 @@ export default function OrderPage({ initialSearchText }) {
     const formatted = user.phone.startsWith("91") ? user.phone : "91" + user.phone;
 
     try {
-      const res = await fetch(`${API_BASE}/order`, {
+      if (!token) {
+        alert("Please log in to place an order.");
+        return;
+      }
+      const res = await fetch(`${API_BASE}/order?token=${encodeURIComponent(token)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -358,9 +362,18 @@ export default function OrderPage({ initialSearchText }) {
           stores: normalized,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       const orderId = data.final_order_id;
       const trackToken = data.track_token;
+
+      if (!res.ok) {
+        const msg =
+          typeof data.detail === "string"
+            ? data.detail
+            : data.error || "Failed to place order";
+        alert(`❌ ${msg}`);
+        return;
+      }
 
       if (orderId) {
         setCart({});

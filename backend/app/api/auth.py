@@ -60,11 +60,16 @@ async def send_otp(data: dict):
     if not phone:
         raise HTTPException(status_code=400, detail="Phone number required")
     
-    # Normalize phone number
-    if not phone.startswith("91"):
-        phone = "91" + phone
+    from app.utils.phone import normalize_phone
+    from app.services.abuse import assert_otp_rate_limit, assert_phone_not_blocked
+
+    phone = normalize_phone(phone)
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone number required")
     
     db = await get_db()
+    await assert_phone_not_blocked(phone, db=db)
+    await assert_otp_rate_limit(phone, db=db)
     
     # Generate 6-digit OTP
     otp = str(random.randint(100000, 999999))
@@ -119,11 +124,12 @@ async def verify_otp(data: dict):
     if not phone or not otp:
         raise HTTPException(status_code=400, detail="Phone and OTP required")
     
-    # Normalize phone
-    if not phone.startswith("91"):
-        phone = "91" + phone
-    
+    from app.utils.phone import normalize_phone
+    from app.services.abuse import assert_phone_not_blocked
+
+    phone = normalize_phone(phone)
     db = await get_db()
+    await assert_phone_not_blocked(phone, db=db)
     
     # Verify OTP
     otp_record = await db.fetchrow("""

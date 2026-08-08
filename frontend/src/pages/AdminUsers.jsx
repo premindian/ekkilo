@@ -137,6 +137,51 @@ export default function AdminUsers() {
     }
   };
 
+  const toggleBlock = async (user) => {
+    if (user.is_blocked) {
+      if (!window.confirm(`Unblock ${user.name || user.phone}? They will be able to order again.`)) return;
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/admin/users/${user.id}/unblock?token=${token}`,
+          { method: 'POST' }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(data.detail || 'Failed to unblock');
+          return;
+        }
+        alert('✅ User unblocked');
+        loadUsers();
+      } catch (err) {
+        alert('❌ Failed to unblock user');
+      }
+      return;
+    }
+
+    if (!window.confirm(
+      `Block ${user.name || user.phone}?\n\nThey won't be able to log in via OTP or place orders.`
+    )) return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/users/${user.id}/block?token=${token}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: 'Blocked by admin' }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || 'Failed to block');
+        return;
+      }
+      alert('🚫 User blocked');
+      loadUsers();
+    } catch (err) {
+      alert('❌ Failed to block user');
+    }
+  };
+
   return (
     <div style={styles.container}>
       {/* Header */}
@@ -177,6 +222,7 @@ export default function AdminUsers() {
                   {user.email && <p style={styles.userEmail}>✉️ {user.email}</p>}
                 </div>
                 <div style={styles.badges}>
+                  {user.is_blocked && <span style={styles.badgeBlocked}>🚫 Blocked</span>}
                   {user.is_admin && <span style={styles.badgeAdmin}>👑 Admin</span>}
                   {user.is_store_owner && <span style={styles.badgeOwner}>🏪 Owner</span>}
                 </div>
@@ -196,6 +242,12 @@ export default function AdminUsers() {
               </div>
 
               <div style={styles.userActions}>
+                <button
+                  onClick={() => toggleBlock(user)}
+                  style={user.is_blocked ? styles.unblockBtn : styles.blockBtn}
+                >
+                  {user.is_blocked ? '✅ Unblock' : '🚫 Block'}
+                </button>
                 <button 
                   onClick={() => toggleStoreOwner(user)} 
                   style={user.is_store_owner ? styles.removeOwnerBtn : styles.makeOwnerBtn}
@@ -389,6 +441,34 @@ const styles = {
     borderRadius: 6,
     fontSize: 11,
     fontWeight: 600,
+  },
+  badgeBlocked: {
+    padding: '4px 8px',
+    background: '#fee2e2',
+    color: '#991b1b',
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 600,
+  },
+  blockBtn: {
+    padding: '8px 12px',
+    background: '#fef2f2',
+    color: '#b91c1c',
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  unblockBtn: {
+    padding: '8px 12px',
+    background: '#ecfdf5',
+    color: '#047857',
+    border: '1px solid #a7f3d0',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
   },
   userStats: {
     display: 'grid',
