@@ -90,33 +90,74 @@ async def send_otp(data: dict):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Could not send OTP. Please try again.")
     
-    # Send OTP via WhatsApp
+    # Send OTP via WhatsApp (track row so Admin → WhatsApp shows success/failure)
     from app.services.whatsapp.send_message import send_message
-    
+
+    otp_body = (
+        f"🔐 Your Ekkilo verification code is: {otp}\n\n"
+        f"This code expires in 10 minutes."
+    )
+    msg_row = await db.fetchrow("""
+        INSERT INTO whatsapp_messages (phone, message, status)
+        VALUES ($1, $2, 'PENDING')
+        RETURNING id
+    """, phone, otp_body)
+
     otp_sent = False
+    wa_error = None
     try:
-        await send_message(phone, f"🔐 Your Ekkilo verification code is: {otp}\n\nThis code expires in 10 minutes.")
-        print(f"✅ OTP sent to {phone}: {otp}")
-        otp_sent = True
+        otp_sent = bool(await send_message(phone, otp_body, msg_row["id"]))
+        if otp_sent:
+            print(f"✅ OTP sent to {phone}")
+        else:
+            err = await db.fetchval(
+                "SELECT last_error FROM whatsapp_messages WHERE id = $1",
+                msg_row["id"],
+            )
+            wa_error = err or "WhatsApp delivery failed"
+            print(f"❌ OTP WhatsApp failed for {phone}: {wa_error}")
     except Exception as e:
+        wa_error = str(e)
         print(f"❌ Failed to send OTP to {phone}: {e}")
-        print(f"📝 OTP for manual testing: {otp}")
-        # Still allow registration to proceed even if SMS fails
-    
+        await db.execute("""
+            UPDATE whatsapp_messages
+            SET status = 'FAILED', last_error = $2, attempts = attempts + 1
+            WHERE id = $1
+        """, msg_row["id"], wa_error)
+
     response = {
-        "status": "sent" if otp_sent else "queued",
+        "status": "sent" if otp_sent else "failed",
         "phone": phone,
-        "otp_sent": otp_sent
+        "otp_sent": otp_sent,
     }
-    
+
     # Include OTP in response ONLY in development mode (never in production)
     if DEV_MODE:
         response["otp"] = otp
-        print("⚠️ DEV MODE: OTP included in response")
-    elif not otp_sent:
-        # Don't leak OTP — tell client to retry / check WhatsApp later
-        response["message"] = "OTP generated. If you don't receive WhatsApp, try again in a minute."
-    
+        print(f"⚠️ DEV MODE: OTP for {phone}: {otp}")
+
+    if not otp_sent:
+        # Still create OTP in DB so verify can work if admin/dev shares code,
+        # but tell the user WhatsApp did not deliver.
+        hint = (
+            "WhatsApp could not deliver the OTP. "
+            "Open WhatsApp, message our Ekkilo business number once (say Hi), "
+            "then tap Send OTP again. "
+            "If Meta app is in test mode, this number must be added as a test recipient."
+        )
+        if wa_error and ("not in" in wa_error.lower() or "allowed" in wa_error.lower()):
+            hint = (
+                "This phone is not allowed to receive WhatsApp messages yet. "
+                "In Meta Developer → WhatsApp → API Setup, add it under "
+                "\"To\" test numbers, then try again."
+            )
+        elif wa_error and ("24" in wa_error or "experiment" in wa_error.lower() or "template" in wa_error.lower() or "131047" in wa_error):
+            hint = (
+                "WhatsApp blocked the OTP (outside 24-hour chat window). "
+                "Message the Ekkilo WhatsApp number first, then request OTP again."
+            )
+        raise HTTPException(status_code=502, detail=hint)
+
     return response
 
 

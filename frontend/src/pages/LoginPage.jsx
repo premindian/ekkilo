@@ -51,7 +51,7 @@ export default function LoginPage() {
         setError(res.ok ? 'Unexpected server response' : `Server error (${res.status}). Please try again.`);
         return;
       }
-      if (res.ok) {
+      if (res.ok && data.otp_sent !== false) {
         if (data.otp) {
           setSentOtp(data.otp);
         }
