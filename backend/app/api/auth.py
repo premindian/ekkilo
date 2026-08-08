@@ -55,32 +55,40 @@ async def _create_session(db, user_id: int) -> str:
 @router.post("/auth/send-otp")
 async def send_otp(data: dict):
     """Send OTP to user's phone number"""
-    phone = data.get("phone")
-    
-    if not phone:
-        raise HTTPException(status_code=400, detail="Phone number required")
-    
-    from app.utils.phone import normalize_phone
-    from app.services.abuse import assert_otp_rate_limit, assert_phone_not_blocked
+    try:
+        phone = data.get("phone")
+        
+        if not phone:
+            raise HTTPException(status_code=400, detail="Phone number required")
+        
+        from app.utils.phone import normalize_phone
+        from app.services.abuse import assert_otp_rate_limit, assert_phone_not_blocked
 
-    phone = normalize_phone(phone)
-    if not phone:
-        raise HTTPException(status_code=400, detail="Phone number required")
-    
-    db = await get_db()
-    await assert_phone_not_blocked(phone, db=db)
-    await assert_otp_rate_limit(phone, db=db)
-    
-    # Generate 6-digit OTP
-    otp = str(random.randint(100000, 999999))
-    
-    # Store OTP (expires in 10 minutes)
-    expires_at = datetime.now() + timedelta(minutes=10)
-    
-    await db.execute("""
-        INSERT INTO otp_verifications (phone, otp, expires_at)
-        VALUES ($1, $2, $3)
-    """, phone, otp, expires_at)
+        phone = normalize_phone(phone)
+        if not phone:
+            raise HTTPException(status_code=400, detail="Phone number required")
+        
+        db = await get_db()
+        await assert_phone_not_blocked(phone, db=db)
+        await assert_otp_rate_limit(phone, db=db)
+        
+        # Generate 6-digit OTP
+        otp = str(random.randint(100000, 999999))
+        
+        # Store OTP (expires in 10 minutes)
+        expires_at = datetime.now() + timedelta(minutes=10)
+        
+        await db.execute("""
+            INSERT INTO otp_verifications (phone, otp, expires_at)
+            VALUES ($1, $2, $3)
+        """, phone, otp, expires_at)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ send-otp failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Could not send OTP. Please try again.")
     
     # Send OTP via WhatsApp
     from app.services.whatsapp.send_message import send_message

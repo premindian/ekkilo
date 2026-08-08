@@ -20,6 +20,16 @@ export default function LoginPage() {
     else if (user?.is_store_owner) navigate('/store');
   };
 
+  const formatDetail = (detail, fallback) => {
+    if (!detail) return fallback;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((d) => d?.msg || d?.message || String(d)).filter(Boolean).join(', ') || fallback;
+    }
+    if (typeof detail === 'object') return detail.msg || detail.message || fallback;
+    return String(detail);
+  };
+
   const sendOTP = async () => {
     if (!phone) {
       setError('Please enter phone number');
@@ -33,17 +43,24 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone })
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        setError(res.ok ? 'Unexpected server response' : `Server error (${res.status}). Please try again.`);
+        return;
+      }
       if (res.ok) {
         if (data.otp) {
           setSentOtp(data.otp);
         }
         setStep('otp');
       } else {
-        setError(data.detail || 'Failed to send OTP');
+        setError(formatDetail(data.detail, data.message || 'Failed to send OTP'));
       }
     } catch (err) {
-      setError('Network error. Please try again.');
+      setError('Cannot reach server. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
