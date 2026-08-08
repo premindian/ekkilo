@@ -62,34 +62,65 @@ export default function AdminStores() {
   };
 
   const saveStore = async () => {
+    if (!name.trim()) {
+      alert('Store name is required');
+      return;
+    }
+    if (!phone.trim()) {
+      alert('Phone is required');
+      return;
+    }
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+    if (lat === '' || Number.isNaN(latNum)) {
+      alert('Latitude is required (e.g. 17.686815)');
+      return;
+    }
+    if (lng === '' || Number.isNaN(lngNum)) {
+      alert('Longitude is required (e.g. 83.218482)');
+      return;
+    }
+    if (latNum < -90 || latNum > 90) {
+      alert('Latitude must be between -90 and 90');
+      return;
+    }
+    if (lngNum < -180 || lngNum > 180) {
+      alert('Longitude must be between -180 and 180');
+      return;
+    }
+
     try {
+      const payload = {
+        name: name.trim(),
+        phone: phone.trim(),
+        address,
+        lat: latNum,
+        lng: lngNum,
+      };
+
       if (editingStore) {
-        // Update existing store
-        await fetch(`${API_BASE}/api/admin/stores/${editingStore.id}?token=${token}`, {
+        const res = await fetch(`${API_BASE}/api/admin/stores/${editingStore.id}?token=${token}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name,
-            phone,
-            address,
-            lat: lat ? parseFloat(lat) : null,
-            lng: lng ? parseFloat(lng) : null
-          })
+          body: JSON.stringify(payload),
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(`❌ ${err.detail || 'Failed to update store'}`);
+          return;
+        }
         alert('✅ Store updated!');
       } else {
-        // Create new store
-        await fetch(`${API_BASE}/api/admin/stores?token=${token}`, {
+        const res = await fetch(`${API_BASE}/api/admin/stores?token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name,
-            phone,
-            address,
-            lat: lat ? parseFloat(lat) : null,
-            lng: lng ? parseFloat(lng) : null
-          })
+          body: JSON.stringify(payload),
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(`❌ ${err.detail || 'Failed to create store'}`);
+          return;
+        }
         alert('✅ Store created!');
       }
       setShowAddModal(false);
@@ -236,9 +267,11 @@ export default function AdminStores() {
 
             <div style={styles.formRow}>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Latitude</label>
+                <label style={styles.label}>Latitude *</label>
                 <input
-                  type="text"
+                  type="number"
+                  step="any"
+                  required
                   value={lat}
                   onChange={(e) => setLat(e.target.value)}
                   style={styles.input}
@@ -246,9 +279,11 @@ export default function AdminStores() {
                 />
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Longitude</label>
+                <label style={styles.label}>Longitude *</label>
                 <input
-                  type="text"
+                  type="number"
+                  step="any"
+                  required
                   value={lng}
                   onChange={(e) => setLng(e.target.value)}
                   style={styles.input}
@@ -256,6 +291,9 @@ export default function AdminStores() {
                 />
               </div>
             </div>
+            <p style={{ fontSize: 12, color: '#666', marginTop: -8, marginBottom: 12 }}>
+              Tip: In Google Maps, right‑click the store location → copy coordinates.
+            </p>
 
             <button onClick={saveStore} style={styles.saveBtn}>
               {editingStore ? '💾 Update Store' : '✅ Create Store'}

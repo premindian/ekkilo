@@ -127,20 +127,30 @@ async def get_all_stores(token: str, search: str = None, limit: int = 50, offset
 @router.post("/stores")
 async def create_store(data: dict, token: str):
     """Create a new store"""
-    admin = await check_admin(token)
+    from app.utils.phone import normalize_phone
+
+    await check_admin(token)
     
     db = await get_db()
     
-    name = data.get("name")
-    phone = data.get("phone")
+    name = (data.get("name") or "").strip()
+    phone = normalize_phone(data.get("phone"))
     address = data.get("address")
     lat = data.get("lat")
     lng = data.get("lng")
     
     if not name or not phone:
         raise HTTPException(status_code=400, detail="Name and phone required")
+
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Latitude and longitude are required numbers")
+
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        raise HTTPException(status_code=400, detail="Invalid latitude/longitude range")
     
-    # Ensure optional columns exist on older DBs
     await db.execute("ALTER TABLE stores ADD COLUMN IF NOT EXISTS address TEXT")
     await db.execute("ALTER TABLE stores ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
 
