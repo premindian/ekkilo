@@ -26,7 +26,7 @@ export default function OrderPage({ initialSearchText }) {
   const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState(null);
   const [radius, setRadius] = useState(5);
-  const [manualCart, setManualCart] = useState({});
+  const [cart, setCart] = useState({}); // selected items across Smart/Favorites/Regular/Manual
   const [favorites, setFavorites] = useState([]);
   const [regularStore, setRegularStore] = useState(null);
   const [gpsError, setGpsError] = useState(false);
@@ -54,6 +54,7 @@ export default function OrderPage({ initialSearchText }) {
           });
           const data = await res.json();
           setResult(data);
+          setCart({});
         } catch (err) {
           console.error("Search error:", err);
         } finally {
@@ -196,9 +197,8 @@ export default function OrderPage({ initialSearchText }) {
     });
 
     const data = await res.json();
-    console.log('📊 Search Result:', data);
-    console.log('📦 Stores:', data.stores);
     setResult(data);
+    setCart({}); // fresh selection for new search results
     setLoading(false);
   };
 
@@ -241,22 +241,74 @@ export default function OrderPage({ initialSearchText }) {
   const splitStores = Object.values(splitMap);
   const splitTotal = splitStores.reduce((s, x) => s + x.total, 0);
 
-  // 🧩 MANUAL MODE
-  const toggleManual = (store, item) => {
-    const key = `${store}-${item.name}`;
+  // 🧩 ITEM SELECTION (all modes)
+  const cartKey = (store, item) =>
+    `${store}::${item.name}::${item.brand || ""}::${item.size || ""}::${item.unit || ""}`;
 
-    setManualCart((prev) => {
+  const toggleCart = (store, item) => {
+    const key = cartKey(store, item);
+    setCart((prev) => {
       const copy = { ...prev };
-
       if (copy[key]) delete copy[key];
       else copy[key] = { ...item, store };
-
       return copy;
     });
   };
 
-  const manualItems = Object.values(manualCart);
-  const manualTotal = manualItems.reduce((s, i) => s + (i.price || 0), 0);
+  const addAllToCart = (storeName, items) => {
+    setCart((prev) => {
+      const copy = { ...prev };
+      (items || []).forEach((it) => {
+        copy[cartKey(storeName, it)] = { ...it, store: storeName };
+      });
+      return copy;
+    });
+  };
+
+  const isInCart = (store, item) => !!cart[cartKey(store, item)];
+
+  const cartItems = Object.values(cart);
+  const cartTotal = cartItems.reduce((s, i) => s + (Number(i.price) || 0), 0);
+
+  const buildPayloadFromCart = () => {
+    const grouped = cartItems.reduce((acc, item) => {
+      let s = acc.find((x) => x.store === item.store);
+      if (!s) {
+        const storeData = stores.find(
+          (st) => st.store?.toLowerCase().trim() === item.store?.toLowerCase().trim()
+        );
+        s = {
+          store: item.store,
+          store_phone: storeData?.store_phone || item.phone || null,
+          items: [],
+          total: 0,
+        };
+        acc.push(s);
+      }
+      s.items.push(item);
+      s.total += Number(item.price) || 0;
+      return acc;
+    }, []);
+    return grouped;
+  };
+
+  const normalizeOrderPayload = (storesPayload) =>
+    (storesPayload || []).map((s) => {
+      const items = Array.isArray(s.items) ? s.items : [];
+      const total =
+        s.total != null
+          ? Number(s.total)
+          : items.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
+      const storeData = stores.find(
+        (st) => st.store?.toLowerCase().trim() === s.store?.toLowerCase().trim()
+      );
+      return {
+        ...s,
+        items,
+        total: Number.isFinite(total) ? total : 0,
+        store_phone: s.store_phone || storeData?.store_phone || null,
+      };
+    }).filter((s) => s.items.length > 0);
 
   // 📦 ORDER
   const placeOrder = async (storesPayload) => {
@@ -265,20 +317,34 @@ export default function OrderPage({ initialSearchText }) {
       return;
     }
 
-    // Build confirmation message
-    const orderSummary = storesPayload.map(store => {
-      const itemsList = store.items.map(item => 
-        `  • ${itemLabel(item)} (${item.packs || 1} × ${item.size}${item.unit})`
-      ).join('\n');
-      return `📍 ${store.store}\n${itemsList}\n💰 Subtotal: ₹${store.total.toFixed(2)}`;
-    }).join('\n\n');
+    const normalized = normalizeOrderPayload(storesPayload);
+    if (!normalized.length) {
+      alert("Add at least one item before placing order");
+      return;
+    }
 
-    const grandTotal = storesPayload.reduce((sum, store) => sum + store.total, 0);
-    
-    const confirmMessage = `🛒 Confirm Your Order?\n\n${orderSummary}\n\n💳 Grand Total: ₹${grandTotal.toFixed(2)}\n\n${storesPayload.length} store(s) will be notified.`;
+    const missingPhone = normalized.find((s) => !s.store_phone);
+    if (missingPhone) {
+      alert(`Missing store phone for ${missingPhone.store}. Try searching again.`);
+      return;
+    }
+
+    const orderSummary = normalized.map((store) => {
+      const itemsList = store.items
+        .map(
+          (item) =>
+            `  • ${itemLabel(item)} (${item.packs || 1} × ${item.size}${item.unit})`
+        )
+        .join("\n");
+      return `📍 ${store.store}\n${itemsList}\n💰 Subtotal: ₹${Number(store.total).toFixed(2)}`;
+    }).join("\n\n");
+
+    const grandTotal = normalized.reduce((sum, store) => sum + Number(store.total || 0), 0);
+
+    const confirmMessage = `🛒 Confirm Your Order?\n\n${orderSummary}\n\n💳 Grand Total: ₹${grandTotal.toFixed(2)}\n\n${normalized.length} store(s) will be notified.`;
 
     if (!window.confirm(confirmMessage)) {
-      return; // User cancelled
+      return;
     }
 
     const formatted = user.phone.startsWith("91") ? user.phone : "91" + user.phone;
@@ -289,13 +355,14 @@ export default function OrderPage({ initialSearchText }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone: formatted,
-          stores: storesPayload,
+          stores: normalized,
         }),
       });
       const data = await res.json();
       const orderId = data.final_order_id;
 
       if (orderId) {
+        setCart({});
         const track = window.confirm(
           `✅ Order #${orderId} placed!\n\nYou'll get a WhatsApp confirmation.\n\nOpen tracking page now?`
         );
@@ -308,6 +375,69 @@ export default function OrderPage({ initialSearchText }) {
     } catch (err) {
       alert("❌ Failed to place order. Please try again.");
     }
+  };
+
+  const renderSelectableItem = (storeName, it, layout = "block") => {
+    const selected = isInCart(storeName, it);
+    const addBtn = (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleCart(storeName, it);
+        }}
+        style={{
+          background: selected ? "#ef4444" : "#22c55e",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "4px 8px",
+          cursor: "pointer",
+          fontSize: 12,
+        }}
+      >
+        {selected ? "Remove" : "Add"}
+      </button>
+    );
+
+    if (layout === "row") {
+      return (
+        <div key={cartKey(storeName, it)} style={row}>
+          <span>
+            {itemLabel(it)} ({it.packs || 1} × {it.size}{it.unit})
+            {it.available === false && (
+              <span style={{ fontSize: 11, color: "#ef4444", marginLeft: 6 }}>⚠️ Limited</span>
+            )}
+            {brandNote(it) && (
+              <div style={{ fontSize: 11, color: "#b45309", marginTop: 2 }}>{brandNote(it)}</div>
+            )}
+          </span>
+          <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            ₹{format(it.price)}
+            {addBtn}
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div key={cartKey(storeName, it)} style={itemBlock}>
+        <div>
+          <div>{itemLabel(it)}</div>
+          <div style={itemMeta}>
+            {[it.brand, it.variant, `${it.packs || 1} × ${it.size}${it.unit}`]
+              .filter(Boolean)
+              .join(" • ")}
+          </div>
+          {brandNote(it) && (
+            <div style={{ fontSize: 11, color: "#b45309", marginTop: 2 }}>{brandNote(it)}</div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span>₹{format(it.price)}</span>
+          {addBtn}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -529,7 +659,7 @@ export default function OrderPage({ initialSearchText }) {
             <>
               <div style={{ fontWeight: 'bold', marginBottom: 4 }}>💰 Smart Buy Mode</div>
               <div style={{ fontSize: 14, color: '#666' }}>
-                Showing optimal split across stores for best price + convenience
+                Best-price suggestions — tap <strong>Add</strong> on items you want, then Place Order
               </div>
             </>
           )}
@@ -537,7 +667,7 @@ export default function OrderPage({ initialSearchText }) {
             <>
               <div style={{ fontWeight: 'bold', marginBottom: 4 }}>⭐ Favorites Mode</div>
               <div style={{ fontSize: 14, color: '#666' }}>
-                Showing only your favorite stores
+                Your favorite stores — tap <strong>Add</strong> to choose items
               </div>
             </>
           )}
@@ -545,7 +675,7 @@ export default function OrderPage({ initialSearchText }) {
             <>
               <div style={{ fontWeight: 'bold', marginBottom: 4 }}>🏪 Regular Store Mode</div>
               <div style={{ fontSize: 14, color: '#666' }}>
-                Showing your trusted regular store: <strong>{regularStore || "Not set"}</strong>
+                {regularStore || "Not set"} — tap <strong>Add</strong> on the items you want
               </div>
             </>
           )}
@@ -553,7 +683,7 @@ export default function OrderPage({ initialSearchText }) {
             <>
               <div style={{ fontWeight: 'bold', marginBottom: 4 }}>✋ Manual Mode</div>
               <div style={{ fontSize: 14, color: '#666' }}>
-                Pick items yourself from any store
+                Pick items yourself from any store, then Place Order
               </div>
             </>
           )}
@@ -574,7 +704,7 @@ export default function OrderPage({ initialSearchText }) {
           const bestFavorite = filteredStores.sort((a, b) => a.total - b.total)[0];
           currentTotal = bestFavorite?.total || 0;
         } else if (mode === "manual") {
-          currentTotal = manualTotal;
+          currentTotal = cartTotal;
         }
         
         const savings = currentTotal - splitTotal;
@@ -641,20 +771,17 @@ export default function OrderPage({ initialSearchText }) {
               )}
             </div>
 
-            {store.items.map((it,j)=>(
-              <div key={j} style={row}>
-                <span>
-                  {itemLabel(it)} ({it.packs||1} × {it.size}{it.unit})
-                  {it.available === false && <span style={{ fontSize: 11, color: '#ef4444', marginLeft: 6 }}>⚠️ Limited</span>}
-                  {brandNote(it) && (
-                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>{brandNote(it)}</div>
-                  )}
-                </span>
-                <span>₹{format(it.price)}</span>
-              </div>
-            ))}
+            {store.items.map((it) => renderSelectableItem(store.store, it, "row"))}
 
-            <b>Subtotal: ₹{format(store.total)}</b>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <b>Subtotal: ₹{format(store.total)}</b>
+              <button
+                style={{ ...orderButton, marginTop: 0, padding: "8px 12px", fontSize: 13 }}
+                onClick={() => addAllToCart(store.store, store.items)}
+              >
+                ➕ Add all
+              </button>
+            </div>
           </div>
         ));
       })()}
@@ -699,23 +826,13 @@ export default function OrderPage({ initialSearchText }) {
               {store.reason?.join(" • ")}
             </div>
 
-            {store.items.map((item,i)=>(
-              <div key={i} style={itemBlock}>
-                <div>
-                  <div>{itemLabel(item)}</div>
-                  <div style={itemMeta}>
-                    {[item.brand, item.variant, `${item.packs||1} × ${item.size}${item.unit}`].filter(Boolean).join(" • ")}
-                  </div>
-                  {brandNote(item) && (
-                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>{brandNote(item)}</div>
-                  )}
-                </div>
-                <div>₹{format(item.price)}</div>
-              </div>
-            ))}
+            {store.items.map((item) => renderSelectableItem(store.store, item, "block"))}
 
-            <button style={orderButton} onClick={()=>placeOrder([store])}>
-              🛒 Place Order
+            <button
+              style={orderButton}
+              onClick={() => addAllToCart(store.store, store.items)}
+            >
+              ➕ Add all from store
             </button>
           </div>
         ));
@@ -773,23 +890,15 @@ export default function OrderPage({ initialSearchText }) {
               {myRegularStore.reason?.join(" • ")}
             </div>
 
-            {myRegularStore.items.map((item,i)=>(
-              <div key={i} style={itemBlock}>
-                <div>
-                  <div>{itemLabel(item)}</div>
-                  <div style={itemMeta}>
-                    {[item.brand, item.variant, `${item.packs||1} × ${item.size}${item.unit}`].filter(Boolean).join(" • ")}
-                  </div>
-                  {brandNote(item) && (
-                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>{brandNote(item)}</div>
-                  )}
-                </div>
-                <div>₹{format(item.price)}</div>
-              </div>
-            ))}
+            {myRegularStore.items.map((item) =>
+              renderSelectableItem(myRegularStore.store, item, "block")
+            )}
 
-            <button style={orderButton} onClick={()=>placeOrder([myRegularStore])}>
-              🛒 Place Order
+            <button
+              style={orderButton}
+              onClick={() => addAllToCart(myRegularStore.store, myRegularStore.items)}
+            >
+              ➕ Add all from store
             </button>
           </div>
         );
@@ -815,11 +924,9 @@ export default function OrderPage({ initialSearchText }) {
           >
             <b style={{ fontSize: 16 }}>🏪 {store}</b>
             {(() => {
-              // More robust store lookup (case-insensitive, trimmed)
               const storeData = stores.find(s => 
                 s.store?.toLowerCase().trim() === store?.toLowerCase().trim()
               );
-              console.log(`🔍 Looking for store "${store}" in manual mode, found:`, storeData);
               return storeData?.distance !== undefined ? (
                 <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
                   📍 {storeData.distance} km
@@ -832,70 +939,20 @@ export default function OrderPage({ initialSearchText }) {
             })()}
           </div>
 
-          {Object.values(items).map((it,i)=>{
-            const key=`${store}-${it.name}`;
-            const selected=manualCart[key];
-
-            return (
-              <div key={i} style={itemBlock}>
-                <div>
-                  <div>{itemLabel(it)}</div>
-                  <div style={itemMeta}>
-                    {[it.brand, it.variant, `${it.size}${it.unit}`].filter(Boolean).join(" • ")}
-                  </div>
-                  {brandNote(it) && (
-                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>{brandNote(it)}</div>
-                  )}
-                </div>
-
-                <div style={{display:"flex",gap:8}}>
-                  <span>₹{format(it.price)}</span>
-                  <button
-                    onClick={()=>toggleManual(store,it)}
-                    style={{
-                      background:selected?"#ef4444":"#22c55e",
-                      color:"#fff",
-                      border:"none",
-                      borderRadius:6,
-                      padding:"4px 8px"
-                    }}
-                  >
-                    {selected?"Remove":"Add"}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          {Object.values(items).map((it) => renderSelectableItem(store, it, "block"))}
         </div>
       ))}
 
-      {/* 🔥 STICKY BAR */}
-      {((mode==="smart" && splitStores.length > 0) || (mode==="manual" && manualItems.length > 0)) && (
+      {/* 🔥 STICKY BAR — selected cart (all modes) */}
+      {cartItems.length > 0 && (
         <div style={bottom}>
           <div>
-            ₹{format(mode==="smart"?splitTotal:manualTotal)}
+            {cartItems.length} item(s) · ₹{format(cartTotal)}
           </div>
 
           <button
             style={btn}
-            onClick={()=>{
-              if(mode==="smart"){
-                placeOrder(splitStores);
-              } else {
-                const grouped = manualItems.reduce((acc,item)=>{
-                  let s=acc.find(x=>x.store===item.store);
-                  if(!s){
-                    // Find store_phone from result.stores
-                    const storeData = stores.find(st => st.store === item.store);
-                    s={store:item.store, store_phone: storeData?.store_phone, items:[]};
-                    acc.push(s);
-                  }
-                  s.items.push(item);
-                  return acc;
-                },[]);
-                placeOrder(grouped);
-              }
-            }}
+            onClick={() => placeOrder(buildPayloadFromCart())}
           >
             🚀 Place Order
           </button>
