@@ -72,8 +72,8 @@ async def create_order(
         store_phone = normalize_phone(store_phone)
 
         row = await db.fetchrow("""
-         INSERT INTO whatsapp_messages (phone, message, final_order_id)
-              VALUES ($1, $2, $3)
+         INSERT INTO whatsapp_messages (phone, message, status, final_order_id)
+              VALUES ($1, $2, 'PENDING', $3)
               RETURNING id
             """, store_phone, message, final_order_id)
 
@@ -115,8 +115,8 @@ We will notify you when ready 🚀
 """
 
     row = await db.fetchrow("""
-        INSERT INTO whatsapp_messages (phone, message, final_order_id)
-              VALUES ($1, $2, $3)
+        INSERT INTO whatsapp_messages (phone, message, status, final_order_id)
+              VALUES ($1, $2, 'PENDING', $3)
               RETURNING id
             """, phone, customer_message, final_order_id)
 

@@ -538,15 +538,38 @@ async def get_order_details(order_id: int, token: str):
 # WHATSAPP MESSAGES
 # ============================================
 
+async def _normalize_whatsapp_statuses(db):
+    """Repair null/lowercase/legacy status values so filters & stats work."""
+    await db.execute("""
+        UPDATE whatsapp_messages
+        SET status = UPPER(TRIM(status))
+        WHERE status IS NOT NULL
+          AND status <> UPPER(TRIM(status))
+    """)
+    await db.execute("""
+        UPDATE whatsapp_messages
+        SET status = CASE
+            WHEN read_at IS NOT NULL THEN 'READ'
+            WHEN delivered_at IS NOT NULL THEN 'DELIVERED'
+            WHEN sent_at IS NOT NULL THEN 'SENT'
+            WHEN last_error IS NOT NULL THEN 'FAILED'
+            ELSE 'PENDING'
+        END
+        WHERE status IS NULL OR TRIM(status) = ''
+    """)
+
+
 @router.get("/whatsapp/messages")
 async def get_whatsapp_messages(token: str, phone: str = None, status: str = None, limit: int = 100, offset: int = 0):
     """Get WhatsApp message history"""
     admin = await check_admin(token)
     
     db = await get_db()
+    await _normalize_whatsapp_statuses(db)
     
     query = """
-        SELECT wm.id, wm.phone, wm.message, wm.status, 
+        SELECT wm.id, wm.phone, wm.message,
+               UPPER(TRIM(COALESCE(wm.status, 'PENDING'))) as status,
                wm.whatsapp_message_id, wm.attempts, wm.last_error,
                wm.created_at, wm.sent_at, wm.delivered_at, wm.read_at,
                wm.final_order_id,
@@ -560,12 +583,12 @@ async def get_whatsapp_messages(token: str, phone: str = None, status: str = Non
     param_count = 1
     
     if phone:
-        query += f" AND wm.phone = ${param_count}"
+        query += f" AND RIGHT(REGEXP_REPLACE(COALESCE(wm.phone, ''), '[^0-9]', '', 'g'), 10) = RIGHT(REGEXP_REPLACE(${param_count}, '[^0-9]', '', 'g'), 10)"
         params.append(phone)
         param_count += 1
     
     if status:
-        query += f" AND wm.status = ${param_count}"
+        query += f" AND UPPER(TRIM(COALESCE(wm.status, 'PENDING'))) = ${param_count}"
         params.append(status.upper())
         param_count += 1
     
@@ -612,20 +635,31 @@ async def get_whatsapp_stats(token: str):
     admin = await check_admin(token)
     
     db = await get_db()
+    await _normalize_whatsapp_statuses(db)
     
     stats = await db.fetchrow("""
         SELECT 
             COUNT(*) as total_messages,
-            COUNT(*) FILTER (WHERE status = 'SENT') as sent,
-            COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
-            COUNT(*) FILTER (WHERE status = 'READ') as read,
-            COUNT(*) FILTER (WHERE status = 'FAILED') as failed,
-            COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
+            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'SENT') as sent,
+            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'DELIVERED') as delivered,
+            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'READ') as read,
+            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'FAILED') as failed,
+            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'PENDING') as pending,
             COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as last_24h
         FROM whatsapp_messages
     """)
+
+    # Also expose any unexpected status values (helps diagnose filter mismatches)
+    other = await db.fetch("""
+        SELECT UPPER(TRIM(COALESCE(status, 'PENDING'))) AS status, COUNT(*) AS count
+        FROM whatsapp_messages
+        GROUP BY 1
+        ORDER BY count DESC
+    """)
     
-    return dict(stats)
+    result = {k: int(v or 0) for k, v in dict(stats).items()}
+    result["by_status"] = {row["status"]: int(row["count"]) for row in other}
+    return result
 
 
 @router.get("/whatsapp/inbound")

@@ -64,7 +64,11 @@ export default function AdminWhatsApp() {
     try {
       const res = await fetch(`${API_BASE}/api/admin/whatsapp/stats?token=${token}`);
       const data = await res.json();
-      setStats(data);
+      if (!res.ok) {
+        console.error('Failed to load stats:', data);
+        return;
+      }
+      setStats(data || {});
     } catch (err) {
       console.error('Failed to load stats:', err);
     }
@@ -80,17 +84,29 @@ export default function AdminWhatsApp() {
       }
       
       if (searchPhone) {
-        url += `&phone=${searchPhone}`;
+        url += `&phone=${encodeURIComponent(searchPhone)}`;
       }
       
       const res = await fetch(url);
       const data = await res.json();
-      setMessages(data);
+      if (!res.ok) {
+        console.error('Failed to load messages:', data);
+        setMessages([]);
+        return;
+      }
+      setMessages(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load messages:', err);
+      setMessages([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const statusCount = (key) => {
+    if (key === 'ALL') return stats.total_messages || 0;
+    if (stats.by_status && stats.by_status[key] != null) return stats.by_status[key];
+    return stats[key.toLowerCase()] || 0;
   };
 
   const loadInbound = async () => {
@@ -164,16 +180,24 @@ export default function AdminWhatsApp() {
           <div style={styles.statLabel}>Total</div>
         </div>
         <div style={styles.statCard}>
+          <div style={{...styles.statValue, color: '#fbbf24'}}>{stats.pending || 0}</div>
+          <div style={styles.statLabel}>Pending</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={{...styles.statValue, color: '#60a5fa'}}>{stats.sent || 0}</div>
+          <div style={styles.statLabel}>Sent</div>
+        </div>
+        <div style={styles.statCard}>
           <div style={{...styles.statValue, color: '#22c55e'}}>{stats.delivered || 0}</div>
           <div style={styles.statLabel}>Delivered</div>
         </div>
         <div style={styles.statCard}>
-          <div style={{...styles.statValue, color: '#ef4444'}}>{stats.failed || 0}</div>
-          <div style={styles.statLabel}>Failed</div>
+          <div style={{...styles.statValue, color: '#16a34a'}}>{stats.read || 0}</div>
+          <div style={styles.statLabel}>Read</div>
         </div>
         <div style={styles.statCard}>
-          <div style={{...styles.statValue, color: '#fbbf24'}}>{stats.pending || 0}</div>
-          <div style={styles.statLabel}>Pending</div>
+          <div style={{...styles.statValue, color: '#ef4444'}}>{stats.failed || 0}</div>
+          <div style={styles.statLabel}>Failed</div>
         </div>
       </div>
 
@@ -228,7 +252,7 @@ export default function AdminWhatsApp() {
             onClick={() => setFilter(f)}
             style={filter === f ? styles.filterBtnActive : styles.filterBtn}
           >
-            {f}
+            {f} ({statusCount(f)})
           </button>
         ))}
       </div>

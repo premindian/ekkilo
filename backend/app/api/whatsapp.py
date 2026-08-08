@@ -132,15 +132,28 @@ async def receive(req: Request):
                 status = s.get("status")
                 print(f"📦 Status update → {status} ({wa_id})")
                 if wa_id:
+                    st = (status or "").upper()
                     await db.execute("""
                         UPDATE whatsapp_messages
-                        SET status = $1
+                        SET status = $1,
+                            sent_at = CASE
+                                WHEN $1 IN ('SENT', 'DELIVERED', 'READ') AND sent_at IS NULL THEN NOW()
+                                ELSE sent_at
+                            END,
+                            delivered_at = CASE
+                                WHEN $1 IN ('DELIVERED', 'READ') THEN COALESCE(delivered_at, NOW())
+                                ELSE delivered_at
+                            END,
+                            read_at = CASE
+                                WHEN $1 = 'READ' THEN COALESCE(read_at, NOW())
+                                ELSE read_at
+                            END
                         WHERE whatsapp_message_id = $2
-                    """, (status or "").upper(), wa_id)
+                    """, st, wa_id)
                     await manager.broadcast(0, {
                         "type": "message_update",
                         "wa_id": wa_id,
-                        "status": (status or "").upper(),
+                        "status": st,
                     })
             if "messages" not in value:
                 return {"status": "updated"}
