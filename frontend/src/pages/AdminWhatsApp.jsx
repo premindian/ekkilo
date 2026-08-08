@@ -13,6 +13,7 @@ export default function AdminWhatsApp() {
   const [searchPhone, setSearchPhone] = useState('');
   const [live, setLive] = useState(false);
   const [inbound, setInbound] = useState([]);
+  const [listError, setListError] = useState('');
 
   useEffect(() => {
     if (token) {
@@ -76,6 +77,7 @@ export default function AdminWhatsApp() {
 
   const loadMessages = async () => {
     setLoading(true);
+    setListError('');
     try {
       let url = `${API_BASE}/api/admin/whatsapp/messages?token=${token}&limit=100`;
       
@@ -88,15 +90,18 @@ export default function AdminWhatsApp() {
       }
       
       const res = await fetch(url);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        const detail = typeof data.detail === 'string' ? data.detail : `Failed to load messages (${res.status})`;
         console.error('Failed to load messages:', data);
+        setListError(detail);
         setMessages([]);
         return;
       }
       setMessages(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load messages:', err);
+      setListError('Cannot reach server for WhatsApp messages');
       setMessages([]);
     } finally {
       setLoading(false);
@@ -270,6 +275,12 @@ export default function AdminWhatsApp() {
           🔍 Search
         </button>
       </div>
+
+      {listError && (
+        <div style={{ ...styles.empty, color: '#b91c1c', background: '#fef2f2', borderRadius: 8, marginBottom: 12 }}>
+          {listError}
+        </div>
+      )}
 
       {/* Messages Table */}
       {loading ? (

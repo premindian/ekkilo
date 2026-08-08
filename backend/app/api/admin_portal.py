@@ -540,36 +540,53 @@ async def get_order_details(order_id: int, token: str):
 
 async def _normalize_whatsapp_statuses(db):
     """Repair null/lowercase/legacy status values so filters & stats work."""
-    await db.execute("""
-        UPDATE whatsapp_messages
-        SET status = UPPER(TRIM(status))
-        WHERE status IS NOT NULL
-          AND status <> UPPER(TRIM(status))
-    """)
-    await db.execute("""
-        UPDATE whatsapp_messages
-        SET status = CASE
-            WHEN read_at IS NOT NULL THEN 'READ'
-            WHEN delivered_at IS NOT NULL THEN 'DELIVERED'
-            WHEN sent_at IS NOT NULL THEN 'SENT'
-            WHEN last_error IS NOT NULL THEN 'FAILED'
-            ELSE 'PENDING'
-        END
-        WHERE status IS NULL OR TRIM(status) = ''
-    """)
+    try:
+        await db.execute("""
+            UPDATE whatsapp_messages
+            SET status = UPPER(BTRIM(status::text))
+            WHERE status IS NOT NULL
+              AND status::text <> UPPER(BTRIM(status::text))
+        """)
+        await db.execute("""
+            UPDATE whatsapp_messages
+            SET status = CASE
+                WHEN read_at IS NOT NULL THEN 'READ'
+                WHEN delivered_at IS NOT NULL THEN 'DELIVERED'
+                WHEN sent_at IS NOT NULL THEN 'SENT'
+                WHEN last_error IS NOT NULL THEN 'FAILED'
+                ELSE 'PENDING'
+            END
+            WHERE status IS NULL OR BTRIM(COALESCE(status::text, '')) = ''
+        """)
+    except Exception as e:
+        # Never block the messages list because of a repair query
+        print(f"⚠️ WhatsApp status normalize skipped: {e}")
+
+
+def _serialize_wa_row(row) -> dict:
+    d = dict(row)
+    for key in ("created_at", "sent_at", "delivered_at", "read_at"):
+        val = d.get(key)
+        if val is not None and hasattr(val, "isoformat"):
+            d[key] = val.isoformat()
+    if d.get("status") is not None:
+        d["status"] = str(d["status"]).strip().upper() or "PENDING"
+    elif "status" in d:
+        d["status"] = "PENDING"
+    return d
 
 
 @router.get("/whatsapp/messages")
 async def get_whatsapp_messages(token: str, phone: str = None, status: str = None, limit: int = 100, offset: int = 0):
     """Get WhatsApp message history"""
-    admin = await check_admin(token)
+    await check_admin(token)
     
     db = await get_db()
     await _normalize_whatsapp_statuses(db)
     
     query = """
         SELECT wm.id, wm.phone, wm.message,
-               UPPER(TRIM(COALESCE(wm.status, 'PENDING'))) as status,
+               COALESCE(NULLIF(UPPER(BTRIM(wm.status::text)), ''), 'PENDING') as status,
                wm.whatsapp_message_id, wm.attempts, wm.last_error,
                wm.created_at, wm.sent_at, wm.delivered_at, wm.read_at,
                wm.final_order_id,
@@ -583,21 +600,39 @@ async def get_whatsapp_messages(token: str, phone: str = None, status: str = Non
     param_count = 1
     
     if phone:
-        query += f" AND RIGHT(REGEXP_REPLACE(COALESCE(wm.phone, ''), '[^0-9]', '', 'g'), 10) = RIGHT(REGEXP_REPLACE(${param_count}, '[^0-9]', '', 'g'), 10)"
+        query += (
+            f" AND RIGHT(REGEXP_REPLACE(COALESCE(wm.phone, ''), '[^0-9]', '', 'g'), 10)"
+            f" = RIGHT(REGEXP_REPLACE(${param_count}::text, '[^0-9]', '', 'g'), 10)"
+        )
         params.append(phone)
         param_count += 1
     
     if status:
-        query += f" AND UPPER(TRIM(COALESCE(wm.status, 'PENDING'))) = ${param_count}"
+        query += (
+            f" AND COALESCE(NULLIF(UPPER(BTRIM(wm.status::text)), ''), 'PENDING')"
+            f" = ${param_count}"
+        )
         params.append(status.upper())
         param_count += 1
     
-    query += f" ORDER BY wm.created_at DESC LIMIT ${param_count} OFFSET ${param_count + 1}"
+    query += f" ORDER BY wm.created_at DESC NULLS LAST LIMIT ${param_count} OFFSET ${param_count + 1}"
     params.extend([limit, offset])
     
-    messages = await db.fetch(query, *params)
+    try:
+        messages = await db.fetch(query, *params)
+    except Exception as e:
+        print(f"❌ whatsapp/messages query failed: {e}")
+        # Fallback: simplest query so the admin screen is never blank
+        messages = await db.fetch("""
+            SELECT id, phone, message, status, whatsapp_message_id, attempts, last_error,
+                   created_at, sent_at, delivered_at, read_at, final_order_id,
+                   NULL::text as order_customer
+            FROM whatsapp_messages
+            ORDER BY id DESC
+            LIMIT $1 OFFSET $2
+        """, limit, offset)
     
-    return [dict(m) for m in messages]
+    return [_serialize_wa_row(m) for m in messages]
 
 
 @router.post("/whatsapp/resend/{message_id}")
@@ -632,33 +667,59 @@ async def resend_whatsapp_message(message_id: int, token: str):
 @router.get("/whatsapp/stats")
 async def get_whatsapp_stats(token: str):
     """Get WhatsApp messaging statistics"""
-    admin = await check_admin(token)
+    await check_admin(token)
     
     db = await get_db()
     await _normalize_whatsapp_statuses(db)
     
-    stats = await db.fetchrow("""
-        SELECT 
-            COUNT(*) as total_messages,
-            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'SENT') as sent,
-            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'DELIVERED') as delivered,
-            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'READ') as read,
-            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'FAILED') as failed,
-            COUNT(*) FILTER (WHERE UPPER(TRIM(COALESCE(status, 'PENDING'))) = 'PENDING') as pending,
-            COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as last_24h
-        FROM whatsapp_messages
-    """)
+    try:
+        stats = await db.fetchrow("""
+            SELECT 
+                COUNT(*) as total_messages,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(NULLIF(UPPER(BTRIM(status::text)), ''), 'PENDING') = 'SENT'
+                ) as sent,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(NULLIF(UPPER(BTRIM(status::text)), ''), 'PENDING') = 'DELIVERED'
+                ) as delivered,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(NULLIF(UPPER(BTRIM(status::text)), ''), 'PENDING') = 'READ'
+                ) as read,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(NULLIF(UPPER(BTRIM(status::text)), ''), 'PENDING') = 'FAILED'
+                ) as failed,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(NULLIF(UPPER(BTRIM(status::text)), ''), 'PENDING') = 'PENDING'
+                ) as pending,
+                COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as last_24h
+            FROM whatsapp_messages
+        """)
 
-    # Also expose any unexpected status values (helps diagnose filter mismatches)
-    other = await db.fetch("""
-        SELECT UPPER(TRIM(COALESCE(status, 'PENDING'))) AS status, COUNT(*) AS count
-        FROM whatsapp_messages
-        GROUP BY 1
-        ORDER BY count DESC
-    """)
+        other = await db.fetch("""
+            SELECT COALESCE(NULLIF(UPPER(BTRIM(status::text)), ''), 'PENDING') AS status,
+                   COUNT(*) AS count
+            FROM whatsapp_messages
+            GROUP BY 1
+            ORDER BY count DESC
+        """)
+    except Exception as e:
+        print(f"❌ whatsapp/stats failed: {e}")
+        total = await db.fetchval("SELECT COUNT(*) FROM whatsapp_messages")
+        return {
+            "total_messages": int(total or 0),
+            "sent": 0,
+            "delivered": 0,
+            "read": 0,
+            "failed": 0,
+            "pending": 0,
+            "last_24h": 0,
+            "by_status": {},
+        }
     
     result = {k: int(v or 0) for k, v in dict(stats).items()}
-    result["by_status"] = {row["status"]: int(row["count"]) for row in other}
+    result["by_status"] = {
+        (row["status"] or "PENDING"): int(row["count"] or 0) for row in other
+    }
     return result
 
 
