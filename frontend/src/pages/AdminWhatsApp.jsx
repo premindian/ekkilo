@@ -12,11 +12,13 @@ export default function AdminWhatsApp() {
   const [filter, setFilter] = useState('ALL');
   const [searchPhone, setSearchPhone] = useState('');
   const [live, setLive] = useState(false);
+  const [inbound, setInbound] = useState([]);
 
   useEffect(() => {
     if (token) {
       loadStats();
       loadMessages();
+      loadInbound();
     }
   }, [token, filter]);
 
@@ -39,9 +41,10 @@ export default function AdminWhatsApp() {
         };
         ws.onerror = () => setLive(false);
         ws.onmessage = () => {
-          // Refresh on any admin broadcast (message_update / new_order)
+          // Refresh on any admin broadcast (message_update / new_order / inbound)
           loadStats();
           loadMessages();
+          loadInbound();
         };
       } catch (err) {
         setLive(false);
@@ -87,6 +90,16 @@ export default function AdminWhatsApp() {
       console.error('Failed to load messages:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadInbound = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/whatsapp/inbound?token=${token}&limit=20`);
+      const data = await res.json();
+      setInbound(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load inbound webhooks:', err);
     }
   };
 
@@ -162,6 +175,29 @@ export default function AdminWhatsApp() {
           <div style={{...styles.statValue, color: '#fbbf24'}}>{stats.pending || 0}</div>
           <div style={styles.statLabel}>Pending</div>
         </div>
+      </div>
+
+      {/* Inbound webhook diagnostic */}
+      <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <b>📥 Inbound from Meta (STATUS# / ACCEPT#)</b>
+          <button onClick={loadInbound} style={styles.searchBtn}>Refresh</button>
+        </div>
+        <p style={{ fontSize: 13, color: '#9a3412', marginTop: 0 }}>
+          If this list stays empty when you reply on WhatsApp, Meta is not sending messages to the webhook.
+          In Meta Developer Console → WhatsApp → Configuration → Webhook, subscribe the <b>messages</b> field.
+        </p>
+        {inbound.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#666' }}>No inbound webhook events yet.</div>
+        ) : (
+          <div style={{ maxHeight: 180, overflow: 'auto', fontSize: 13 }}>
+            {inbound.map((ev) => (
+              <div key={ev.id} style={{ padding: '6px 0', borderBottom: '1px solid #ffedd5' }}>
+                <b>{ev.kind}</b> · {formatDate(ev.created_at)} · {ev.phone || '-'} · {ev.text || ''}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Filters */}

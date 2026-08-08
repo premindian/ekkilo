@@ -85,6 +85,28 @@ async def verify(request: Request):
 # -----------------------------------------
 # 📩 RECEIVE MESSAGE + STATUS TRACKING
 # -----------------------------------------
+async def _log_webhook(db, body: dict, kind: str, phone: str = None, text: str = None):
+    """Persist raw webhook events so we can see if Meta is delivering inbound msgs."""
+    try:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS whatsapp_webhook_events (
+                id SERIAL PRIMARY KEY,
+                kind VARCHAR(40),
+                phone VARCHAR(30),
+                text TEXT,
+                payload JSONB,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        import json
+        await db.execute("""
+            INSERT INTO whatsapp_webhook_events (kind, phone, text, payload)
+            VALUES ($1, $2, $3, $4::jsonb)
+        """, kind, phone, text, json.dumps(body)[:8000])
+    except Exception as e:
+        print(f"⚠️ webhook log failed: {e}")
+
+
 @router.post("/webhook")
 async def receive(req: Request):
     body = await req.json()
@@ -99,10 +121,12 @@ async def receive(req: Request):
         value = changes[0].get("value", {}) if changes else {}
 
         # =========================================================
-        # 1. DELIVERY STATUS TRACKING
+        # 1. DELIVERY STATUS TRACKING (do NOT return early — messages
+        #    can arrive in the same payload)
         # =========================================================
         statuses = value.get("statuses", [])
         if statuses:
+            await _log_webhook(db, body, "status")
             for s in statuses:
                 wa_id = s.get("id")
                 status = s.get("status")
@@ -118,18 +142,26 @@ async def receive(req: Request):
                         "wa_id": wa_id,
                         "status": (status or "").upper(),
                     })
-            return {"status": "updated"}
+            if "messages" not in value:
+                return {"status": "updated"}
 
         # =========================================================
         # 2. INBOUND MESSAGES
         # =========================================================
         if "messages" not in value:
+            await _log_webhook(db, body, "other")
             return {"status": "no message"}
 
         msg = value["messages"][0]
         phone = normalize_phone(msg.get("from") or "")
         text = _extract_text(msg).strip()
         print("📩 Incoming:", repr(text), "from", phone)
+        await _log_webhook(db, body, "message", phone=phone, text=text)
+        await manager.broadcast(0, {
+            "type": "inbound_message",
+            "phone": phone,
+            "text": text,
+        })
 
         if not text:
             return {"status": "ignored_non_text"}

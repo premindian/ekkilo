@@ -567,3 +567,30 @@ async def get_whatsapp_stats(token: str):
     """)
     
     return dict(stats)
+
+
+@router.get("/whatsapp/inbound")
+async def get_whatsapp_inbound(token: str, limit: int = 30):
+    """Recent inbound Meta webhook events (to diagnose STATUS#/ACCEPT# not firing)."""
+    await check_admin(token)
+    db = await get_db()
+
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_webhook_events (
+            id SERIAL PRIMARY KEY,
+            kind VARCHAR(40),
+            phone VARCHAR(30),
+            text TEXT,
+            payload JSONB,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+
+    rows = await db.fetch("""
+        SELECT id, kind, phone, text, created_at
+        FROM whatsapp_webhook_events
+        ORDER BY id DESC
+        LIMIT $1
+    """, limit)
+
+    return [dict(r) for r in rows]
