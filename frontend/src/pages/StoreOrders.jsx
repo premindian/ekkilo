@@ -7,6 +7,7 @@ export default function StoreOrders() {
   const { token } = useAuth();
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -69,6 +70,22 @@ export default function StoreOrders() {
         ))}
       </div>
 
+      {/* Search */}
+      <div style={styles.searchBox}>
+        <input
+          type="text"
+          placeholder="🔍 Search by phone or order ID..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={styles.searchInput}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} style={styles.clearBtn}>
+            ✕
+          </button>
+        )}
+      </div>
+
       {/* Orders List */}
       {loading ? (
         <div style={styles.loading}>🔄 Loading...</div>
@@ -76,7 +93,13 @@ export default function StoreOrders() {
         <div style={styles.empty}>No {filter.toLowerCase()} orders</div>
       ) : (
         <div style={styles.ordersList}>
-          {orders.map(order => (
+          {orders
+            .filter(order => 
+              !search || 
+              order.customer_phone.includes(search) || 
+              order.id.toString().includes(search)
+            )
+            .map(order => (
             <div key={order.id} style={styles.orderCard}>
               <div style={styles.orderHeader}>
                 <div>
@@ -186,8 +209,28 @@ const styles = {
   filters: {
     display: 'flex',
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 16,
     overflowX: 'auto',
+  },
+  searchBox: {
+    display: 'flex',
+    gap: 10,
+    marginBottom: 20,
+  },
+  searchInput: {
+    flex: 1,
+    padding: '10px 15px',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    fontSize: 14,
+  },
+  clearBtn: {
+    padding: '10px 20px',
+    background: '#ef4444',
+    color: 'white',
+    border: 'none',
+    borderRadius: 8,
+    cursor: 'pointer',
   },
   filterBtn: {
     padding: '8px 16px',
