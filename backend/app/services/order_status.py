@@ -10,8 +10,8 @@ from app.utils.phone import normalize_phone, phone_tail
 
 TRACK_BASE_URL = "https://ekkilo.onrender.com"
 
-# If store accepts without an ETA, assume this many minutes before we warn the customer
-DEFAULT_ETA_MINUTES = 45
+# India kirana packing: 1–2 hours is normal. Default 2h before "running late" ping.
+DEFAULT_ETA_MINUTES = 120
 
 
 def new_track_token() -> str:

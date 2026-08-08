@@ -303,7 +303,7 @@ async def receive(req: Request):
                     phone,
                     "Unknown command.\n"
                     "Customer: STATUS#id | CANCEL#id\n"
-                    "Store: ACCEPT#id 30m | DELAY#id 15m busy | READY#id | REJECT#id"
+                    "Store: ACCEPT#id 2h | DELAY#id 30m busy | READY#id | REJECT#id"
                 )
                 return {"status": "unknown_command"}
 
@@ -325,7 +325,7 @@ async def receive(req: Request):
             "https://ekkilo.onrender.com\n\n"
             "WhatsApp commands:\n"
             "Customer: STATUS#orderid | CANCEL#orderid\n"
-            "Store: ACCEPT#orderid 30m | DELAY#orderid 15m | READY#orderid | REJECT#orderid"
+            "Store: ACCEPT#orderid 2h | DELAY#orderid 30m | READY#orderid | REJECT#orderid"
         )
         return {"status": "redirect_to_portal"}
 
