@@ -235,7 +235,40 @@ async def update_store_order(order_id: int, data: dict, token: str):
         VALUES ($1, $2)
     """, order_id, new_status)
     
-    return {"status": "success", "new_status": new_status}
+    # Aggregate final order status + notify customer if needed
+    from app.services.order_service import update_final_order_status
+    from app.services.whatsapp import send_message
+    
+    final_order_id = order["final_order_id"]
+    final_status, notify_customer = await update_final_order_status(final_order_id)
+    
+    if notify_customer:
+        customer = await db.fetchrow("""
+            SELECT customer_phone FROM final_orders WHERE id = $1
+        """, final_order_id)
+        if customer:
+            if final_status == "READY":
+                await send_message(
+                    customer["customer_phone"],
+                    f"🎉 Great news! Your order #{final_order_id} is READY for pickup at all stores!"
+                )
+            elif final_status == "REJECTED":
+                await send_message(
+                    customer["customer_phone"],
+                    f"😔 Sorry, order #{final_order_id} cannot be fulfilled. All stores are unavailable."
+                )
+            elif final_status == "PARTIAL":
+                ready_stores = await db.fetch("""
+                    SELECT store_name FROM store_orders
+                    WHERE final_order_id = $1 AND status IN ('READY', 'ACCEPTED')
+                """, final_order_id)
+                store_list = ", ".join([s["store_name"] for s in ready_stores]) or "remaining stores"
+                await send_message(
+                    customer["customer_phone"],
+                    f"⚠️ Order #{final_order_id} update: partial fulfillment.\nProceeding with: {store_list}"
+                )
+    
+    return {"status": "success", "new_status": new_status, "final_status": final_status}
 
 
 # ============================================

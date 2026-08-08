@@ -111,7 +111,19 @@ async def receive(req: Request):
             return [r["status"] for r in rows]
 
         # =========================================================
-        # 🔥 COMMAND HANDLER
+        # 🔥 WHATSAPP-ONLY ORDER FLOW (no web UI required)
+        # =========================================================
+        # Customer:
+        #   1) Sends grocery list → order CREATED + quote reply
+        #   2) CONFIRM#{id} → order CONFIRMED, store WhatsApps sent
+        #   3) CANCEL#{id} / STATUS#{id}
+        # Store:
+        #   ACCEPT#{id} → store ACCEPTED
+        #   READY#{id}  → store READY (customer notified when all/partial ready)
+        #   REJECT#{id} → store REJECTED (partial order can still complete)
+        # Final status is aggregated from all store_orders:
+        #   CREATED → CONFIRMED → ACCEPTED/PARTIAL → READY/PARTIAL_READY → COMPLETED
+        # Both status columns AND event tables are updated on every transition.
         # =========================================================
         if "#" in text:
 

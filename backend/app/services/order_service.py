@@ -153,7 +153,7 @@ async def create_full_order(stores, customer_phone):
         await db.execute("""
             INSERT INTO store_order_events (store_order_id, status)
             VALUES ($1, $2)
-        """, store_order_id, "SENT")
+        """, store_order_id, "PENDING")
 
         # -----------------------------
         # 📲 MESSAGE
@@ -170,7 +170,9 @@ Order ID: {final_order_id}
 {item_text}
 
 Reply:
-READY#{final_order_id}
+ACCEPT#{final_order_id} - Accept order
+READY#{final_order_id} - Mark ready
+REJECT#{final_order_id} - Cannot fulfill
 """
 
         whatsapp_jobs.append((store_phone, message))
