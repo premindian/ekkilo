@@ -8,6 +8,8 @@ export default function AdminOrders() {
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [orderDetails, setOrderDetails] = useState(null);
 
   useEffect(() => {
     if (token) {
@@ -30,6 +32,22 @@ export default function AdminOrders() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const viewOrderDetails = async (orderId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/orders/${orderId}?token=${token}`);
+      const data = await res.json();
+      setOrderDetails(data);
+      setSelectedOrder(orderId);
+    } catch (err) {
+      console.error('Failed to load order details:', err);
+    }
+  };
+
+  const closeModal = () => {
+    setSelectedOrder(null);
+    setOrderDetails(null);
   };
 
   return (
@@ -66,7 +84,11 @@ export default function AdminOrders() {
       ) : (
         <div style={styles.ordersList}>
           {orders.map(order => (
-            <div key={order.id} style={styles.orderCard}>
+            <div 
+              key={order.id} 
+              style={styles.orderCard}
+              onClick={() => viewOrderDetails(order.id)}
+            >
               <div style={styles.orderHeader}>
                 <div style={styles.orderInfo}>
                   <h3 style={styles.orderId}>Order #{order.id}</h3>
@@ -85,9 +107,62 @@ export default function AdminOrders() {
                   <span style={styles.statLabel}>Stores:</span>
                   <span style={styles.statValue}>{order.store_count || 0}</span>
                 </div>
+                <span style={styles.clickHint}>Click for details →</span>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Order Details Modal */}
+      {selectedOrder && orderDetails && (
+        <div style={styles.modal} onClick={closeModal}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2>Order #{selectedOrder} Details</h2>
+              <button onClick={closeModal} style={styles.closeBtn}>✕</button>
+            </div>
+
+            <div style={styles.modalBody}>
+              {/* Basic Info */}
+              <div style={styles.section}>
+                <h3>📋 Order Information</h3>
+                <p>Customer: {orderDetails.customer_phone}</p>
+                <p>Status: {orderDetails.status}</p>
+                <p>Created: {new Date(orderDetails.created_at).toLocaleString()}</p>
+                <p>Total: ₹{orderDetails.total_amount}</p>
+              </div>
+
+              {/* Stores */}
+              {orderDetails.stores && orderDetails.stores.map((store, idx) => (
+                <div key={idx} style={styles.section}>
+                  <h3>🏪 {store.store_name}</h3>
+                  <p>📞 {store.store_phone}</p>
+                  <p>Status: <span style={{fontWeight: 'bold'}}>{store.status}</span></p>
+                  <p>Amount: ₹{store.total_amount || 0}</p>
+                  
+                  <h4>Items:</h4>
+                  {store.items && store.items.map((item, i) => (
+                    <div key={i} style={styles.item}>
+                      • {item.product_name} × {item.quantity} - ₹{item.price}
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              {/* History */}
+              {orderDetails.history && orderDetails.history.length > 0 && (
+                <div style={styles.section}>
+                  <h3>📜 Status History</h3>
+                  {orderDetails.history.map((h, idx) => (
+                    <div key={idx} style={styles.historyItem}>
+                      {h.store_name}: {h.status} - {new Date(h.created_at).toLocaleString()}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -176,6 +251,12 @@ const styles = {
     border: '1px solid #e5e7eb',
     borderRadius: 12,
     padding: 20,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    ':hover': {
+      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+      transform: 'translateY(-2px)',
+    }
   },
   orderHeader: {
     display: 'flex',
@@ -226,5 +307,68 @@ const styles = {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#3b82f6',
+  },
+  clickHint: {
+    fontSize: 12,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+    marginLeft: 'auto',
+  },
+  modal: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    background: 'white',
+    borderRadius: 16,
+    maxWidth: 800,
+    maxHeight: '90vh',
+    overflow: 'auto',
+    width: '90%',
+  },
+  modalHeader: {
+    padding: 20,
+    borderBottom: '1px solid #e5e7eb',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    position: 'sticky',
+    top: 0,
+    background: 'white',
+    zIndex: 1,
+  },
+  closeBtn: {
+    background: 'none',
+    border: 'none',
+    fontSize: 24,
+    cursor: 'pointer',
+    color: '#666',
+  },
+  modalBody: {
+    padding: 20,
+  },
+  section: {
+    marginBottom: 24,
+    paddingBottom: 24,
+    borderBottom: '1px solid #f3f4f6',
+  },
+  item: {
+    padding: '8px 0',
+    fontSize: 14,
+  },
+  historyItem: {
+    padding: '8px 12px',
+    background: '#f9fafb',
+    borderRadius: 8,
+    marginBottom: 8,
+    fontSize: 14,
   },
 };

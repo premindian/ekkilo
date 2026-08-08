@@ -153,6 +153,49 @@ async def get_store_orders(
     return [dict(o) for o in orders]
 
 
+@router.get("/orders/{order_id}")
+async def get_order_details(order_id: int, token: str):
+    """Get detailed information about a specific order"""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    
+    db = await get_db()
+    
+    # Get order with items
+    order = await db.fetchrow("""
+        SELECT so.id, so.store_name, so.store_phone, so.status,
+               so.total_amount, so.created_at, so.updated_at,
+               fo.id as final_order_id, fo.customer_phone
+        FROM store_orders so
+        JOIN final_orders fo ON so.final_order_id = fo.id
+        WHERE so.id = $1 AND so.store_id = $2
+    """, order_id, store_id)
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Get items
+    items = await db.fetch("""
+        SELECT product_name, quantity, price
+        FROM order_items
+        WHERE store_order_id = $1
+    """, order_id)
+    
+    # Get status history
+    history = await db.fetch("""
+        SELECT status, created_at
+        FROM store_order_events
+        WHERE store_order_id = $1
+        ORDER BY created_at DESC
+    """, order_id)
+    
+    return {
+        **dict(order),
+        "items": [dict(item) for item in items],
+        "history": [dict(h) for h in history]
+    }
+
+
 @router.patch("/orders/{order_id}")
 async def update_store_order(order_id: int, data: dict, token: str):
     """Update order status (ACCEPT, READY, etc.)"""

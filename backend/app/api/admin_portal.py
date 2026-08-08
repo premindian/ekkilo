@@ -372,6 +372,66 @@ async def get_all_orders(token: str, status: str = None, limit: int = 50, offset
     return [dict(o) for o in orders]
 
 
+@router.get("/orders/{order_id}")
+async def get_order_details(order_id: int, token: str):
+    """Get detailed information about a specific order"""
+    admin = await check_admin(token)
+    
+    db = await get_db()
+    
+    # Get order basic info
+    order = await db.fetchrow("""
+        SELECT fo.id, fo.customer_phone, fo.created_at, fo.status,
+               COUNT(DISTINCT so.id) as store_count,
+               COALESCE(SUM(so.total_amount), 0) as total_amount
+        FROM final_orders fo
+        LEFT JOIN store_orders so ON fo.id = so.final_order_id
+        WHERE fo.id = $1
+        GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status
+    """, order_id)
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Get store orders with items
+    stores = await db.fetch("""
+        SELECT so.id, so.store_name, so.store_phone, so.status, 
+               so.total_amount, so.created_at, so.updated_at
+        FROM store_orders so
+        WHERE so.final_order_id = $1
+        ORDER BY so.id
+    """, order_id)
+    
+    # Get items for each store
+    stores_with_items = []
+    for store in stores:
+        items = await db.fetch("""
+            SELECT product_name, quantity, price
+            FROM order_items
+            WHERE store_order_id = $1
+        """, store["id"])
+        
+        stores_with_items.append({
+            **dict(store),
+            "items": [dict(item) for item in items]
+        })
+    
+    # Get status history
+    history = await db.fetch("""
+        SELECT soe.status, soe.created_at, so.store_name
+        FROM store_order_events soe
+        JOIN store_orders so ON soe.store_order_id = so.id
+        WHERE so.final_order_id = $1
+        ORDER BY soe.created_at DESC
+    """, order_id)
+    
+    return {
+        **dict(order),
+        "stores": stores_with_items,
+        "history": [dict(h) for h in history]
+    }
+
+
 # ============================================
 # WHATSAPP MESSAGES
 # ============================================
