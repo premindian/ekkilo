@@ -3,6 +3,7 @@ from app.core.ws_manager import manager
 from app.utils.phone import normalize_phone
 from app.services.order_status import (
     ensure_order_schema,
+    new_track_token,
     update_final_order_status,  # re-export for existing imports
 )
 
@@ -13,17 +14,19 @@ async def create_full_order(stores, customer_phone):
 
     whatsapp_jobs = []
     customer_phone = normalize_phone(customer_phone)
+    track_token = new_track_token()
 
     # -----------------------------
     # 🧾 FINAL ORDER - Create with initial status
     # -----------------------------
     final_order = await db.fetchrow("""
-        INSERT INTO final_orders (customer_phone, status)
-        VALUES ($1, 'CREATED')
-        RETURNING id
-    """, customer_phone)
+        INSERT INTO final_orders (customer_phone, status, track_token)
+        VALUES ($1, 'CREATED', $2)
+        RETURNING id, track_token
+    """, customer_phone, track_token)
 
     final_order_id = final_order["id"]
+    track_token = final_order["track_token"]
     
     # Create initial event
     await db.execute("""
@@ -157,4 +160,4 @@ REJECT#{final_order_id} - Cannot fulfill
             "store": store.get("store")
         })
 
-    return final_order_id, whatsapp_jobs
+    return final_order_id, track_token, whatsapp_jobs

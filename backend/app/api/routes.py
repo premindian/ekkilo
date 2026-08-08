@@ -39,7 +39,7 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
     await ensure_order_schema(db)
     phone = normalize_phone(phone)
 
-    final_order_id, whatsapp_jobs = await create_full_order(stores, phone)
+    final_order_id, track_token, whatsapp_jobs = await create_full_order(stores, phone)
     
     # -----------------------------
     # ✅ WEB ORDERS AUTO-CONFIRMED
@@ -67,6 +67,8 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
     # -----------------------------
     # 📲 CUSTOMER MESSAGE
     # -----------------------------
+    from app.services.order_status import get_track_url
+
     summary = []
 
     for store in stores:
@@ -76,6 +78,7 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
         summary.append(f"{store.get('store')}: {items}")
 
     summary_text = "\n".join(summary)
+    track_url = await get_track_url(final_order_id, db=db)
 
     customer_message = f"""🧾 Order Confirmed
 
@@ -83,7 +86,7 @@ Order ID: {final_order_id}
 
 {summary_text}
 
-Track: https://ekkilo.onrender.com/track?order_id={final_order_id}
+Track: {track_url}
 
 Commands:
 STATUS#{final_order_id}
@@ -103,7 +106,10 @@ We will notify you when ready 🚀
 
     background_tasks.add_task(send_message, phone, customer_message, msg_id)
 
-    return {"final_order_id": final_order_id}
+    return {
+        "final_order_id": final_order_id,
+        "track_token": track_token,
+    }
 
 # OLD ADMIN & TRACKING ROUTES REMOVED
 # All functionality now available in:
@@ -540,95 +546,5 @@ async def search_master_products(search: str = ""):
 
 
 
-#############################
-# CUSTOMER ORDER TRACKING
-##############################
-@router.get("/api/orders/track")
-async def track_order(phone: str = None, order_id: int = None):
-    """Track order status by phone or order ID (public endpoint)"""
-    from app.db.database import get_db
-    db = await get_db()
-    
-    if not phone and not order_id:
-        raise HTTPException(status_code=400, detail="Provide phone or order_id")
-    
-    if order_id:
-        # Track specific order
-        order = await db.fetchrow("""
-            SELECT fo.id, fo.customer_phone, fo.created_at, fo.status as order_status,
-                   COUNT(DISTINCT so.id) as store_count,
-                   COUNT(DISTINCT so.id) FILTER (WHERE so.status = 'ACCEPTED') as accepted_count,
-                   COUNT(DISTINCT so.id) FILTER (WHERE so.status = 'READY') as ready_count,
-                   COALESCE(SUM(so.total_amount), 0) as total_amount
-            FROM final_orders fo
-            LEFT JOIN store_orders so ON fo.id = so.final_order_id
-            WHERE fo.id = $1
-            GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status
-        """, order_id)
-        
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
-        
-        # Get store details
-        stores = await db.fetch("""
-            SELECT so.id, so.store_name, so.store_phone, so.status,
-                   so.total_amount, so.created_at
-            FROM store_orders so
-            WHERE so.final_order_id = $1
-            ORDER BY so.id
-        """, order_id)
-        
-        # Get items for each store
-        stores_with_items = []
-        for store in stores:
-            items = await db.fetch("""
-                SELECT product_name, quantity, price
-                FROM order_items
-                WHERE store_order_id = $1
-            """, store["id"])
-            
-            stores_with_items.append({
-                "id": store["id"],
-                "store_name": store["store_name"],
-                "store_phone": store["store_phone"],
-                "status": store["status"],
-                "total_amount": float(store["total_amount"] or 0),
-                "created_at": store["created_at"].isoformat() if store["created_at"] else None,
-                "items": [
-                    {
-                        "product_name": item["product_name"],
-                        "quantity": float(item["quantity"] or 0),
-                        "price": float(item["price"] or 0),
-                    }
-                    for item in items
-                ],
-            })
-        
-        return {
-            "id": order["id"],
-            "customer_phone": order["customer_phone"],
-            "created_at": order["created_at"].isoformat() if order["created_at"] else None,
-            "order_status": order["order_status"],
-            "store_count": int(order["store_count"] or 0),
-            "accepted_count": int(order["accepted_count"] or 0),
-            "ready_count": int(order["ready_count"] or 0),
-            "total_amount": float(order["total_amount"] or 0),
-            "stores": stores_with_items,
-        }
-    
-    elif phone:
-        # Get all orders for this customer
-        orders = await db.fetch("""
-            SELECT fo.id, fo.customer_phone, fo.created_at, fo.status as order_status,
-                   COUNT(DISTINCT so.id) as store_count,
-                   COUNT(DISTINCT so.id) FILTER (WHERE so.status = 'READY') as ready_count,
-                   COALESCE(SUM(so.total_amount), 0) as total_amount
-            FROM final_orders fo
-            LEFT JOIN store_orders so ON fo.id = so.final_order_id
-            WHERE fo.customer_phone = $1
-            GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status
-            ORDER BY fo.created_at DESC
-            LIMIT 20
-        """, phone)
-        
-        return [dict(o) for o in orders]
+# Customer order tracking: GET /api/orders/track (see orders.py)
+# Access via unguessable ?t=track_token or logged-in ?order_id=&token=

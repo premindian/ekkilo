@@ -192,7 +192,14 @@ export default function OrderHistoryPage({ onReorder }) {
 
             <div style={styles.detailActions}>
               <button
-                onClick={() => navigate(`/track?order_id=${selectedOrder.order.id}`)}
+                onClick={() => {
+                  const t = selectedOrder.order.track_token;
+                  navigate(
+                    t
+                      ? `/track?t=${encodeURIComponent(t)}`
+                      : `/track?order_id=${selectedOrder.order.id}`
+                  );
+                }}
                 style={styles.trackBtn}
               >
                 📍 Track Order

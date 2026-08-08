@@ -79,44 +79,55 @@ const API_BASE = "https://ekkilo.onrender.com";
 const WS_BASE = "wss://ekkilo.onrender.com";
 
 const params = new URLSearchParams(window.location.search);
+const trackToken = params.get("t");
 const orderId = params.get("order_id");
 
 let socket;
+let resolvedOrderId = orderId;
 
-document.getElementById("orderId").innerText = "Order #" + orderId;
+document.getElementById("orderId").innerText = trackToken
+  ? "Tracking your order…"
+  : ("Order #" + (orderId || "—"));
 
-// 🔥 Try WebSocket first
-try {
-    socket = new WebSocket(`${WS_BASE}/ws/${orderId}`);
-
-    socket.onmessage = function () {
-        loadOrder();
-    };
-
-    socket.onerror = () => {
-        console.log("⚠️ WebSocket failed, fallback to polling");
-        startPolling();
-    };
-
-} catch (e) {
-    startPolling();
+function trackQuery() {
+  if (trackToken) return `t=${encodeURIComponent(trackToken)}`;
+  return "";
 }
 
-// 🔁 Fallback polling
+// 🔁 Polling (auth-free track links use ?t= only)
 function startPolling() {
+    loadOrder();
     setInterval(loadOrder, 3000);
 }
 
 // 📦 Load order from backend
 async function loadOrder() {
-    if (!orderId) {
-        alert("Invalid order ID");
+    const q = trackQuery();
+    if (!q) {
+        document.getElementById("store").innerHTML =
+          "Open the private Track link from WhatsApp (or use the app while logged in).";
         return;
     }
 
     try {
-        const res = await fetch(`${API_BASE}/api/orders/track?order_id=${orderId}`);
+        const res = await fetch(`${API_BASE}/api/orders/track?${q}`);
         const data = await res.json();
+
+        if (!res.ok) {
+            document.getElementById("store").innerHTML = data.detail || "Order not found";
+            return;
+        }
+
+        if (data.id) {
+            resolvedOrderId = data.id;
+            document.getElementById("orderId").innerText = "Order #" + data.id;
+            if (!socket && resolvedOrderId) {
+                try {
+                    socket = new WebSocket(`${WS_BASE}/ws/${resolvedOrderId}`);
+                    socket.onmessage = function () { loadOrder(); };
+                } catch (e) {}
+            }
+        }
 
         if (!data.stores || data.stores.length === 0) {
             document.getElementById("store").innerHTML = "No stores found";
@@ -139,6 +150,8 @@ async function loadOrder() {
         console.error("Error loading order:", err);
     }
 }
+
+startPolling();
 
 // 📊 Compute overall status
 function getOverallStatus(stores) {
@@ -191,8 +204,6 @@ function formatLabel(step) {
     return map[step] || step;
 }
 
-// 🚀 Initial load
-loadOrder();
 </script>
 
 </body>

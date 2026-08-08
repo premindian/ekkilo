@@ -360,6 +360,7 @@ export default function OrderPage({ initialSearchText }) {
       });
       const data = await res.json();
       const orderId = data.final_order_id;
+      const trackToken = data.track_token;
 
       if (orderId) {
         setCart({});
@@ -367,7 +368,7 @@ export default function OrderPage({ initialSearchText }) {
           `✅ Order #${orderId} placed!\n\nYou'll get a WhatsApp confirmation.\n\nOpen tracking page now?`
         );
         if (track) {
-          navigate(`/track?order_id=${orderId}`);
+          navigate(trackToken ? `/track?t=${encodeURIComponent(trackToken)}` : `/track?order_id=${orderId}`);
         }
       } else {
         alert(data.error || data.detail || "✅ Order placed!");

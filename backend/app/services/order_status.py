@@ -2,8 +2,17 @@
 Shared order status helpers for WhatsApp + web portals.
 Ensures schema, updates store/final status, and notifies customers.
 """
+import secrets
+
 from app.db.database import get_db
 from app.utils.phone import normalize_phone, phone_tail
+
+TRACK_BASE_URL = "https://ekkilo.onrender.com"
+
+
+def new_track_token() -> str:
+    """Unguessable token for public track links."""
+    return secrets.token_urlsafe(16)
 
 
 async def ensure_order_schema(db=None):
@@ -15,6 +24,14 @@ async def ensure_order_schema(db=None):
     """)
     await db.execute("""
         ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
+    """)
+    await db.execute("""
+        ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS track_token TEXT
+    """)
+    await db.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_final_orders_track_token
+        ON final_orders (track_token)
+        WHERE track_token IS NOT NULL
     """)
     await db.execute("""
         ALTER TABLE store_orders ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'PENDING'
@@ -51,6 +68,33 @@ async def ensure_order_schema(db=None):
         ALTER TABLE whatsapp_messages
         ADD COLUMN IF NOT EXISTS final_order_id INTEGER
     """)
+
+    # Backfill missing track tokens for older orders
+    missing = await db.fetch("""
+        SELECT id FROM final_orders WHERE track_token IS NULL
+    """)
+    for row in missing:
+        await db.execute("""
+            UPDATE final_orders SET track_token = $1 WHERE id = $2 AND track_token IS NULL
+        """, new_track_token(), row["id"])
+
+
+async def get_track_url(final_order_id: int, db=None) -> str:
+    """Build a private track URL; mint a token if the order is missing one."""
+    db = db or await get_db()
+    await ensure_order_schema(db)
+    row = await db.fetchrow("""
+        SELECT track_token FROM final_orders WHERE id = $1
+    """, final_order_id)
+    if not row:
+        return f"{TRACK_BASE_URL}/track"
+    token = row["track_token"]
+    if not token:
+        token = new_track_token()
+        await db.execute("""
+            UPDATE final_orders SET track_token = $1 WHERE id = $2
+        """, token, final_order_id)
+    return f"{TRACK_BASE_URL}/track?t={token}"
 
 
 async def get_final_status(order_id: int, db=None):
@@ -211,7 +255,7 @@ async def notify_customer_status(final_order_id: int, final_status: str, store_n
 
     phone = normalize_phone(customer["customer_phone"])
     status = (final_status or "").upper()
-    track_url = f"https://ekkilo.onrender.com/track?order_id={final_order_id}"
+    track_url = await get_track_url(final_order_id, db=db)
 
     if status == "READY":
         await send_message(

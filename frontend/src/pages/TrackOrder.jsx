@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { navigate } from '../utils/navigate';
+import { useAuth } from '../context/AuthContext';
 
 const API_BASE = "";
 
@@ -24,16 +25,58 @@ function money(value) {
 }
 
 export default function TrackOrder() {
+  const { user, token, loading: authLoading } = useAuth();
   const params = new URLSearchParams(window.location.search);
-  // Support both ?order_id=5 and legacy ?order=5 (WhatsApp links)
+  // Private WhatsApp/share links use ?t=...; logged-in users may use ?order_id=
+  const initialToken = params.get('t') || '';
   const initialId = params.get('order_id') || params.get('order') || '';
   const [orderId, setOrderId] = useState(initialId);
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const fetchTrack = async ({ trackToken, id } = {}) => {
+    const qs = new URLSearchParams();
+    if (trackToken) {
+      qs.set('t', trackToken);
+    } else if (id) {
+      qs.set('order_id', String(id));
+      if (!token) {
+        setError('Please log in to track by order ID, or open the private link from WhatsApp.');
+        return;
+      }
+      qs.set('token', token);
+    } else {
+      setError('Please enter an order ID');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setOrderDetails(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/track?${qs.toString()}`);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(formatApiError(data.detail || data.error));
+      }
+
+      setOrderDetails(data);
+      if (trackToken && !params.get('t')) {
+        window.history.replaceState({}, '', `/track?t=${encodeURIComponent(trackToken)}`);
+      } else if (id && token && !params.get('t')) {
+        window.history.replaceState({}, '', `/track?order_id=${id}`);
+      }
+    } catch (err) {
+      setError(formatApiError(err?.message, 'Failed to track order'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const trackOrder = async (idOverride) => {
-    // Ignore click/keyboard event objects accidentally passed as the first arg
     const raw =
       idOverride != null && (typeof idOverride === 'string' || typeof idOverride === 'number')
         ? idOverride
@@ -47,36 +90,19 @@ export default function TrackOrder() {
       setError('Order ID must be a number');
       return;
     }
-
-    setLoading(true);
-    setError('');
-    setOrderDetails(null);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/orders/track?order_id=${encodeURIComponent(id)}`);
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(formatApiError(data.detail || data.error));
-      }
-
-      setOrderDetails(data);
-      // Keep URL shareable with the canonical param
-      if (!params.get('order_id')) {
-        window.history.replaceState({}, '', `/track?order_id=${id}`);
-      }
-    } catch (err) {
-      setError(formatApiError(err?.message, 'Failed to track order'));
-    } finally {
-      setLoading(false);
-    }
+    await fetchTrack({ id });
   };
 
   useEffect(() => {
-    if (initialId) {
-      trackOrder(initialId);
+    if (authLoading) return;
+    if (initialToken) {
+      fetchTrack({ trackToken: initialToken });
+    } else if (initialId && token) {
+      fetchTrack({ id: initialId });
+    } else if (initialId && !token) {
+      setError('Please log in to track by order ID, or open the private link from WhatsApp.');
     }
-  }, []);
+  }, [authLoading, token]);
 
   const getOrderStatusIcon = (status) => {
     const icons = {
@@ -110,7 +136,7 @@ export default function TrackOrder() {
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <div style={styles.logo}>🛒 Smart Kirana</div>
+        <div style={styles.logo}>🛒 Ekkilo</div>
         <button onClick={() => navigate('/')} style={styles.homeBtn}>
           Home
         </button>
@@ -119,7 +145,20 @@ export default function TrackOrder() {
       {/* Track Order Form */}
       <div style={styles.trackCard}>
         <h1 style={styles.title}>📦 Track Your Order</h1>
-        <p style={styles.subtitle}>Enter your order ID to track status</p>
+        <p style={styles.subtitle}>
+          {user
+            ? 'Enter your order ID (only your orders are shown)'
+            : 'Open the private Track link from WhatsApp, or log in to track by order ID'}
+        </p>
+
+        {!user && !initialToken && (
+          <button
+            onClick={() => navigate('/')}
+            style={{ ...styles.trackBtn, width: '100%', marginBottom: '16px' }}
+          >
+            Log in to track by order ID
+          </button>
+        )}
 
         <div style={styles.inputGroup}>
           <input
@@ -129,10 +168,11 @@ export default function TrackOrder() {
             onChange={(e) => setOrderId(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && trackOrder()}
             style={styles.input}
+            disabled={!user && !token}
           />
-          <button 
+          <button
             onClick={() => trackOrder()}
-            disabled={loading}
+            disabled={loading || (!user && !token)}
             style={styles.trackBtn}
           >
             {loading ? '🔄 Tracking...' : '🔍 Track'}
@@ -154,7 +194,7 @@ export default function TrackOrder() {
                 {getOrderStatusIcon(orderDetails.order_status)} Order #{orderDetails.id}
               </h2>
               <p style={styles.orderMeta}>
-                📞 {orderDetails.customer_phone} | 
+                📞 {orderDetails.customer_phone} |
                 🕐 {new Date(orderDetails.created_at).toLocaleString()}
               </p>
             </div>
@@ -167,10 +207,12 @@ export default function TrackOrder() {
           <div style={styles.progressSection}>
             <h3 style={styles.sectionTitle}>Order Progress</h3>
             <div style={styles.progressBar}>
-              <div 
+              <div
                 style={{
                   ...styles.progressFill,
-                  width: `${(orderDetails.ready_count / orderDetails.store_count) * 100}%`
+                  width: `${orderDetails.store_count
+                    ? (orderDetails.ready_count / orderDetails.store_count) * 100
+                    : 0}%`
                 }}
               />
             </div>
@@ -189,7 +231,7 @@ export default function TrackOrder() {
                     <div style={styles.storeName}>🏪 {store.store_name}</div>
                     <div style={styles.storeMeta}>📞 {store.store_phone}</div>
                   </div>
-                  <div 
+                  <div
                     style={{
                       ...styles.storeStatus,
                       background: getStoreStatusColor(store.status)
