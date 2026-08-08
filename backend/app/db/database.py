@@ -15,6 +15,10 @@ class DB:
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(query, *args)
 
+    async def fetchval(self, query, *args):
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(query, *args)
+
     async def execute(self, query, *args):
         async with self.pool.acquire() as conn:
             return await conn.execute(query, *args)
