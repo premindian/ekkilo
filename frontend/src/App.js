@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import OrderPage from './pages/OrderPage';
 import GroceryListsPage from './pages/GroceryListsPage';
 import OrderHistoryPage from './pages/OrderHistoryPage';
+import TrackOrder from './pages/TrackOrder';
 import ProfilePage from './pages/ProfilePage';
 import Onboarding from './components/Onboarding';
 import StoreDashboard from './pages/StoreDashboard';
@@ -15,6 +16,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminStores from './pages/AdminStores';
 import AdminUsers from './pages/AdminUsers';
 import AdminOrders from './pages/AdminOrders';
+import AdminWhatsApp from './pages/AdminWhatsApp';
 
 const API_BASE = "";
 
@@ -81,6 +83,11 @@ function App() {
     );
   }
 
+  // Public track order page (no auth needed)
+  if (currentPage === '/track') {
+    return <TrackOrder />;
+  }
+
   if (!isAuthenticated) {
     return <LoginPage />;
   }
@@ -95,6 +102,9 @@ function App() {
     }
     if (currentPage === '/admin/orders') {
       return <AdminOrders />;
+    }
+    if (currentPage === '/admin/whatsapp') {
+      return <AdminWhatsApp />;
     }
     return <AdminDashboard />;
   }

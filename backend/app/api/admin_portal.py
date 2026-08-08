@@ -370,3 +370,97 @@ async def get_all_orders(token: str, status: str = None, limit: int = 50, offset
     orders = await db.fetch(query, *params)
     
     return [dict(o) for o in orders]
+
+
+# ============================================
+# WHATSAPP MESSAGES
+# ============================================
+
+@router.get("/whatsapp/messages")
+async def get_whatsapp_messages(token: str, phone: str = None, status: str = None, limit: int = 100, offset: int = 0):
+    """Get WhatsApp message history"""
+    admin = await check_admin(token)
+    
+    db = await get_db()
+    
+    query = """
+        SELECT wm.id, wm.phone, wm.message, wm.status, 
+               wm.whatsapp_message_id, wm.attempts, wm.last_error,
+               wm.created_at, wm.sent_at, wm.delivered_at, wm.read_at,
+               wm.final_order_id,
+               fo.customer_phone as order_customer
+        FROM whatsapp_messages wm
+        LEFT JOIN final_orders fo ON wm.final_order_id = fo.id
+        WHERE 1=1
+    """
+    
+    params = []
+    param_count = 1
+    
+    if phone:
+        query += f" AND wm.phone = ${param_count}"
+        params.append(phone)
+        param_count += 1
+    
+    if status:
+        query += f" AND wm.status = ${param_count}"
+        params.append(status.upper())
+        param_count += 1
+    
+    query += f" ORDER BY wm.created_at DESC LIMIT ${param_count} OFFSET ${param_count + 1}"
+    params.extend([limit, offset])
+    
+    messages = await db.fetch(query, *params)
+    
+    return [dict(m) for m in messages]
+
+
+@router.post("/whatsapp/resend/{message_id}")
+async def resend_whatsapp_message(message_id: int, token: str):
+    """Manually resend a failed WhatsApp message"""
+    admin = await check_admin(token)
+    
+    db = await get_db()
+    
+    # Get message details
+    msg = await db.fetchrow("""
+        SELECT phone, message FROM whatsapp_messages WHERE id = $1
+    """, message_id)
+    
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    # Reset status and send
+    await db.execute("""
+        UPDATE whatsapp_messages 
+        SET status = 'PENDING', last_error = NULL 
+        WHERE id = $1
+    """, message_id)
+    
+    # Import and call send_message
+    from app.services.whatsapp import send_message
+    await send_message(msg["phone"], msg["message"], message_id)
+    
+    return {"message": "Message queued for resend"}
+
+
+@router.get("/whatsapp/stats")
+async def get_whatsapp_stats(token: str):
+    """Get WhatsApp messaging statistics"""
+    admin = await check_admin(token)
+    
+    db = await get_db()
+    
+    stats = await db.fetchrow("""
+        SELECT 
+            COUNT(*) as total_messages,
+            COUNT(*) FILTER (WHERE status = 'SENT') as sent,
+            COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
+            COUNT(*) FILTER (WHERE status = 'READ') as read,
+            COUNT(*) FILTER (WHERE status = 'FAILED') as failed,
+            COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
+            COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as last_24h
+        FROM whatsapp_messages
+    """)
+    
+    return dict(stats)

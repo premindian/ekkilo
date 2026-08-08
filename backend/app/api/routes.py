@@ -812,3 +812,78 @@ async def store_performance():
     """)
 
     return [dict(r) for r in rows]
+
+
+#############################
+# CUSTOMER ORDER TRACKING
+##############################
+@router.get("/api/orders/track")
+async def track_order(phone: str = None, order_id: int = None):
+    """Track order status by phone or order ID (public endpoint)"""
+    from app.db.database import get_db
+    db = await get_db()
+    
+    if not phone and not order_id:
+        raise HTTPException(status_code=400, detail="Provide phone or order_id")
+    
+    if order_id:
+        # Track specific order
+        order = await db.fetchrow("""
+            SELECT fo.id, fo.customer_phone, fo.created_at, fo.status as order_status,
+                   COUNT(DISTINCT so.id) as store_count,
+                   COUNT(DISTINCT so.id) FILTER (WHERE so.status = 'ACCEPTED') as accepted_count,
+                   COUNT(DISTINCT so.id) FILTER (WHERE so.status = 'READY') as ready_count,
+                   COALESCE(SUM(so.total_amount), 0) as total_amount
+            FROM final_orders fo
+            LEFT JOIN store_orders so ON fo.id = so.final_order_id
+            WHERE fo.id = $1
+            GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status
+        """, order_id)
+        
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        # Get store details
+        stores = await db.fetch("""
+            SELECT so.id, so.store_name, so.store_phone, so.status,
+                   so.total_amount, so.created_at, so.updated_at
+            FROM store_orders so
+            WHERE so.final_order_id = $1
+            ORDER BY so.id
+        """, order_id)
+        
+        # Get items for each store
+        stores_with_items = []
+        for store in stores:
+            items = await db.fetch("""
+                SELECT product_name, quantity, price
+                FROM order_items
+                WHERE store_order_id = $1
+            """, store["id"])
+            
+            stores_with_items.append({
+                **dict(store),
+                "items": [dict(item) for item in items]
+            })
+        
+        return {
+            **dict(order),
+            "stores": stores_with_items
+        }
+    
+    elif phone:
+        # Get all orders for this customer
+        orders = await db.fetch("""
+            SELECT fo.id, fo.customer_phone, fo.created_at, fo.status as order_status,
+                   COUNT(DISTINCT so.id) as store_count,
+                   COUNT(DISTINCT so.id) FILTER (WHERE so.status = 'READY') as ready_count,
+                   COALESCE(SUM(so.total_amount), 0) as total_amount
+            FROM final_orders fo
+            LEFT JOIN store_orders so ON fo.id = so.final_order_id
+            WHERE fo.customer_phone = $1
+            GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status
+            ORDER BY fo.created_at DESC
+            LIMIT 20
+        """, phone)
+        
+        return [dict(o) for o in orders]

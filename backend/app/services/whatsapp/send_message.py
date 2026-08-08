@@ -2,8 +2,8 @@ import httpx
 import os
 from app.db.database import get_db
 
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+WHATSAPP_TOKEN = os.getenv("META_ACCESS_TOKEN") or os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID") or os.getenv("PHONE_NUMBER_ID")
 
 
 async def send_message(phone, message, msg_id=None):

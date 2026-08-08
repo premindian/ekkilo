@@ -87,6 +87,12 @@ export default function AdminDashboard() {
         >
           📋 Orders
         </button>
+        <button
+          onClick={() => window.location.href = '/admin/whatsapp'}
+          style={styles.navBtn}
+        >
+          💬 WhatsApp
+        </button>
       </div>
 
       {/* Stats Cards */}
