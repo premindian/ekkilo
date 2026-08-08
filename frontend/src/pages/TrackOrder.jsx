@@ -33,9 +33,18 @@ export default function TrackOrder() {
   const [error, setError] = useState('');
 
   const trackOrder = async (idOverride) => {
-    const id = String(idOverride || orderId || '').trim();
+    // Ignore click/keyboard event objects accidentally passed as the first arg
+    const raw =
+      idOverride != null && (typeof idOverride === 'string' || typeof idOverride === 'number')
+        ? idOverride
+        : orderId;
+    const id = String(raw ?? '').trim();
     if (!id) {
       setError('Please enter an order ID');
+      return;
+    }
+    if (!/^\d+$/.test(id)) {
+      setError('Order ID must be a number');
       return;
     }
 
@@ -122,7 +131,7 @@ export default function TrackOrder() {
             style={styles.input}
           />
           <button 
-            onClick={trackOrder}
+            onClick={() => trackOrder()}
             disabled={loading}
             style={styles.trackBtn}
           >
