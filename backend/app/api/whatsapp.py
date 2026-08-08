@@ -1,22 +1,68 @@
-import httpx
-import os
 import re
 from fastapi import APIRouter, Request
 
 from app.services.whatsapp import send_message
 from app.db.database import get_db
-from app.core.ws_manager import manager   # 🔥 ADDED
-
-from app.core.context import Context
-from app.core.engine import Engine
-from app.agents.list_parser import ListParser
-from app.agents.matcher import Matcher
-from app.agents.pricing import Pricing
-from app.agents.optimizer import Optimizer
+from app.core.ws_manager import manager
 
 router = APIRouter()
 
 VERIFY_TOKEN = "Bookofkirana2026"
+
+# Final-order statuses where store can still act
+STORE_OPEN_STATUSES = {
+    "CREATED",
+    "CONFIRMED",
+    "ACCEPTED",
+    "PROCESSING",
+    "PARTIAL",
+    "PARTIAL_READY",
+}
+
+
+def _digits(phone: str) -> str:
+    return re.sub(r"\D", "", str(phone or ""))
+
+
+def _phone_tail(phone: str, n: int = 10) -> str:
+    d = _digits(phone)
+    return d[-n:] if len(d) >= n else d
+
+
+def _extract_text(msg: dict) -> str:
+    """Pull body text from WhatsApp message payloads (text / button)."""
+    if not msg:
+        return ""
+    if msg.get("type") == "text":
+        return (msg.get("text") or {}).get("body") or ""
+    if msg.get("type") == "button":
+        return (msg.get("button") or {}).get("text") or ""
+    if msg.get("type") == "interactive":
+        interactive = msg.get("interactive") or {}
+        if interactive.get("type") == "button_reply":
+            return (interactive.get("button_reply") or {}).get("title") or ""
+        if interactive.get("type") == "list_reply":
+            return (interactive.get("list_reply") or {}).get("title") or ""
+    # Fallback for plain payloads
+    return (msg.get("text") or {}).get("body") or ""
+
+
+def _parse_command(text: str):
+    """
+    Parse ACCEPT#3 / ready #3 / STATUS#12 etc.
+    Returns (ACTION, order_id) or (None, None).
+    """
+    if not text:
+        return None, None
+    cleaned = " ".join(text.strip().split())
+    match = re.match(
+        r"^(confirm|cancel|status|accept|ready|reject)\s*#\s*(\d+)\b",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None, None
+    return match.group(1).upper(), int(match.group(2))
 
 
 # -----------------------------------------
@@ -51,7 +97,7 @@ async def receive(req: Request):
         value = changes[0].get("value", {}) if changes else {}
 
         # =========================================================
-        # 🔥 1. DELIVERY STATUS TRACKING + LIVE UPDATE
+        # 1. DELIVERY STATUS TRACKING + LIVE UPDATE
         # =========================================================
         statuses = value.get("statuses", [])
 
@@ -63,14 +109,12 @@ async def receive(req: Request):
                 print(f"📦 Status update → {status} ({wa_id})")
 
                 if wa_id:
-                    # ✅ update DB
                     await db.execute("""
                         UPDATE whatsapp_messages
                         SET status = $1
                         WHERE whatsapp_message_id = $2
                     """, status.upper(), wa_id)
 
-                    # 🔥 REAL-TIME BROADCAST (NEW)
                     await manager.broadcast(0, {
                         "type": "message_update",
                         "wa_id": wa_id,
@@ -80,71 +124,73 @@ async def receive(req: Request):
             return {"status": "updated"}
 
         # =========================================================
-        # 🔥 2. NORMAL MESSAGE FLOW
+        # 2. NORMAL MESSAGE FLOW
         # =========================================================
         if "messages" not in value:
             return {"status": "no message"}
 
         msg = value["messages"][0]
-        phone = msg["from"]
-        text = msg["text"]["body"].strip().lower()
+        phone = msg.get("from") or ""
+        text = _extract_text(msg).strip()
+        phone_tail = _phone_tail(phone)
 
-        print("📩 Incoming:", text, phone)
+        print("📩 Incoming:", repr(text), phone)
 
-        # -----------------------------
-        # HELPERS
-        # -----------------------------
+        if not text:
+            return {"status": "ignored_non_text"}
+
         async def get_final_status(order_id):
             row = await db.fetchrow("""
-                SELECT status FROM final_order_events
-                WHERE final_order_id = $1
-                ORDER BY id DESC LIMIT 1
+                SELECT status FROM final_orders
+                WHERE id = $1
             """, order_id)
-            return row["status"] if row else "CREATED"
+            return row["status"] if row else None
 
-        async def get_store_statuses(order_id):
-            rows = await db.fetch("""
-                SELECT status FROM store_order_events soe
-                JOIN store_orders so ON so.id = soe.store_order_id
+        async def find_store_order(order_id, sender_phone):
+            """Match store by last-10 digits of store_orders.phone or stores.phone."""
+            tail = _phone_tail(sender_phone)
+            if not tail:
+                return None
+            return await db.fetchrow("""
+                SELECT so.id, so.store_name, so.status, so.store_phone
+                FROM store_orders so
+                LEFT JOIN stores s ON s.id = so.store_id
                 WHERE so.final_order_id = $1
-            """, order_id)
-            return [r["status"] for r in rows]
+                  AND (
+                    RIGHT(REGEXP_REPLACE(COALESCE(so.store_phone, ''), '[^0-9]', '', 'g'), 10) = $2
+                    OR RIGHT(REGEXP_REPLACE(COALESCE(s.phone, ''), '[^0-9]', '', 'g'), 10) = $2
+                  )
+                LIMIT 1
+            """, order_id, tail)
 
         # =========================================================
-        # 🔥 WHATSAPP COMMANDS (updates only — order creation disabled)
-        # =========================================================
-        # Order placement: use web portal (see redirect below).
-        # Customer: CANCEL#{id} / STATUS#{id}  (+ CONFIRM#{id} for legacy)
+        # WHATSAPP COMMANDS
+        # Customer: CANCEL#{id} / STATUS#{id}  (+ CONFIRM#{id} legacy)
         # Store: ACCEPT#{id} / READY#{id} / REJECT#{id}
         # =========================================================
-        if "#" in text:
+        action, order_id = _parse_command(text)
 
-            parts = text.split("#")
-            action = parts[0].upper()
-
-            try:
-                order_id = int(parts[1])
-            except:
-                return {"status": "invalid"}
-
+        if action and order_id is not None:
             current_status = await get_final_status(order_id)
 
+            if not current_status:
+                await send_message(phone, f"❌ Order {order_id} not found")
+                return {"status": "not_found"}
+
             # -----------------------------
-            # 👤 CUSTOMER ACTIONS
+            # CUSTOMER ACTIONS
             # -----------------------------
             if action == "CONFIRM":
-
                 if current_status != "CREATED":
-                    await send_message(phone, f"⚠️ Order {order_id} already processed")
+                    await send_message(phone, f"⚠️ Order {order_id} already processed ({current_status})")
                     return {"status": "ignored"}
 
-                # Update final order status
                 await db.execute("""
                     UPDATE final_orders
                     SET status = 'CONFIRMED', updated_at = NOW()
                     WHERE id = $1
                 """, order_id)
-                
+
                 await db.execute("""
                     INSERT INTO final_order_events (final_order_id, status)
                     VALUES ($1, 'CONFIRMED')
@@ -152,7 +198,6 @@ async def receive(req: Request):
 
                 await send_message(phone, f"✅ Order {order_id} confirmed")
 
-                # Send the store messages that were queued during order creation
                 pending_messages = await db.fetch("""
                     SELECT id, phone, message
                     FROM whatsapp_messages
@@ -163,36 +208,37 @@ async def receive(req: Request):
                     ORDER BY id
                 """, order_id)
 
-                for msg in pending_messages:
-                    await send_message(msg["phone"], msg["message"], msg["id"])
+                for pending in pending_messages:
+                    await send_message(pending["phone"], pending["message"], pending["id"])
 
                 return {"status": "confirmed"}
 
             if action == "CANCEL":
-
-                if current_status in ["READY", "COMPLETED"]:
-                    await send_message(phone, f"❌ Cannot cancel Order {order_id}")
+                if current_status in ["READY", "COMPLETED", "CANCELLED"]:
+                    await send_message(
+                        phone,
+                        f"❌ Cannot cancel Order {order_id} (status: {current_status})"
+                    )
                     return {"status": "blocked"}
 
-                # Update final order status
                 await db.execute("""
                     UPDATE final_orders
                     SET status = 'CANCELLED', updated_at = NOW()
                     WHERE id = $1
                 """, order_id)
-                
+
                 await db.execute("""
                     INSERT INTO final_order_events (final_order_id, status)
                     VALUES ($1, 'CANCELLED')
                 """, order_id)
 
-                # Update and insert events for all store orders
                 await db.execute("""
                     UPDATE store_orders
                     SET status = 'CANCELLED', updated_at = NOW()
                     WHERE final_order_id = $1
+                      AND status NOT IN ('COMPLETED', 'REJECTED')
                 """, order_id)
-                
+
                 await db.execute("""
                     INSERT INTO store_order_events (store_order_id, status)
                     SELECT id, 'CANCELLED'
@@ -204,224 +250,216 @@ async def receive(req: Request):
                 return {"status": "cancelled"}
 
             if action == "STATUS":
-                await send_message(phone, f"📦 Order {order_id}: {current_status}")
+                store_rows = await db.fetch("""
+                    SELECT store_name, status
+                    FROM store_orders
+                    WHERE final_order_id = $1
+                    ORDER BY id
+                """, order_id)
+                if store_rows:
+                    lines = "\n".join(
+                        f"• {r['store_name']}: {r['status']}" for r in store_rows
+                    )
+                    await send_message(
+                        phone,
+                        f"📦 Order {order_id}: {current_status}\n\n{lines}"
+                    )
+                else:
+                    await send_message(phone, f"📦 Order {order_id}: {current_status}")
                 return {"status": "status_sent"}
 
             # -----------------------------
-            # 🏪 STORE ACTIONS
+            # STORE ACTIONS
             # -----------------------------
-            if current_status != "CONFIRMED":
-                await send_message(phone, f"⏳ Wait for confirmation")
-                return {"status": "blocked"}
+            if action in ("ACCEPT", "READY", "REJECT"):
+                if current_status in ("CANCELLED", "COMPLETED", "REJECTED"):
+                    await send_message(
+                        phone,
+                        f"⚠️ Order {order_id} is already {current_status}"
+                    )
+                    return {"status": "blocked"}
 
-            if action == "ACCEPT":
+                if current_status not in STORE_OPEN_STATUSES:
+                    await send_message(
+                        phone,
+                        f"⏳ Order {order_id} is not open for store updates "
+                        f"(status: {current_status})"
+                    )
+                    return {"status": "blocked"}
 
-                store_row = await db.fetchrow("""
-                    SELECT id FROM store_orders
-                    WHERE final_order_id = $1 AND store_phone = $2
-                """, order_id, phone)
-
-                if not store_row:
-                    return {"status": "error"}
-
-                store_order_id = store_row["id"]
-
-                # Update store order status
-                await db.execute("""
-                    UPDATE store_orders
-                    SET status = 'ACCEPTED', updated_at = NOW()
-                    WHERE id = $1
-                """, store_order_id)
-                
-                await db.execute("""
-                    INSERT INTO store_order_events (store_order_id, status)
-                    VALUES ($1, 'ACCEPTED')
-                """, store_order_id)
-
-                await send_message(phone, f"✅ Order {order_id} accepted")
-
-                # Update final order status based on all stores
-                from app.services.order_service import update_final_order_status
-                await update_final_order_status(order_id)
-
-                return {"status": "accepted"}
-
-            if action == "READY":
-
-                store_row = await db.fetchrow("""
-                    SELECT id, store_name FROM store_orders
-                    WHERE final_order_id = $1 AND store_phone = $2
-                """, order_id, phone)
+                store_row = await find_store_order(order_id, phone)
 
                 if not store_row:
-                    return {"status": "error"}
+                    await send_message(
+                        phone,
+                        f"❌ No store order found for Order {order_id} on this number.\n"
+                        f"Make sure this WhatsApp number matches the store phone on file."
+                    )
+                    return {"status": "store_not_found"}
 
                 store_order_id = store_row["id"]
                 store_name = store_row["store_name"]
+                store_status = (store_row["status"] or "").upper()
 
-                # Update store order status
-                await db.execute("""
-                    UPDATE store_orders
-                    SET status = 'READY', updated_at = NOW()
-                    WHERE id = $1
-                """, store_order_id)
-                
-                await db.execute("""
-                    INSERT INTO store_order_events (store_order_id, status)
-                    VALUES ($1, 'READY')
-                """, store_order_id)
+                if action == "ACCEPT":
+                    if store_status in ("ACCEPTED", "READY", "COMPLETED"):
+                        await send_message(
+                            phone,
+                            f"ℹ️ Order {order_id} already {store_status}"
+                        )
+                        return {"status": "already"}
 
-                await send_message(phone, f"📦 Order {order_id} marked READY")
+                    if store_status == "REJECTED":
+                        await send_message(
+                            phone,
+                            f"❌ Order {order_id} was already rejected"
+                        )
+                        return {"status": "blocked"}
 
-                # Update final order status and check if should notify customer
-                from app.services.order_service import update_final_order_status
-                final_status, notify_customer = await update_final_order_status(order_id)
+                    await db.execute("""
+                        UPDATE store_orders
+                        SET status = 'ACCEPTED', updated_at = NOW()
+                        WHERE id = $1
+                    """, store_order_id)
 
-                # Notify customer if all stores ready or partial fulfillment
-                if notify_customer:
-                    customer = await db.fetchrow("""
-                        SELECT customer_phone FROM final_orders WHERE id = $1
-                    """, order_id)
-                    
-                    if customer:
-                        if final_status == 'READY':
-                            await send_message(
-                                customer["customer_phone"],
-                                f"🎉 Great news! Your order #{order_id} is READY for pickup at all stores!"
-                            )
-                        elif final_status == 'PARTIAL':
-                            # Get list of ready stores
-                            ready_stores = await db.fetch("""
-                                SELECT store_name FROM store_orders
-                                WHERE final_order_id = $1 AND status = 'READY'
-                            """, order_id)
-                            store_list = ", ".join([s["store_name"] for s in ready_stores])
-                            await send_message(
-                                customer["customer_phone"],
-                                f"📦 Order #{order_id} update:\n✅ Ready at: {store_list}\n\nCheck remaining stores for updates."
-                            )
+                    await db.execute("""
+                        INSERT INTO store_order_events (store_order_id, status)
+                        VALUES ($1, 'ACCEPTED')
+                    """, store_order_id)
 
-                return {"status": "ready"}
+                    await send_message(phone, f"✅ Order {order_id} accepted")
 
-            if action == "REJECT":
+                    from app.services.order_service import update_final_order_status
+                    await update_final_order_status(order_id)
+                    return {"status": "accepted"}
 
-                store_row = await db.fetchrow("""
-                    SELECT id, store_name FROM store_orders
-                    WHERE final_order_id = $1 AND store_phone = $2
-                """, order_id, phone)
+                if action == "READY":
+                    if store_status == "REJECTED":
+                        await send_message(
+                            phone,
+                            f"❌ Cannot mark READY — Order {order_id} was rejected"
+                        )
+                        return {"status": "blocked"}
 
-                if not store_row:
-                    return {"status": "error"}
+                    if store_status in ("READY", "COMPLETED"):
+                        await send_message(
+                            phone,
+                            f"ℹ️ Order {order_id} already {store_status}"
+                        )
+                        return {"status": "already"}
 
-                store_order_id = store_row["id"]
-                store_name = store_row["store_name"]
+                    await db.execute("""
+                        UPDATE store_orders
+                        SET status = 'READY', updated_at = NOW()
+                        WHERE id = $1
+                    """, store_order_id)
 
-                # Update store order status to REJECTED
-                await db.execute("""
-                    UPDATE store_orders
-                    SET status = 'REJECTED', updated_at = NOW()
-                    WHERE id = $1
-                """, store_order_id)
-                
-                await db.execute("""
-                    INSERT INTO store_order_events (store_order_id, status)
-                    VALUES ($1, 'REJECTED')
-                """, store_order_id)
+                    await db.execute("""
+                        INSERT INTO store_order_events (store_order_id, status)
+                        VALUES ($1, 'READY')
+                    """, store_order_id)
 
-                await send_message(phone, f"❌ Order {order_id} rejected")
+                    await send_message(phone, f"📦 Order {order_id} marked READY")
 
-                # Update final order status
-                from app.services.order_service import update_final_order_status
-                final_status, notify_customer = await update_final_order_status(order_id)
+                    from app.services.order_service import update_final_order_status
+                    final_status, notify_customer = await update_final_order_status(order_id)
 
-                # Notify customer about rejection
-                if notify_customer:
-                    customer = await db.fetchrow("""
-                        SELECT customer_phone FROM final_orders WHERE id = $1
-                    """, order_id)
-                    
-                    if customer:
-                        if final_status == 'REJECTED':
-                            await send_message(
-                                customer["customer_phone"],
-                                f"😔 Sorry, order #{order_id} cannot be fulfilled. All stores are unavailable. Please try again later."
-                            )
-                        elif final_status == 'PARTIAL':
-                            # Some stores still processing
-                            await send_message(
-                                customer["customer_phone"],
-                                f"⚠️ Order #{order_id} update:\n{store_name} cannot fulfill their part.\nOther stores are still processing your order."
-                            )
+                    if notify_customer:
+                        customer = await db.fetchrow("""
+                            SELECT customer_phone FROM final_orders WHERE id = $1
+                        """, order_id)
 
-                return {"status": "rejected"}
+                        if customer and customer.get("customer_phone"):
+                            if final_status == "READY":
+                                await send_message(
+                                    customer["customer_phone"],
+                                    f"🎉 Great news! Your order #{order_id} is READY for pickup at all stores!"
+                                )
+                            elif final_status in ("PARTIAL", "PARTIAL_READY"):
+                                ready_stores = await db.fetch("""
+                                    SELECT store_name FROM store_orders
+                                    WHERE final_order_id = $1 AND status = 'READY'
+                                """, order_id)
+                                store_list = ", ".join(s["store_name"] for s in ready_stores)
+                                await send_message(
+                                    customer["customer_phone"],
+                                    f"📦 Order #{order_id} update:\n✅ Ready at: {store_list}\n\nCheck remaining stores for updates."
+                                )
+
+                    return {"status": "ready"}
+
+                if action == "REJECT":
+                    if store_status in ("READY", "COMPLETED"):
+                        await send_message(
+                            phone,
+                            f"❌ Cannot reject — Order {order_id} is already {store_status}"
+                        )
+                        return {"status": "blocked"}
+
+                    if store_status == "REJECTED":
+                        await send_message(phone, f"ℹ️ Order {order_id} already rejected")
+                        return {"status": "already"}
+
+                    await db.execute("""
+                        UPDATE store_orders
+                        SET status = 'REJECTED', updated_at = NOW()
+                        WHERE id = $1
+                    """, store_order_id)
+
+                    await db.execute("""
+                        INSERT INTO store_order_events (store_order_id, status)
+                        VALUES ($1, 'REJECTED')
+                    """, store_order_id)
+
+                    await send_message(phone, f"❌ Order {order_id} rejected")
+
+                    from app.services.order_service import update_final_order_status
+                    final_status, notify_customer = await update_final_order_status(order_id)
+
+                    if notify_customer:
+                        customer = await db.fetchrow("""
+                            SELECT customer_phone FROM final_orders WHERE id = $1
+                        """, order_id)
+
+                        if customer and customer.get("customer_phone"):
+                            if final_status == "REJECTED":
+                                await send_message(
+                                    customer["customer_phone"],
+                                    f"😔 Sorry, order #{order_id} cannot be fulfilled. All stores are unavailable. Please try again later."
+                                )
+                            elif final_status in ("PARTIAL", "PARTIAL_READY"):
+                                await send_message(
+                                    customer["customer_phone"],
+                                    f"⚠️ Order #{order_id} update:\n{store_name} cannot fulfill their part.\nOther stores are still processing your order."
+                                )
+
+                    return {"status": "rejected"}
+
+            # Unknown ACTION#id
+            await send_message(
+                phone,
+                "Unknown command.\n"
+                "Customer: STATUS#id | CANCEL#id\n"
+                "Store: ACCEPT#id | READY#id | REJECT#id"
+            )
+            return {"status": "unknown_command"}
 
         # =========================================================
-        # 🔍 WHATSAPP ORDER CREATION - DISABLED FOR THIS RELEASE
-        # Customers should order via web portal instead.
-        # Store command replies (ACCEPT/READY/REJECT) and customer
-        # STATUS/CANCEL still work above for portal-created orders.
-        # Uncomment block below to re-enable WhatsApp grocery-list ordering.
+        # Free-text → redirect to portal (order creation disabled)
         # =========================================================
         await send_message(
             phone,
             "🛒 Please place orders on the Ekkilo app/website:\n"
             "https://ekkilo.onrender.com\n\n"
             "WhatsApp is for order updates only.\n"
-            "Commands: STATUS#orderid  |  CANCEL#orderid"
+            "Customer: STATUS#orderid  |  CANCEL#orderid\n"
+            "Store: ACCEPT#orderid  |  READY#orderid  |  REJECT#orderid"
         )
         return {"status": "redirect_to_portal"}
 
-        # --- DISABLED: WhatsApp grocery-list → create order ---
-        # context = Context(user_text=text)
-        # engine = Engine([ListParser(), Matcher(), Pricing(), Optimizer()])
-        # result = await engine.run(context)
-        # data = result.data
-        # optimized_plan = data.get("optimized_plan", {})
-        # if not optimized_plan:
-        #     await send_message(phone, "❌ No products found. Try again!")
-        #     return {"status": "no_results"}
-        # from app.services.order_service import create_full_order
-        # stores_payload = []
-        # for store_name, products in optimized_plan.items():
-        #     store_phone = None
-        #     for p in products:
-        #         if p.get("phone"):
-        #             store_phone = p["phone"]
-        #             break
-        #     if not store_phone:
-        #         store_row = await db.fetchrow(
-        #             "SELECT phone FROM stores WHERE name = $1", store_name
-        #         )
-        #         if store_row:
-        #             store_phone = store_row["phone"]
-        #     items = [{
-        #         "name": p.get("name", ""),
-        #         "packs": p.get("packs", 1),
-        #         "size": p.get("size", 1),
-        #         "unit": p.get("unit", ""),
-        #         "price": p.get("price", 0),
-        #         "phone": p.get("phone"),
-        #     } for p in products]
-        #     stores_payload.append({
-        #         "store": store_name,
-        #         "store_phone": store_phone,
-        #         "items": items,
-        #     })
-        # final_order_id, whatsapp_jobs = await create_full_order(stores_payload, phone)
-        # message = "🧠 Smart Kirana Order\n\n"
-        # message += f"📝 Order ID: {final_order_id}\n\n"
-        # for store_name, items in optimized_plan.items():
-        #     message += f"🏪 {store_name}\n"
-        #     for i in items:
-        #         message += f"  {i['name']} x{i['packs']} ₹{i['price']}\n"
-        #     message += "\n"
-        # message += f"💰 Total: ₹{data.get('optimized_total', 0)}\n\n"
-        # message += f"Reply CONFIRM#{final_order_id} to proceed\n"
-        # message += f"Or CANCEL#{final_order_id} to cancel"
-        # await send_message(phone, message)
-        # return {"status": "order_created", "order_id": final_order_id}
-
     except Exception as e:
-        print("❌ Error:", str(e))
+        print("❌ WhatsApp webhook error:", str(e))
+        import traceback
+        traceback.print_exc()
 
     return {"status": "ok"}
