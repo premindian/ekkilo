@@ -594,3 +594,59 @@ async def get_whatsapp_inbound(token: str, limit: int = 30):
     """, limit)
 
     return [dict(r) for r in rows]
+
+
+@router.post("/whatsapp/subscribe-waba")
+async def subscribe_whatsapp_waba(token: str):
+    """
+    Subscribe this Meta app to the WhatsApp Business Account webhooks.
+    Fixes inbound STATUS#/ACCEPT# when UI shows messages subscribed but nothing arrives.
+    """
+    await check_admin(token)
+    from app.services.whatsapp.webhook_setup import ensure_waba_subscribed
+    return await ensure_waba_subscribed()
+
+
+@router.post("/whatsapp/simulate-inbound")
+async def simulate_whatsapp_inbound(token: str, data: dict):
+    """
+    Run a WhatsApp command path without Meta delivering a webhook.
+    Body: { "phone": "91...", "text": "STATUS#1" }
+    """
+    await check_admin(token)
+    from app.api.whatsapp import _parse_command
+    from app.services.order_status import (
+        get_final_status,
+        apply_store_action,
+        cancel_final_order,
+    )
+    from app.services.whatsapp import send_message
+    from app.utils.phone import normalize_phone
+    from app.db.database import get_db
+
+    phone = normalize_phone((data or {}).get("phone") or "")
+    text = ((data or {}).get("text") or "STATUS#1").strip()
+    action, order_id = _parse_command(text)
+
+    if not action or order_id is None:
+        return {"ok": False, "error": f"Could not parse command from: {text}"}
+
+    db = await get_db()
+
+    if action == "STATUS":
+        current = await get_final_status(order_id, db=db)
+        msg = f"📦 Order {order_id}: {current or 'NOT FOUND'}"
+        sent = await send_message(phone, msg) if phone else False
+        return {"ok": True, "action": action, "message": msg, "whatsapp_sent": sent}
+
+    if action == "CANCEL":
+        result = await cancel_final_order(order_id, db=db)
+        sent = await send_message(phone, result["message"]) if phone else False
+        return {**result, "action": action, "whatsapp_sent": sent}
+
+    if action in ("ACCEPT", "READY", "REJECT", "COMPLETE", "COMPLETED"):
+        result = await apply_store_action(order_id, action, phone, db=db)
+        sent = await send_message(phone, result["message"]) if phone else False
+        return {**result, "action": action, "whatsapp_sent": sent}
+
+    return {"ok": False, "error": f"Unsupported action {action}"}

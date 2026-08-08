@@ -179,13 +179,33 @@ export default function AdminWhatsApp() {
 
       {/* Inbound webhook diagnostic */}
       <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
           <b>📥 Inbound from Meta (STATUS# / ACCEPT#)</b>
-          <button onClick={loadInbound} style={styles.searchBtn}>Refresh</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${API_BASE}/api/admin/whatsapp/subscribe-waba?token=${token}`, { method: 'POST' });
+                  const data = await res.json();
+                  alert(data.ok
+                    ? `✅ Subscribed to WABA ${data.waba_id}\nNow reply STATUS#1 on WhatsApp again.`
+                    : `❌ ${data.error || JSON.stringify(data)}`);
+                  loadInbound();
+                } catch (e) {
+                  alert('Subscribe failed');
+                }
+              }}
+              style={{ ...styles.searchBtn, background: '#ea580c' }}
+            >
+              Fix inbound (subscribe WABA)
+            </button>
+            <button onClick={loadInbound} style={styles.searchBtn}>Refresh</button>
+          </div>
         </div>
         <p style={{ fontSize: 13, color: '#9a3412', marginTop: 0 }}>
-          If this list stays empty when you reply on WhatsApp, Meta is not sending messages to the webhook.
-          In Meta Developer Console → WhatsApp → Configuration → Webhook, subscribe the <b>messages</b> field.
+          <b>messages</b> can be toggled ON in Meta but inbound still fails until the app is subscribed to the WhatsApp Business Account.
+          Click <b>Fix inbound</b>, wait for redeploy/startup, then reply <code>STATUS#1</code> again.
+          If this list stays empty, Meta is still not delivering.
         </p>
         {inbound.length === 0 ? (
           <div style={{ fontSize: 13, color: '#666' }}>No inbound webhook events yet.</div>

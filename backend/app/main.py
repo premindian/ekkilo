@@ -39,6 +39,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️ Order schema ensure failed: {e}")
 
+    # Critical: subscribe app to WABA so inbound WhatsApp messages hit our webhook
+    try:
+        from app.services.whatsapp.webhook_setup import ensure_waba_subscribed
+        sub = await ensure_waba_subscribed()
+        print(f"🔔 WhatsApp WABA subscribe: {sub}")
+    except Exception as e:
+        print(f"⚠️ WhatsApp WABA subscribe failed: {e}")
+
     task = asyncio.create_task(retry_failed_messages())
 
     yield
