@@ -224,16 +224,34 @@ async def update_user(user_id: int, data: dict, token: str):
     db = await get_db()
     
     is_store_owner = data.get("is_store_owner")
-    store_id = data.get("store_id")
+    # Allow explicit null to clear store_id when removing owner
+    store_id = data["store_id"] if "store_id" in data else None
+    clear_store = "store_id" in data and data["store_id"] is None
     is_admin = data.get("is_admin")
+
+    if is_store_owner is True and not data.get("store_id") and not clear_store:
+        # If becoming owner without existing store, require store_id
+        existing = await db.fetchrow("SELECT store_id FROM users WHERE id = $1", user_id)
+        if not existing or not existing["store_id"]:
+            if not data.get("store_id"):
+                raise HTTPException(status_code=400, detail="store_id required when making store owner")
     
-    await db.execute("""
-        UPDATE users
-        SET is_store_owner = COALESCE($1, is_store_owner),
-            store_id = COALESCE($2, store_id),
-            is_admin = COALESCE($3, is_admin)
-        WHERE id = $4
-    """, is_store_owner, store_id, is_admin, user_id)
+    if clear_store:
+        await db.execute("""
+            UPDATE users
+            SET is_store_owner = COALESCE($1, is_store_owner),
+                store_id = NULL,
+                is_admin = COALESCE($2, is_admin)
+            WHERE id = $3
+        """, is_store_owner, is_admin, user_id)
+    else:
+        await db.execute("""
+            UPDATE users
+            SET is_store_owner = COALESCE($1, is_store_owner),
+                store_id = COALESCE($2, store_id),
+                is_admin = COALESCE($3, is_admin)
+            WHERE id = $4
+        """, is_store_owner, store_id, is_admin, user_id)
     
     # Create store_owner_details if making user a store owner
     if is_store_owner:
@@ -359,7 +377,8 @@ async def get_all_orders(token: str, status: str = None, limit: int = 50, offset
     
     params = []
     if status:
-        query += " WHERE so.status = $1"
+        # Filter by final order status (CREATED/CONFIRMED/READY/etc.)
+        query += " WHERE fo.status = $1"
         params.append(status.upper())
         query += " GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status ORDER BY fo.created_at DESC LIMIT $2 OFFSET $3"
         params.extend([limit, offset])

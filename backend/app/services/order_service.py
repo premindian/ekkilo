@@ -24,9 +24,11 @@ async def update_final_order_status(final_order_id):
     
     # Calculate final status based on store statuses
     rejected_count = sum(1 for s in statuses if s == 'REJECTED')
+    completed_count = sum(1 for s in statuses if s == 'COMPLETED')
     ready_count = sum(1 for s in statuses if s == 'READY')
     accepted_count = sum(1 for s in statuses if s == 'ACCEPTED')
     pending_count = sum(1 for s in statuses if s == 'PENDING')
+    active_count = store_count - rejected_count
     
     notify_customer = False
     
@@ -35,18 +37,22 @@ async def update_final_order_status(final_order_id):
         # All stores rejected
         final_status = 'REJECTED'
         notify_customer = True
-    elif ready_count == store_count:
-        # All stores ready - notify customer!
+    elif active_count > 0 and completed_count == active_count:
+        # All non-rejected stores completed
+        final_status = 'COMPLETED'
+        notify_customer = True
+    elif ready_count + completed_count == active_count and active_count > 0:
+        # All active stores ready or completed
         final_status = 'READY'
         notify_customer = True
-    elif ready_count > 0:
+    elif ready_count > 0 or completed_count > 0:
         # Some stores ready
         final_status = 'PARTIAL_READY'
     elif rejected_count > 0 and (ready_count > 0 or accepted_count > 0):
         # Mixed: some rejected, some proceeding
         final_status = 'PARTIAL'
-        notify_customer = True  # Let customer know about partial fulfillment
-    elif accepted_count == (store_count - rejected_count) and rejected_count > 0:
+        notify_customer = True
+    elif accepted_count == active_count and rejected_count > 0:
         # All non-rejected stores have accepted
         final_status = 'PARTIAL'
         notify_customer = True
@@ -134,18 +140,44 @@ async def create_full_order(stores, customer_phone):
         store_order_id = so["id"]
 
         # -----------------------------
-        # 📦 ITEMS
+        # 📦 ITEMS (+ compute store total)
         # -----------------------------
+        store_total = 0.0
         for item in store.get("items", []):
+            qty = item.get("qty") or item.get("packs") or item.get("quantity") or 1
+            try:
+                qty = float(qty)
+            except (TypeError, ValueError):
+                qty = 1
+            price = item.get("price", 0) or 0
+            try:
+                price = float(price)
+            except (TypeError, ValueError):
+                price = 0
+            store_total += qty * price
+
             await db.execute("""
                 INSERT INTO order_items (store_order_id, product_name, quantity, price)
                 VALUES ($1, $2, $3, $4)
             """,
                 store_order_id,
                 item.get("name"),
-                item.get("qty", 1),
-                item.get("price", 0)
+                qty,
+                price
             )
+
+        # Prefer frontend-provided total when present
+        if store.get("total") is not None:
+            try:
+                store_total = float(store.get("total"))
+            except (TypeError, ValueError):
+                pass
+
+        await db.execute("""
+            UPDATE store_orders
+            SET total_amount = $1
+            WHERE id = $2
+        """, store_total, store_order_id)
 
         # -----------------------------
         # 📊 EVENT
@@ -158,8 +190,11 @@ async def create_full_order(stores, customer_phone):
         # -----------------------------
         # 📲 MESSAGE
         # -----------------------------
+        def _item_qty(i):
+            return i.get("qty") or i.get("packs") or i.get("quantity") or 1
+
         item_text = "\n".join(
-            f"{i.get('name')} x{i.get('qty', 1)}"
+            f"{i.get('name')} x{_item_qty(i)}"
             for i in store.get("items", [])
         )
 

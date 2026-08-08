@@ -59,7 +59,7 @@ export default function StoreOrders() {
 
       {/* Filters */}
       <div style={styles.filters}>
-        {['ALL', 'PENDING', 'ACCEPTED', 'READY', 'COMPLETED'].map(f => (
+        {['ALL', 'PENDING', 'ACCEPTED', 'READY', 'COMPLETED', 'REJECTED'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -116,11 +116,19 @@ export default function StoreOrders() {
 
               {/* Items */}
               <div style={styles.orderItems}>
-                {order.store_items && JSON.parse(order.store_items).map((item, i) => (
+                {(Array.isArray(order.store_items)
+                  ? order.store_items
+                  : (typeof order.store_items === 'string' ? JSON.parse(order.store_items || '[]') : [])
+                ).map((item, i) => (
                   <div key={i} style={styles.orderItem}>
-                    • {item.name} ({item.packs || 1} × {item.size}{item.unit}) - ₹{item.price}
+                    • {item.name} × {item.packs || item.quantity || 1} - ₹{item.price}
                   </div>
                 ))}
+                {order.total_amount != null && (
+                  <div style={{...styles.orderItem, fontWeight: 600, marginTop: 6}}>
+                    Total: ₹{order.total_amount}
+                  </div>
+                )}
               </div>
 
               {/* Actions */}
@@ -147,6 +155,14 @@ export default function StoreOrders() {
                     style={{...styles.actionBtn, background: '#3b82f6', width: '100%'}}
                   >
                     📦 Mark as Ready
+                  </button>
+                )}
+                {order.status === 'READY' && (
+                  <button 
+                    onClick={() => updateStatus(order.id, 'COMPLETED')}
+                    style={{...styles.actionBtn, background: '#10b981', width: '100%'}}
+                  >
+                    ✅ Mark Completed
                   </button>
                 )}
               </div>

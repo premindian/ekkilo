@@ -143,7 +143,10 @@ async def verify_otp(data: dict):
         "user": {
             "id": user["id"],
             "phone": user["phone"],
-            "name": user["name"]
+            "name": user["name"],
+            "is_admin": bool(user.get("is_admin")),
+            "is_store_owner": bool(user.get("is_store_owner")),
+            "store_id": user.get("store_id"),
         }
     }
 

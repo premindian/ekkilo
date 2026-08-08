@@ -124,14 +124,25 @@ async def get_store_orders(
     db = await get_db()
     
     query = """
-        SELECT 
+        SELECT
             so.id,
             fo.id as final_order_id,
             fo.customer_phone,
             so.store_name,
             so.status,
+            so.total_amount,
             so.created_at,
-            so.updated_at
+            so.updated_at,
+            COALESCE((
+                SELECT json_agg(json_build_object(
+                    'name', oi.product_name,
+                    'quantity', oi.quantity,
+                    'packs', oi.quantity,
+                    'price', oi.price
+                ))
+                FROM order_items oi
+                WHERE oi.store_order_id = so.id
+            ), '[]'::json) as store_items
         FROM store_orders so
         JOIN final_orders fo ON so.final_order_id = fo.id
         WHERE so.store_id = $1
@@ -214,7 +225,7 @@ async def update_store_order(order_id: int, data: dict, token: str):
         raise HTTPException(status_code=404, detail="Order not found")
     
     new_status = data.get("status", "").upper()
-    allowed_statuses = ["ACCEPTED", "READY", "REJECTED"]
+    allowed_statuses = ["ACCEPTED", "READY", "REJECTED", "COMPLETED"]
     
     if new_status not in allowed_statuses:
         raise HTTPException(
@@ -247,7 +258,12 @@ async def update_store_order(order_id: int, data: dict, token: str):
             SELECT customer_phone FROM final_orders WHERE id = $1
         """, final_order_id)
         if customer:
-            if final_status == "READY":
+            if final_status == "COMPLETED":
+                await send_message(
+                    customer["customer_phone"],
+                    f"✅ Order #{final_order_id} is complete. Thank you for shopping with Ekkilo!"
+                )
+            elif final_status == "READY":
                 await send_message(
                     customer["customer_phone"],
                     f"🎉 Great news! Your order #{final_order_id} is READY for pickup at all stores!"
@@ -257,10 +273,10 @@ async def update_store_order(order_id: int, data: dict, token: str):
                     customer["customer_phone"],
                     f"😔 Sorry, order #{final_order_id} cannot be fulfilled. All stores are unavailable."
                 )
-            elif final_status == "PARTIAL":
+            elif final_status in ("PARTIAL", "PARTIAL_READY"):
                 ready_stores = await db.fetch("""
                     SELECT store_name FROM store_orders
-                    WHERE final_order_id = $1 AND status IN ('READY', 'ACCEPTED')
+                    WHERE final_order_id = $1 AND status IN ('READY', 'ACCEPTED', 'COMPLETED')
                 """, final_order_id)
                 store_list = ", ".join([s["store_name"] for s in ready_stores]) or "remaining stores"
                 await send_message(

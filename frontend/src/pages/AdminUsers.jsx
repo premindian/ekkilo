@@ -6,13 +6,16 @@ const API_BASE = "";
 export default function AdminUsers() {
   const { token } = useAuth();
   const [users, setUsers] = useState([]);
+  const [stores, setStores] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [editingUser, setEditingUser] = useState(null);
+  const [assignUser, setAssignUser] = useState(null);
+  const [selectedStoreId, setSelectedStoreId] = useState('');
 
   useEffect(() => {
     if (token) {
       loadUsers();
+      loadStores();
     }
   }, [token, search]);
 
@@ -32,18 +35,54 @@ export default function AdminUsers() {
     }
   };
 
-  const toggleStoreOwner = async (user) => {
-    if (!window.confirm(`Make ${user.name || user.phone} a store owner?`)) return;
-    
+  const loadStores = async () => {
     try {
-      await fetch(`${API_BASE}/api/admin/users/${user.id}?token=${token}`, {
+      const res = await fetch(`${API_BASE}/api/admin/stores?token=${token}`);
+      const data = await res.json();
+      setStores(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load stores:', err);
+    }
+  };
+
+  const toggleStoreOwner = async (user) => {
+    if (user.is_store_owner) {
+      if (!window.confirm(`Remove store owner access for ${user.name || user.phone}?`)) return;
+      try {
+        await fetch(`${API_BASE}/api/admin/users/${user.id}?token=${token}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_store_owner: false, store_id: null }),
+        });
+        alert('✅ Store owner removed');
+        loadUsers();
+      } catch (err) {
+        alert('❌ Failed to update user');
+      }
+      return;
+    }
+
+    // Making owner requires assigning a store
+    setAssignUser(user);
+    setSelectedStoreId(user.store_id ? String(user.store_id) : '');
+  };
+
+  const confirmMakeOwner = async () => {
+    if (!selectedStoreId) {
+      alert('Please select a store');
+      return;
+    }
+    try {
+      await fetch(`${API_BASE}/api/admin/users/${assignUser.id}?token=${token}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          is_store_owner: !user.is_store_owner
-        })
+          is_store_owner: true,
+          store_id: parseInt(selectedStoreId, 10),
+        }),
       });
-      alert('✅ User updated!');
+      alert('✅ User assigned as store owner!');
+      setAssignUser(null);
       loadUsers();
     } catch (err) {
       alert('❌ Failed to update user');
@@ -146,6 +185,33 @@ export default function AdminUsers() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {assignUser && (
+        <div style={styles.modal} onClick={() => setAssignUser(null)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>Assign Store Owner</h2>
+            <p style={{ color: '#6b7280' }}>
+              Select a store for <strong>{assignUser.name || assignUser.phone}</strong>
+            </p>
+            <select
+              value={selectedStoreId}
+              onChange={(e) => setSelectedStoreId(e.target.value)}
+              style={styles.select}
+            >
+              <option value="">Select store...</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.phone})
+                </option>
+              ))}
+            </select>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={confirmMakeOwner} style={styles.makeOwnerBtn}>Confirm</button>
+              <button onClick={() => setAssignUser(null)} style={styles.backBtn}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -338,5 +404,28 @@ const styles = {
     fontSize: 12,
     color: '#9ca3af',
     textAlign: 'center',
+  },
+  modal: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    background: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 420,
+  },
+  select: {
+    width: '100%',
+    padding: 12,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    fontSize: 14,
   },
 };

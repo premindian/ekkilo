@@ -17,6 +17,7 @@ import AdminStores from './pages/AdminStores';
 import AdminUsers from './pages/AdminUsers';
 import AdminOrders from './pages/AdminOrders';
 import AdminWhatsApp from './pages/AdminWhatsApp';
+import AdminProducts from './pages/AdminProducts';
 
 const API_BASE = "";
 
@@ -25,7 +26,7 @@ function App() {
   // Initialize currentPage from URL pathname
   const [currentPage, setCurrentPage] = useState(() => {
     const path = window.location.pathname;
-    if (path.startsWith('/admin') || path.startsWith('/store')) {
+    if (path.startsWith('/admin') || path.startsWith('/store') || path.startsWith('/track')) {
       return path;
     }
     return 'order';
@@ -105,6 +106,9 @@ function App() {
     }
     if (currentPage === '/admin/whatsapp') {
       return <AdminWhatsApp />;
+    }
+    if (currentPage === '/admin/products') {
+      return <AdminProducts />;
     }
     return <AdminDashboard />;
   }

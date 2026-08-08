@@ -39,6 +39,12 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
     # ✅ WEB ORDERS AUTO-CONFIRMED
     # -----------------------------
     await db.execute("""
+        UPDATE final_orders
+        SET status = 'CONFIRMED', updated_at = NOW()
+        WHERE id = $1
+    """, final_order_id)
+
+    await db.execute("""
         INSERT INTO final_order_events (final_order_id, status)
         VALUES ($1, 'CONFIRMED')
     """, final_order_id)

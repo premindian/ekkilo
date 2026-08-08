@@ -66,7 +66,7 @@ export default function AdminOrders() {
 
       {/* Filters */}
       <div style={styles.filters}>
-        {['ALL', 'PENDING', 'ACCEPTED', 'READY', 'COMPLETED', 'REJECTED'].map(f => (
+        {['ALL', 'CREATED', 'CONFIRMED', 'ACCEPTED', 'READY', 'PARTIAL_READY', 'PARTIAL', 'COMPLETED', 'REJECTED', 'CANCELLED'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}

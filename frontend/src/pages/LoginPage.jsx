@@ -68,7 +68,12 @@ export default function LoginPage() {
 
       if (res.ok) {
         login(data.token, data.user);
-        // Redirect handled by parent
+        // Role-based redirect after login
+        if (data.user?.is_admin) {
+          window.location.href = '/admin';
+        } else if (data.user?.is_store_owner) {
+          window.location.href = '/store';
+        }
       } else {
         setError(data.detail || 'Invalid OTP');
       }
