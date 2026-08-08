@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
 import { PieChart, BarChart } from '../components/SimpleChart';
 
@@ -59,37 +60,37 @@ export default function AdminDashboard() {
       {/* Navigation */}
       <div style={styles.nav}>
         <button
-          onClick={() => window.location.href = '/admin'}
+          onClick={() => navigate('/admin')}
           style={styles.navBtn}
         >
           📊 Dashboard
         </button>
         <button
-          onClick={() => window.location.href = '/admin/stores'}
+          onClick={() => navigate('/admin/stores')}
           style={styles.navBtn}
         >
           🏪 Stores
         </button>
         <button
-          onClick={() => window.location.href = '/admin/users'}
+          onClick={() => navigate('/admin/users')}
           style={styles.navBtn}
         >
           👥 Users
         </button>
         <button
-          onClick={() => window.location.href = '/admin/products'}
+          onClick={() => navigate('/admin/products')}
           style={styles.navBtn}
         >
           📦 Products
         </button>
         <button
-          onClick={() => window.location.href = '/admin/orders'}
+          onClick={() => navigate('/admin/orders')}
           style={styles.navBtn}
         >
           📋 Orders
         </button>
         <button
-          onClick={() => window.location.href = '/admin/whatsapp'}
+          onClick={() => navigate('/admin/whatsapp')}
           style={styles.navBtn}
         >
           💬 WhatsApp

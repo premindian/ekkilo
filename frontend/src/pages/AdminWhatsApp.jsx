@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = "";
@@ -10,6 +11,7 @@ export default function AdminWhatsApp() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('ALL');
   const [searchPhone, setSearchPhone] = useState('');
+  const [live, setLive] = useState(false);
 
   useEffect(() => {
     if (token) {
@@ -17,6 +19,43 @@ export default function AdminWhatsApp() {
       loadMessages();
     }
   }, [token, filter]);
+
+  // Live updates via WebSocket
+  useEffect(() => {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = `${proto}://${window.location.host}/ws/admin`;
+    let ws;
+    let closed = false;
+    let retryTimer;
+
+    const connect = () => {
+      if (closed) return;
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => setLive(true);
+        ws.onclose = () => {
+          setLive(false);
+          if (!closed) retryTimer = setTimeout(connect, 4000);
+        };
+        ws.onerror = () => setLive(false);
+        ws.onmessage = () => {
+          // Refresh on any admin broadcast (message_update / new_order)
+          loadStats();
+          loadMessages();
+        };
+      } catch (err) {
+        setLive(false);
+        retryTimer = setTimeout(connect, 4000);
+      }
+    };
+
+    connect();
+    return () => {
+      closed = true;
+      clearTimeout(retryTimer);
+      if (ws) ws.close();
+    };
+  }, [token, filter, searchPhone]);
 
   const loadStats = async () => {
     try {
@@ -93,9 +132,14 @@ export default function AdminWhatsApp() {
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>💬 WhatsApp Messages</h1>
-          <p style={styles.subtitle}>{messages.length} messages</p>
+          <p style={styles.subtitle}>
+            {messages.length} messages{' '}
+            <span style={{ color: live ? '#22c55e' : '#9ca3af', fontSize: 12 }}>
+              ● {live ? 'Live' : 'Connecting...'}
+            </span>
+          </p>
         </div>
-        <button onClick={() => window.location.href = '/admin'} style={styles.backBtn}>
+        <button onClick={() => navigate('/admin')} style={styles.backBtn}>
           ← Back
         </button>
       </div>

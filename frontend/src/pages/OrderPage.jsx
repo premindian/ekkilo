@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { navigate } from '../utils/navigate';
 import { useAuth } from "../context/AuthContext";
 
 // Backend and frontend on SAME domain now!
@@ -289,7 +290,7 @@ export default function OrderPage({ initialSearchText }) {
           `✅ Order #${orderId} placed!\n\nYou'll get a WhatsApp confirmation.\n\nOpen tracking page now?`
         );
         if (track) {
-          window.location.href = `/track?order_id=${orderId}`;
+          navigate(`/track?order_id=${orderId}`);
         }
       } else {
         alert(data.error || data.detail || "✅ Order placed!");

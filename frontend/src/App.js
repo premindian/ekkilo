@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
+import { pathToPage } from './utils/navigate';
 import LoginPage from './pages/LoginPage';
 import OrderPage from './pages/OrderPage';
 import GroceryListsPage from './pages/GroceryListsPage';
@@ -24,16 +25,26 @@ const API_BASE = "";
 function App() {
   const { isAuthenticated, loading, user, token } = useAuth();
   // Initialize currentPage from URL pathname
-  const [currentPage, setCurrentPage] = useState(() => {
-    const path = window.location.pathname;
-    if (path.startsWith('/admin') || path.startsWith('/store') || path.startsWith('/track')) {
-      return path;
-    }
-    return 'order';
-  });
+  const [currentPage, setCurrentPage] = useState(() => pathToPage(window.location.pathname));
   const [searchText, setSearchText] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
+
+  // SPA navigation (no full reloads)
+  useEffect(() => {
+    const applyPath = (to) => {
+      const page = pathToPage(to || window.location.pathname);
+      setCurrentPage(page);
+    };
+    const onNav = (e) => applyPath(e.detail?.to);
+    const onPop = () => applyPath(window.location.pathname + window.location.search);
+    window.addEventListener('app:navigate', onNav);
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('app:navigate', onNav);
+      window.removeEventListener('popstate', onPop);
+    };
+  }, []);
 
   useEffect(() => {
     // Wait for auth to finish loading first

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { navigate } from '../utils/navigate';
 
 const API_BASE = "";
 
@@ -76,7 +77,7 @@ export default function TrackOrder() {
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.logo}>🛒 Smart Kirana</div>
-        <button onClick={() => window.location.href = '/'} style={styles.homeBtn}>
+        <button onClick={() => navigate('/')} style={styles.homeBtn}>
           Home
         </button>
       </div>

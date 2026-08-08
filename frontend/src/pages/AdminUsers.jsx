@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = "";
@@ -11,6 +12,8 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [assignUser, setAssignUser] = useState(null);
   const [selectedStoreId, setSelectedStoreId] = useState('');
+  const [passwordUser, setPasswordUser] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
 
   useEffect(() => {
     if (token) {
@@ -89,6 +92,33 @@ export default function AdminUsers() {
     }
   };
 
+  const setStaffPassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      alert('Password must be at least 6 characters');
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/users/${passwordUser.id}/password?token=${token}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: newPassword }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.detail || 'Failed to set password');
+        return;
+      }
+      alert('✅ Staff password set! They can use Staff Login.');
+      setPasswordUser(null);
+      setNewPassword('');
+    } catch (err) {
+      alert('Failed to set password');
+    }
+  };
+
   const toggleAdmin = async (user) => {
     if (!window.confirm(`Make ${user.name || user.phone} an admin?`)) return;
     
@@ -115,7 +145,7 @@ export default function AdminUsers() {
           <h1 style={styles.title}>👥 User Management</h1>
           <p style={styles.subtitle}>{users.length} users</p>
         </div>
-        <button onClick={() => window.location.href = '/admin'} style={styles.backBtn}>
+        <button onClick={() => navigate('/admin')} style={styles.backBtn}>
           ← Back
         </button>
       </div>
@@ -179,6 +209,14 @@ export default function AdminUsers() {
                   {user.is_admin ? '❌ Remove Admin' : '👑 Make Admin'}
                 </button>
               </div>
+              {(user.is_admin || user.is_store_owner) && (
+                <button
+                  onClick={() => { setPasswordUser(user); setNewPassword(''); }}
+                  style={styles.passwordBtn}
+                >
+                  🔑 Set Staff Password
+                </button>
+              )}
 
               <div style={styles.userMeta}>
                 Joined {new Date(user.created_at).toLocaleDateString()}
@@ -210,6 +248,28 @@ export default function AdminUsers() {
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button onClick={confirmMakeOwner} style={styles.makeOwnerBtn}>Confirm</button>
               <button onClick={() => setAssignUser(null)} style={styles.backBtn}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {passwordUser && (
+        <div style={styles.modal} onClick={() => setPasswordUser(null)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>Set Staff Password</h2>
+            <p style={{ color: '#6b7280' }}>
+              For <strong>{passwordUser.name || passwordUser.phone}</strong>
+            </p>
+            <input
+              type="password"
+              placeholder="New password (min 6 chars)"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              style={styles.select}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={setStaffPassword} style={styles.makeOwnerBtn}>Save Password</button>
+              <button onClick={() => setPasswordUser(null)} style={styles.backBtn}>Cancel</button>
             </div>
           </div>
         </div>
@@ -382,6 +442,18 @@ const styles = {
     flex: 1,
     padding: '8px',
     background: '#f59e0b',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  passwordBtn: {
+    width: '100%',
+    padding: '8px',
+    marginBottom: 12,
+    background: '#8b5cf6',
     color: '#fff',
     border: 'none',
     borderRadius: 8,

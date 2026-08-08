@@ -1,41 +1,42 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { navigate } from '../utils/navigate';
 
 const API_BASE = "";
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const [mode, setMode] = useState('otp'); // 'otp' | 'staff'
   const [step, setStep] = useState('phone'); // 'phone' or 'otp'
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [sentOtp, setSentOtp] = useState(''); // For development
+  const [sentOtp, setSentOtp] = useState('');
+
+  const redirectByRole = (user) => {
+    if (user?.is_admin) navigate('/admin');
+    else if (user?.is_store_owner) navigate('/store');
+  };
 
   const sendOTP = async () => {
     if (!phone) {
       setError('Please enter phone number');
       return;
     }
-
     setLoading(true);
     setError('');
-
     try {
       const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone })
       });
-
       const data = await res.json();
-
       if (res.ok) {
-        // OTP will be sent via WhatsApp in production
-        // Only available in response during development
         if (data.otp) {
-          setSentOtp(data.otp); // Development mode
-          console.log('🔐 DEV OTP:', data.otp);
+          setSentOtp(data.otp);
         }
         setStep('otp');
       } else {
@@ -53,29 +54,47 @@ export default function LoginPage() {
       setError('Please enter OTP');
       return;
     }
-
     setLoading(true);
     setError('');
-
     try {
       const res = await fetch(`${API_BASE}/api/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, otp })
       });
-
       const data = await res.json();
-
       if (res.ok) {
         login(data.token, data.user);
-        // Role-based redirect after login
-        if (data.user?.is_admin) {
-          window.location.href = '/admin';
-        } else if (data.user?.is_store_owner) {
-          window.location.href = '/store';
-        }
+        redirectByRole(data.user);
       } else {
         setError(data.detail || 'Invalid OTP');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const staffLogin = async () => {
+    if (!phone || !password) {
+      setError('Phone and password required');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/staff-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        login(data.token, data.user);
+        redirectByRole(data.user);
+      } else {
+        setError(data.detail || 'Invalid credentials');
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -90,7 +109,22 @@ export default function LoginPage() {
         <h1 style={styles.title}>🛒 Ekkilo</h1>
         <p style={styles.subtitle}>Your Smart Kirana Platform</p>
 
-        {step === 'phone' && (
+        <div style={styles.tabs}>
+          <button
+            onClick={() => { setMode('otp'); setError(''); setStep('phone'); }}
+            style={mode === 'otp' ? styles.tabActive : styles.tab}
+          >
+            Customer OTP
+          </button>
+          <button
+            onClick={() => { setMode('staff'); setError(''); }}
+            style={mode === 'staff' ? styles.tabActive : styles.tab}
+          >
+            Staff Login
+          </button>
+        </div>
+
+        {mode === 'otp' && step === 'phone' && (
           <>
             <input
               type="tel"
@@ -100,42 +134,23 @@ export default function LoginPage() {
               style={styles.input}
               disabled={loading}
             />
-
             {error && <p style={styles.error}>{error}</p>}
-
-            <button
-              onClick={sendOTP}
-              disabled={loading}
-              style={styles.button}
-            >
+            <button onClick={sendOTP} disabled={loading} style={styles.button}>
               {loading ? 'Sending...' : 'Send OTP'}
             </button>
-
-            <p style={styles.hint}>
-              We'll send you a 6-digit code via WhatsApp
-            </p>
+            <p style={styles.hint}>We'll send you a 6-digit code via WhatsApp</p>
           </>
         )}
 
-        {step === 'otp' && (
+        {mode === 'otp' && step === 'otp' && (
           <>
             <p style={styles.info}>
               OTP sent to {phone}
-              <button
-                onClick={() => setStep('phone')}
-                style={styles.changeLink}
-              >
-                Change
-              </button>
+              <button onClick={() => setStep('phone')} style={styles.changeLink}>Change</button>
             </p>
-
-            {/* Development only - remove in production */}
             {sentOtp && (
-              <p style={styles.devOtp}>
-                Dev OTP: <strong>{sentOtp}</strong>
-              </p>
+              <p style={styles.devOtp}>Dev OTP: <strong>{sentOtp}</strong></p>
             )}
-
             <input
               type="text"
               placeholder="Enter 6-digit OTP"
@@ -145,17 +160,10 @@ export default function LoginPage() {
               style={styles.input}
               disabled={loading}
             />
-
             {error && <p style={styles.error}>{error}</p>}
-
-            <button
-              onClick={verifyOTP}
-              disabled={loading}
-              style={styles.button}
-            >
+            <button onClick={verifyOTP} disabled={loading} style={styles.button}>
               {loading ? 'Verifying...' : 'Verify & Login'}
             </button>
-
             <button
               onClick={() => { setStep('phone'); setOtp(''); setSentOtp(''); }}
               style={styles.backButton}
@@ -163,6 +171,35 @@ export default function LoginPage() {
             >
               ← Back
             </button>
+          </>
+        )}
+
+        {mode === 'staff' && (
+          <>
+            <input
+              type="tel"
+              placeholder="Staff mobile number"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              style={styles.input}
+              disabled={loading}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={styles.input}
+              disabled={loading}
+              onKeyPress={(e) => e.key === 'Enter' && staffLogin()}
+            />
+            {error && <p style={styles.error}>{error}</p>}
+            <button onClick={staffLogin} disabled={loading} style={styles.button}>
+              {loading ? 'Signing in...' : 'Staff Sign In'}
+            </button>
+            <p style={styles.hint}>
+              For store owners & admins. Ask an admin to set your password.
+            </p>
           </>
         )}
       </div>
@@ -198,7 +235,34 @@ const styles = {
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 32
+    marginBottom: 20
+  },
+  tabs: {
+    display: 'flex',
+    gap: 8,
+    marginBottom: 20
+  },
+  tab: {
+    flex: 1,
+    padding: 10,
+    border: '1px solid #e5e7eb',
+    background: '#f9fafb',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#6b7280'
+  },
+  tabActive: {
+    flex: 1,
+    padding: 10,
+    border: 'none',
+    background: '#667eea',
+    color: '#fff',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 600
   },
   input: {
     width: '100%',

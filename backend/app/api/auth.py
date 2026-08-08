@@ -3,12 +3,50 @@ from app.db.database import get_db
 import random
 import secrets
 import os
+import hashlib
 from datetime import datetime, timedelta
 
 router = APIRouter()
 
 # Development mode - set to False in production
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+
+
+def hash_password(password: str, salt: str = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), 120000
+    ).hex()
+    return f"{salt}${digest}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    if not stored or "$" not in stored:
+        return False
+    salt, _ = stored.split("$", 1)
+    return hash_password(password, salt) == stored
+
+
+def _user_payload(user) -> dict:
+    return {
+        "id": user["id"],
+        "phone": user["phone"],
+        "name": user["name"],
+        "is_admin": bool(user.get("is_admin")),
+        "is_store_owner": bool(user.get("is_store_owner")),
+        "store_id": user.get("store_id"),
+        "has_password": bool(user.get("password_hash")),
+    }
+
+
+async def _create_session(db, user_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now() + timedelta(days=30)
+    await db.execute("""
+        INSERT INTO user_sessions (user_id, token, expires_at)
+        VALUES ($1, $2, $3)
+    """, user_id, token, expires_at)
+    return token
 
 
 # -----------------------------
@@ -131,27 +169,75 @@ async def verify_otp(data: dict):
             VALUES ($1)
         """, user["id"])
     
-    # Create session token
-    token = secrets.token_urlsafe(32)
-    expires_at = datetime.now() + timedelta(days=30)
-    
-    await db.execute("""
-        INSERT INTO user_sessions (user_id, token, expires_at)
-        VALUES ($1, $2, $3)
-    """, user["id"], token, expires_at)
+    token = await _create_session(db, user["id"])
     
     return {
         "status": "success",
         "token": token,
-        "user": {
-            "id": user["id"],
-            "phone": user["phone"],
-            "name": user["name"],
-            "is_admin": bool(user.get("is_admin")),
-            "is_store_owner": bool(user.get("is_store_owner")),
-            "store_id": user.get("store_id"),
-        }
+        "user": _user_payload(user)
     }
+
+
+# -----------------------------
+# 🔑 STAFF PASSWORD LOGIN (admin / store owner)
+# -----------------------------
+@router.post("/auth/staff-login")
+async def staff_login(data: dict):
+    """Password login for staff (admin or store owner)"""
+    phone = data.get("phone")
+    password = data.get("password")
+
+    if not phone or not password:
+        raise HTTPException(status_code=400, detail="Phone and password required")
+
+    if not phone.startswith("91"):
+        phone = "91" + phone
+
+    db = await get_db()
+    user = await db.fetchrow("SELECT * FROM users WHERE phone = $1", phone)
+
+    if not user or not user.get("password_hash"):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    if not (user.get("is_admin") or user.get("is_store_owner")):
+        raise HTTPException(status_code=403, detail="Staff access only. Use OTP login.")
+
+    if not verify_password(password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = await _create_session(db, user["id"])
+    return {
+        "status": "success",
+        "token": token,
+        "user": _user_payload(user),
+    }
+
+
+# -----------------------------
+# 🔑 SET / CHANGE OWN PASSWORD
+# -----------------------------
+@router.post("/auth/set-password")
+async def set_password(data: dict, token: str):
+    """Set password for current user (staff self-service)"""
+    db = await get_db()
+    user = await get_current_user(token, db)
+    password = data.get("password")
+
+    if not password or len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    # Only staff can set passwords
+    row = await db.fetchrow(
+        "SELECT is_admin, is_store_owner FROM users WHERE id = $1", user["id"]
+    )
+    if not row or not (row["is_admin"] or row["is_store_owner"]):
+        raise HTTPException(status_code=403, detail="Only staff can set passwords")
+
+    await db.execute("""
+        UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2
+    """, hash_password(password), user["id"])
+
+    return {"status": "password_set"}
 
 
 # -----------------------------

@@ -9,7 +9,6 @@ from pathlib import Path
 
 # routers
 from app.api.routes import router
-# from app.api.admin import router as admin_router  # REMOVED: Old legacy admin routes (replaced by admin_portal)
 from app.api.whatsapp import router as whatsapp_router
 from app.api.auth import router as auth_router
 from app.api.grocery_lists import router as grocery_lists_router
@@ -78,7 +77,6 @@ async def health_check():
 # ✅ ROUTERS (API ROUTES FIRST!)
 # -----------------------------------------
 app.include_router(router)
-# app.include_router(admin_router, prefix="/api")  # REMOVED: Old legacy admin routes (replaced by admin_portal)
 app.include_router(whatsapp_router, prefix="/whatsapp")
 app.include_router(auth_router, prefix="/api")
 app.include_router(grocery_lists_router, prefix="/api")

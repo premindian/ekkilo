@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = "";
@@ -59,7 +60,7 @@ export default function AdminOrders() {
           <h1 style={styles.title}>📋 Order Management</h1>
           <p style={styles.subtitle}>{orders.length} orders</p>
         </div>
-        <button onClick={() => window.location.href = '/admin'} style={styles.backBtn}>
+        <button onClick={() => navigate('/admin')} style={styles.backBtn}>
           ← Back
         </button>
       </div>

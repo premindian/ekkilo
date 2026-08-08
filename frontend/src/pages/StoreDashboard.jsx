@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
 import { LineChart, BarChart } from '../components/SimpleChart';
 
@@ -89,7 +90,7 @@ export default function StoreDashboard() {
           <p style={styles.subtitle}>{store.phone}</p>
         </div>
         <div style={styles.headerActions}>
-          <button onClick={() => window.location.href = '/store/settings'} style={styles.settingsBtn}>
+          <button onClick={() => navigate('/store/settings')} style={styles.settingsBtn}>
             ⚙️
           </button>
           <button onClick={logout} style={styles.logoutBtn}>
@@ -251,19 +252,19 @@ export default function StoreDashboard() {
       {/* Quick Links */}
       <div style={styles.quickLinks}>
         <button 
-          onClick={() => window.location.href = '/store/products'}
+          onClick={() => navigate('/store/products')}
           style={styles.quickLink}
         >
           📦 All Products
         </button>
         <button 
-          onClick={() => window.location.href = '/store/orders'}
+          onClick={() => navigate('/store/orders')}
           style={styles.quickLink}
         >
           📋 All Orders
         </button>
         <button 
-          onClick={() => window.location.href = '/store/reports'}
+          onClick={() => navigate('/store/reports')}
           style={styles.quickLink}
         >
           📊 Reports

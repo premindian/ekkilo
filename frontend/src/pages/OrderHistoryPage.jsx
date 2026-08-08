@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = "";
@@ -191,7 +192,7 @@ export default function OrderHistoryPage({ onReorder }) {
 
             <div style={styles.detailActions}>
               <button
-                onClick={() => window.location.href = `/track?order_id=${selectedOrder.order.id}`}
+                onClick={() => navigate(`/track?order_id=${selectedOrder.order.id}`)}
                 style={styles.trackBtn}
               >
                 📍 Track Order

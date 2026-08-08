@@ -264,6 +264,30 @@ async def update_user(user_id: int, data: dict, token: str):
     return {"status": "success"}
 
 
+@router.post("/users/{user_id}/password")
+async def set_user_password(user_id: int, data: dict, token: str):
+    """Admin sets password for a staff user"""
+    await check_admin(token)
+    from app.api.auth import hash_password
+
+    password = data.get("password")
+    if not password or len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    db = await get_db()
+    user = await db.fetchrow("SELECT id, is_admin, is_store_owner FROM users WHERE id = $1", user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not (user["is_admin"] or user["is_store_owner"]):
+        raise HTTPException(status_code=400, detail="User must be admin or store owner first")
+
+    await db.execute("""
+        UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2
+    """, hash_password(password), user_id)
+
+    return {"status": "password_set"}
+
+
 # ============================================
 # PRODUCTS - Master Catalog
 # ============================================

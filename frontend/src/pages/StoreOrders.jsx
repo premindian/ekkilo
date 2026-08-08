@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = "";
@@ -52,7 +53,7 @@ export default function StoreOrders() {
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>📋 Orders</h1>
-        <button onClick={() => window.location.href = '/store'} style={styles.backBtn}>
+        <button onClick={() => navigate('/store')} style={styles.backBtn}>
           ← Back
         </button>
       </div>
