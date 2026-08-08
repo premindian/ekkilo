@@ -21,10 +21,11 @@ export default function AdminWhatsApp() {
       loadMessages();
       loadInbound();
     }
-  }, [token, filter]);
+  }, [token]);
 
   // Live updates via WebSocket
   useEffect(() => {
+    if (!token) return undefined;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl = `${proto}://${window.location.host}/ws/admin`;
     let ws;
@@ -59,7 +60,7 @@ export default function AdminWhatsApp() {
       clearTimeout(retryTimer);
       if (ws) ws.close();
     };
-  }, [token, filter, searchPhone]);
+  }, [token]);
 
   const loadStats = async () => {
     try {
@@ -79,16 +80,12 @@ export default function AdminWhatsApp() {
     setLoading(true);
     setListError('');
     try {
-      let url = `${API_BASE}/api/admin/whatsapp/messages?token=${token}&limit=100`;
-      
-      if (filter !== 'ALL') {
-        url += `&status=${filter}`;
-      }
-      
+      // Always load the full recent list; status tabs filter client-side
+      let url = `${API_BASE}/api/admin/whatsapp/messages?token=${token}&limit=200`;
       if (searchPhone) {
         url += `&phone=${encodeURIComponent(searchPhone)}`;
       }
-      
+
       const res = await fetch(url);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -108,11 +105,17 @@ export default function AdminWhatsApp() {
     }
   };
 
+  const normalizeStatus = (status) => String(status || 'PENDING').trim().toUpperCase();
+
   const statusCount = (key) => {
-    if (key === 'ALL') return stats.total_messages || 0;
-    if (stats.by_status && stats.by_status[key] != null) return stats.by_status[key];
-    return stats[key.toLowerCase()] || 0;
+    if (key === 'ALL') return messages.length;
+    return messages.filter((m) => normalizeStatus(m.status) === key).length;
   };
+
+  const visibleMessages =
+    filter === 'ALL'
+      ? messages
+      : messages.filter((m) => normalizeStatus(m.status) === filter);
 
   const loadInbound = async () => {
     try {
@@ -167,7 +170,8 @@ export default function AdminWhatsApp() {
         <div>
           <h1 style={styles.title}>💬 WhatsApp Messages</h1>
           <p style={styles.subtitle}>
-            {messages.length} messages{' '}
+            {visibleMessages.length}
+            {filter !== 'ALL' ? ` ${filter}` : ''} / {messages.length} messages{' '}
             <span style={{ color: live ? '#22c55e' : '#9ca3af', fontSize: 12 }}>
               ● {live ? 'Live' : 'Connecting...'}
             </span>
@@ -285,8 +289,12 @@ export default function AdminWhatsApp() {
       {/* Messages Table */}
       {loading ? (
         <div style={styles.loading}>Loading...</div>
-      ) : messages.length === 0 ? (
-        <div style={styles.empty}>No messages found</div>
+      ) : visibleMessages.length === 0 ? (
+        <div style={styles.empty}>
+          {messages.length === 0
+            ? 'No messages found'
+            : `No ${filter} messages (try ALL — ${messages.length} total loaded)`}
+        </div>
       ) : (
         <div style={styles.tableContainer}>
           <table style={styles.table}>
@@ -301,7 +309,7 @@ export default function AdminWhatsApp() {
               </tr>
             </thead>
             <tbody>
-              {messages.map(msg => (
+              {visibleMessages.map(msg => (
                 <tr key={msg.id} style={styles.tr}>
                   <td style={styles.td}>
                     <div style={styles.dateCell}>
@@ -316,8 +324,8 @@ export default function AdminWhatsApp() {
                     <div style={styles.messageCell}>{msg.message}</div>
                   </td>
                   <td style={styles.td}>
-                    <span style={{...styles.statusBadge, background: getStatusColor(msg.status)}}>
-                      {msg.status}
+                    <span style={{...styles.statusBadge, background: getStatusColor(normalizeStatus(msg.status))}}>
+                      {normalizeStatus(msg.status)}
                     </span>
                     {msg.attempts > 0 && (
                       <div style={styles.smallText}>Attempts: {msg.attempts}</div>
@@ -339,7 +347,7 @@ export default function AdminWhatsApp() {
                     ) : '-'}
                   </td>
                   <td style={styles.td}>
-                    {msg.status === 'FAILED' && (
+                    {normalizeStatus(msg.status) === 'FAILED' && (
                       <button 
                         onClick={() => resendMessage(msg.id)}
                         style={styles.resendBtn}
