@@ -91,7 +91,7 @@ export default function AdminWhatsApp() {
   };
 
   const resendMessage = async (messageId) => {
-    if (!confirm('Resend this message?')) return;
+    if (!window.confirm('Resend this message?')) return;
     
     try {
       await fetch(`${API_BASE}/api/admin/whatsapp/resend/${messageId}?token=${token}`, {
