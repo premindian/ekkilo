@@ -233,57 +233,27 @@ async def update_store_order(order_id: int, data: dict, token: str):
             detail=f"Invalid status. Allowed: {allowed_statuses}"
         )
     
-    # Update order
-    await db.execute("""
-        UPDATE store_orders
-        SET status = $1, updated_at = NOW()
-        WHERE id = $2
-    """, new_status, order_id)
-    
-    # Insert event
-    await db.execute("""
-        INSERT INTO store_order_events (store_order_id, status)
-        VALUES ($1, $2)
-    """, order_id, new_status)
-    
-    # Aggregate final order status + notify customer if needed
-    from app.services.order_service import update_final_order_status
-    from app.services.whatsapp import send_message
-    
+    from app.services.order_status import (
+        ensure_order_schema,
+        set_store_order_status,
+        update_final_order_status,
+        notify_customer_status,
+    )
+
+    await ensure_order_schema(db)
+    await set_store_order_status(order_id, new_status, db=db)
+
     final_order_id = order["final_order_id"]
-    final_status, notify_customer = await update_final_order_status(final_order_id)
-    
+    final_status, notify_customer = await update_final_order_status(final_order_id, db=db)
+
     if notify_customer:
-        customer = await db.fetchrow("""
-            SELECT customer_phone FROM final_orders WHERE id = $1
-        """, final_order_id)
-        if customer:
-            if final_status == "COMPLETED":
-                await send_message(
-                    customer["customer_phone"],
-                    f"✅ Order #{final_order_id} is complete. Thank you for shopping with Ekkilo!"
-                )
-            elif final_status == "READY":
-                await send_message(
-                    customer["customer_phone"],
-                    f"🎉 Great news! Your order #{final_order_id} is READY for pickup at all stores!"
-                )
-            elif final_status == "REJECTED":
-                await send_message(
-                    customer["customer_phone"],
-                    f"😔 Sorry, order #{final_order_id} cannot be fulfilled. All stores are unavailable."
-                )
-            elif final_status in ("PARTIAL", "PARTIAL_READY"):
-                ready_stores = await db.fetch("""
-                    SELECT store_name FROM store_orders
-                    WHERE final_order_id = $1 AND status IN ('READY', 'ACCEPTED', 'COMPLETED')
-                """, final_order_id)
-                store_list = ", ".join([s["store_name"] for s in ready_stores]) or "remaining stores"
-                await send_message(
-                    customer["customer_phone"],
-                    f"⚠️ Order #{final_order_id} update: partial fulfillment.\nProceeding with: {store_list}"
-                )
-    
+        await notify_customer_status(
+            final_order_id,
+            final_status,
+            store_name=order.get("store_name"),
+            db=db,
+        )
+
     return {"status": "success", "new_status": new_status, "final_status": final_status}
 
 

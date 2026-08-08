@@ -131,34 +131,16 @@ async def cancel_order(order_id: int, token: str):
             detail=f"Cannot cancel order in status {order['status']}"
         )
 
-    await db.execute("""
-        UPDATE final_orders
-        SET status = 'CANCELLED', updated_at = NOW()
-        WHERE id = $1
-    """, order_id)
+    from app.services.order_status import cancel_final_order
 
-    await db.execute("""
-        INSERT INTO final_order_events (final_order_id, status)
-        VALUES ($1, 'CANCELLED')
-    """, order_id)
-
-    await db.execute("""
-        UPDATE store_orders
-        SET status = 'CANCELLED', updated_at = NOW()
-        WHERE final_order_id = $1 AND status NOT IN ('COMPLETED', 'REJECTED')
-    """, order_id)
-
-    await db.execute("""
-        INSERT INTO store_order_events (store_order_id, status)
-        SELECT id, 'CANCELLED'
-        FROM store_orders
-        WHERE final_order_id = $1
-    """, order_id)
+    result = await cancel_final_order(order_id, db=db)
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result["message"])
 
     # Best-effort WhatsApp notify
     try:
         from app.services.whatsapp import send_message
-        await send_message(phone, f"❌ Order #{order_id} cancelled")
+        await send_message(phone, result["message"])
     except Exception:
         pass
 

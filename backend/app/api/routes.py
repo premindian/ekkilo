@@ -33,32 +33,30 @@ async def create_order(data: dict, background_tasks: BackgroundTasks):
     # -----------------------------
     # 🧾 CREATE ORDER
     # -----------------------------
+    from app.services.order_status import ensure_order_schema, set_final_order_status
+    from app.utils.phone import normalize_phone
+
+    await ensure_order_schema(db)
+    phone = normalize_phone(phone)
+
     final_order_id, whatsapp_jobs = await create_full_order(stores, phone)
     
     # -----------------------------
     # ✅ WEB ORDERS AUTO-CONFIRMED
     # -----------------------------
-    await db.execute("""
-        UPDATE final_orders
-        SET status = 'CONFIRMED', updated_at = NOW()
-        WHERE id = $1
-    """, final_order_id)
-
-    await db.execute("""
-        INSERT INTO final_order_events (final_order_id, status)
-        VALUES ($1, 'CONFIRMED')
-    """, final_order_id)
+    await set_final_order_status(final_order_id, "CONFIRMED", db=db)
 
     # -----------------------------
     # 📲 STORE MESSAGES
     # -----------------------------
     for store_phone, message in whatsapp_jobs:
+        store_phone = normalize_phone(store_phone)
 
         row = await db.fetchrow("""
-         INSERT INTO whatsapp_messages (phone, message)
-              VALUES ($1, $2)
+         INSERT INTO whatsapp_messages (phone, message, final_order_id)
+              VALUES ($1, $2, $3)
               RETURNING id
-            """, store_phone, message)
+            """, store_phone, message, final_order_id)
 
         msg_id = row["id"]
 
@@ -85,14 +83,20 @@ Order ID: {final_order_id}
 
 {summary_text}
 
+Track: https://ekkilo.onrender.com/track?order={final_order_id}
+
+Commands:
+STATUS#{final_order_id}
+CANCEL#{final_order_id}
+
 We will notify you when ready 🚀
 """
 
     row = await db.fetchrow("""
-        INSERT INTO whatsapp_messages (phone, message)
-              VALUES ($1, $2)
+        INSERT INTO whatsapp_messages (phone, message, final_order_id)
+              VALUES ($1, $2, $3)
               RETURNING id
-            """, phone, customer_message)
+            """, phone, customer_message, final_order_id)
 
     msg_id = row["id"]
     print("📤 Queue customer message:", phone)

@@ -36,13 +36,18 @@ export default function StoreOrders() {
     if (!window.confirm(`${status} this order?`)) return;
     
     try {
-      await fetch(`${API_BASE}/api/store/orders/${orderId}?token=${token}`, {
+      const res = await fetch(`${API_BASE}/api/store/orders/${orderId}?token=${token}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`❌ Failed: ${data.detail || res.statusText}`);
+        return;
+      }
       loadOrders();
-      alert(`✅ Order ${status.toLowerCase()}!`);
+      alert(`✅ Order ${status.toLowerCase()}!${data.final_status ? ` (final: ${data.final_status})` : ''}`);
     } catch (err) {
       alert('❌ Failed to update order');
     }

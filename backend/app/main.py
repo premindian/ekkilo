@@ -30,6 +30,15 @@ from app.core.ws_manager import manager
 async def lifespan(app: FastAPI):
     print("🚀 App starting...")
 
+    try:
+        from app.db.database import get_db
+        from app.services.order_status import ensure_order_schema
+        db = await get_db()
+        await ensure_order_schema(db)
+        print("✅ Order schema verified")
+    except Exception as e:
+        print(f"⚠️ Order schema ensure failed: {e}")
+
     task = asyncio.create_task(retry_failed_messages())
 
     yield
@@ -78,6 +87,8 @@ async def health_check():
 # -----------------------------------------
 app.include_router(router)
 app.include_router(whatsapp_router, prefix="/whatsapp")
+# Alias: some Meta apps are configured as https://host/webhook
+app.include_router(whatsapp_router, prefix="")
 app.include_router(auth_router, prefix="/api")
 app.include_router(grocery_lists_router, prefix="/api")
 app.include_router(preferences_router, prefix="/api")
