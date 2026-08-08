@@ -272,16 +272,31 @@ export default function OrderPage({ initialSearchText }) {
 
     const formatted = user.phone.startsWith("91") ? user.phone : "91" + user.phone;
 
-    await fetch(`${API_BASE}/order`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phone: formatted,
-        stores: storesPayload,
-      }),
-    });
+    try {
+      const res = await fetch(`${API_BASE}/order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: formatted,
+          stores: storesPayload,
+        }),
+      });
+      const data = await res.json();
+      const orderId = data.final_order_id;
 
-    alert("✅ Order placed! You'll receive a WhatsApp confirmation.");
+      if (orderId) {
+        const track = window.confirm(
+          `✅ Order #${orderId} placed!\n\nYou'll get a WhatsApp confirmation.\n\nOpen tracking page now?`
+        );
+        if (track) {
+          window.location.href = `/track?order_id=${orderId}`;
+        }
+      } else {
+        alert(data.error || data.detail || "✅ Order placed!");
+      }
+    } catch (err) {
+      alert("❌ Failed to place order. Please try again.");
+    }
   };
 
   return (

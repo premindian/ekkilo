@@ -46,32 +46,24 @@ app = FastAPI(lifespan=lifespan)
 
 
 # -----------------------------------------
-# ✅ CORS (ALLOW ALL - FIX LATER)
+# ✅ CORS (production + local frontend)
 # -----------------------------------------
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "CORS_ORIGINS",
+        "https://ekkilo.onrender.com,https://www.ekkilo.onrender.com,http://localhost:3000,http://127.0.0.1:3000"
+    ).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Must be ONLY "*", not mixed with specific domains
-    allow_credentials=False,  # Must be False when using "*"
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# -----------------------------------------
-# ✅ PREFLIGHT WITH EXPLICIT CORS HEADERS
-# -----------------------------------------
-from fastapi.responses import Response
-
-@app.options("/{full_path:path}")
-async def preflight_handler():
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-            "Access-Control-Allow-Headers": "*",
-        }
-    )
 
 
 # -----------------------------------------

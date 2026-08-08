@@ -1,15 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const API_BASE = "";
 
 export default function TrackOrder() {
-  const [orderId, setOrderId] = useState('');
+  const params = new URLSearchParams(window.location.search);
+  const initialId = params.get('order_id') || '';
+  const [orderId, setOrderId] = useState(initialId);
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const trackOrder = async () => {
-    if (!orderId) {
+  const trackOrder = async (idOverride) => {
+    const id = idOverride || orderId;
+    if (!id) {
       setError('Please enter an order ID');
       return;
     }
@@ -19,7 +22,7 @@ export default function TrackOrder() {
     setOrderDetails(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/orders/track?order_id=${orderId}`);
+      const res = await fetch(`${API_BASE}/api/orders/track?order_id=${id}`);
       
       if (!res.ok) {
         throw new Error('Order not found');
@@ -34,13 +37,23 @@ export default function TrackOrder() {
     }
   };
 
+  useEffect(() => {
+    if (initialId) {
+      trackOrder(initialId);
+    }
+  }, []);
+
   const getOrderStatusIcon = (status) => {
     const icons = {
       'CREATED': '📝',
       'CONFIRMED': '✅',
       'ACCEPTED': '👍',
+      'PROCESSING': '🔄',
+      'PARTIAL': '⚠️',
+      'PARTIAL_READY': '🟡',
       'READY': '📦',
       'COMPLETED': '✓',
+      'REJECTED': '🚫',
       'CANCELLED': '❌'
     };
     return icons[status] || '🔄';
@@ -52,7 +65,8 @@ export default function TrackOrder() {
       'ACCEPTED': '#22c55e',
       'READY': '#3b82f6',
       'COMPLETED': '#10b981',
-      'REJECTED': '#ef4444'
+      'REJECTED': '#ef4444',
+      'CANCELLED': '#ef4444'
     };
     return colors[status] || '#9ca3af';
   };

@@ -13,3 +13,5 @@ services:
         sync: false
       - key: DEV_MODE
         value: "false"
+      - key: CORS_ORIGINS
+        value: "https://ekkilo.onrender.com,https://www.ekkilo.onrender.com,http://localhost:3000,http://127.0.0.1:3000"

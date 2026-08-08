@@ -108,6 +108,64 @@ async def get_order_details(order_id: int, token: str):
 
 
 # -----------------------------
+# ❌ CANCEL ORDER (web)
+# -----------------------------
+@router.post("/orders/{order_id}/cancel")
+async def cancel_order(order_id: int, token: str):
+    """Cancel an order from the customer web portal"""
+    db = await get_db()
+    user = await get_current_user(token, db)
+    phone = _normalize_phone(user["phone"])
+
+    order = await db.fetchrow("""
+        SELECT id, status FROM final_orders
+        WHERE id = $1 AND (customer_phone = $2 OR customer_phone = $3)
+    """, order_id, phone, user["phone"])
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order["status"] in ("READY", "COMPLETED", "CANCELLED"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel order in status {order['status']}"
+        )
+
+    await db.execute("""
+        UPDATE final_orders
+        SET status = 'CANCELLED', updated_at = NOW()
+        WHERE id = $1
+    """, order_id)
+
+    await db.execute("""
+        INSERT INTO final_order_events (final_order_id, status)
+        VALUES ($1, 'CANCELLED')
+    """, order_id)
+
+    await db.execute("""
+        UPDATE store_orders
+        SET status = 'CANCELLED', updated_at = NOW()
+        WHERE final_order_id = $1 AND status NOT IN ('COMPLETED', 'REJECTED')
+    """, order_id)
+
+    await db.execute("""
+        INSERT INTO store_order_events (store_order_id, status)
+        SELECT id, 'CANCELLED'
+        FROM store_orders
+        WHERE final_order_id = $1
+    """, order_id)
+
+    # Best-effort WhatsApp notify
+    try:
+        from app.services.whatsapp import send_message
+        await send_message(phone, f"❌ Order #{order_id} cancelled")
+    except Exception:
+        pass
+
+    return {"status": "cancelled", "order_id": order_id}
+
+
+# -----------------------------
 # 🔄 REORDER
 # -----------------------------
 @router.post("/orders/{order_id}/reorder")

@@ -56,10 +56,16 @@ export default function OrderHistoryPage({ onReorder }) {
 
   const getStatusColor = (status) => {
     const colors = {
+      'CREATED': '#9ca3af',
       'PENDING': '#f59e0b',
       'CONFIRMED': '#3b82f6',
+      'ACCEPTED': '#2563eb',
+      'PROCESSING': '#6366f1',
+      'PARTIAL': '#f59e0b',
+      'PARTIAL_READY': '#f97316',
       'READY': '#22c55e',
       'COMPLETED': '#10b981',
+      'REJECTED': '#ef4444',
       'CANCELLED': '#ef4444'
     };
     return colors[status] || '#999';
@@ -67,13 +73,42 @@ export default function OrderHistoryPage({ onReorder }) {
 
   const getStatusLabel = (status) => {
     const labels = {
+      'CREATED': '📝 Created',
       'PENDING': '⏳ Pending',
       'CONFIRMED': '✅ Confirmed',
+      'ACCEPTED': '👍 Accepted',
+      'PROCESSING': '🔄 Processing',
+      'PARTIAL': '⚠️ Partial',
+      'PARTIAL_READY': '🟡 Partially Ready',
       'READY': '📦 Ready',
       'COMPLETED': '🎉 Completed',
+      'REJECTED': '🚫 Rejected',
       'CANCELLED': '❌ Cancelled'
     };
     return labels[status] || status;
+  };
+
+  const canCancel = (status) => {
+    return !['READY', 'COMPLETED', 'CANCELLED'].includes(status);
+  };
+
+  const handleCancel = async (orderId) => {
+    if (!window.confirm(`Cancel order #${orderId}?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/${orderId}/cancel?token=${token}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.detail || 'Failed to cancel');
+        return;
+      }
+      alert('✅ Order cancelled');
+      setSelectedOrder(null);
+      loadOrders();
+    } catch (err) {
+      alert('Failed to cancel order');
+    }
   };
 
   if (loading) {
@@ -154,12 +189,28 @@ export default function OrderHistoryPage({ onReorder }) {
               </div>
             ))}
 
-            <button 
-              onClick={() => handleReorder(selectedOrder.order.id)}
-              style={styles.reorderBtn}
-            >
-              🔄 Reorder
-            </button>
+            <div style={styles.detailActions}>
+              <button
+                onClick={() => window.location.href = `/track?order_id=${selectedOrder.order.id}`}
+                style={styles.trackBtn}
+              >
+                📍 Track Order
+              </button>
+              {canCancel(selectedOrder.order.status) && (
+                <button
+                  onClick={() => handleCancel(selectedOrder.order.id)}
+                  style={styles.cancelBtn}
+                >
+                  ❌ Cancel Order
+                </button>
+              )}
+              <button 
+                onClick={() => handleReorder(selectedOrder.order.id)}
+                style={styles.reorderBtn}
+              >
+                🔄 Reorder
+              </button>
+            </div>
           </>
         )}
       </div>
@@ -396,6 +447,36 @@ const styles = {
     fontWeight: 600,
     textAlign: 'right'
   },
+  detailActions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    marginTop: 16
+  },
+  trackBtn: {
+    width: '100%',
+    padding: '16px',
+    background: '#3b82f6',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 10,
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: 'pointer',
+    minHeight: 52
+  },
+  cancelBtn: {
+    width: '100%',
+    padding: '16px',
+    background: '#ef4444',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 10,
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: 'pointer',
+    minHeight: 52
+  },
   reorderBtn: {
     width: '100%',
     padding: '16px',
@@ -406,7 +487,6 @@ const styles = {
     fontSize: 16,
     fontWeight: 600,
     cursor: 'pointer',
-    marginTop: 16,
     minHeight: 52,
     touchAction: 'manipulation'
   }

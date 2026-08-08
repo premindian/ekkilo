@@ -53,15 +53,18 @@ async def send_otp(data: dict):
         # Still allow registration to proceed even if SMS fails
     
     response = {
-        "status": "sent",
+        "status": "sent" if otp_sent else "queued",
         "phone": phone,
         "otp_sent": otp_sent
     }
     
-    # Include OTP in response ONLY in development mode
-    if DEV_MODE or not otp_sent:
+    # Include OTP in response ONLY in development mode (never in production)
+    if DEV_MODE:
         response["otp"] = otp
-        print(f"⚠️ DEV MODE: OTP included in response")
+        print("⚠️ DEV MODE: OTP included in response")
+    elif not otp_sent:
+        # Don't leak OTP — tell client to retry / check WhatsApp later
+        response["message"] = "OTP generated. If you don't receive WhatsApp, try again in a minute."
     
     return response
 

@@ -115,7 +115,7 @@ async function loadOrder() {
     }
 
     try {
-        const res = await fetch(`${API_BASE}/track/${orderId}`);
+        const res = await fetch(`${API_BASE}/api/orders/track?order_id=${orderId}`);
         const data = await res.json();
 
         if (!data.stores || data.stores.length === 0) {
@@ -125,14 +125,14 @@ async function loadOrder() {
 
         // 🏪 Store display
         const storeDiv = document.getElementById("store");
-        storeDiv.innerHTML = "<b>🏪 Stores:</b><br>";
+        storeDiv.innerHTML = `<b>Status:</b> ${data.order_status || '—'}<br><b>🏪 Stores:</b><br>`;
 
         data.stores.forEach(s => {
-            storeDiv.innerHTML += `• ${s.store} → <b>${s.status}</b><br>`;
+            storeDiv.innerHTML += `• ${s.store_name || s.store} → <b>${s.status}</b><br>`;
         });
 
         // 📊 Progress
-        const overall = getOverallStatus(data.stores);
+        const overall = data.order_status || getOverallStatus(data.stores);
         renderProgress(overall);
 
     } catch (err) {
