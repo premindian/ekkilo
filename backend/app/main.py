@@ -33,11 +33,13 @@ async def lifespan(app: FastAPI):
     try:
         from app.db.database import get_db
         from app.services.order_status import ensure_order_schema
+        from app.api.admin_portal import ensure_whatsapp_messages_schema
         db = await get_db()
         await ensure_order_schema(db)
-        print("✅ Order schema verified")
+        await ensure_whatsapp_messages_schema(db)
+        print("✅ Order + WhatsApp schema verified")
     except Exception as e:
-        print(f"⚠️ Order schema ensure failed: {e}")
+        print(f"⚠️ Schema ensure failed: {e}")
 
     # Critical: subscribe app to WABA so inbound WhatsApp messages hit our webhook
     try:

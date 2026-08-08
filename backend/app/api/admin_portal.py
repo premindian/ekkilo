@@ -538,9 +538,41 @@ async def get_order_details(order_id: int, token: str):
 # WHATSAPP MESSAGES
 # ============================================
 
+async def ensure_whatsapp_messages_schema(db):
+    """Older DBs may be missing timestamp columns — add them idempotently."""
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_messages (
+            id SERIAL PRIMARY KEY,
+            phone VARCHAR(20) NOT NULL,
+            message TEXT NOT NULL,
+            status VARCHAR(20) DEFAULT 'PENDING',
+            whatsapp_message_id VARCHAR(100),
+            attempts INTEGER DEFAULT 0,
+            last_error TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            sent_at TIMESTAMPTZ,
+            delivered_at TIMESTAMPTZ,
+            read_at TIMESTAMPTZ
+        )
+    """)
+    await db.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'PENDING'")
+    await db.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS whatsapp_message_id VARCHAR(100)")
+    await db.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0")
+    await db.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS last_error TEXT")
+    await db.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
+    await db.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ")
+    await db.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ")
+    await db.execute("ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ")
+    await db.execute("""
+        ALTER TABLE whatsapp_messages
+        ADD COLUMN IF NOT EXISTS final_order_id INTEGER
+    """)
+
+
 async def _normalize_whatsapp_statuses(db):
     """Repair null/lowercase/legacy status values so filters & stats work."""
     try:
+        await ensure_whatsapp_messages_schema(db)
         await db.execute("""
             UPDATE whatsapp_messages
             SET status = UPPER(BTRIM(status::text))
@@ -569,9 +601,11 @@ def _serialize_wa_row(row) -> dict:
         val = d.get(key)
         if val is not None and hasattr(val, "isoformat"):
             d[key] = val.isoformat()
+        elif key not in d:
+            d[key] = None
     if d.get("status") is not None:
         d["status"] = str(d["status"]).strip().upper() or "PENDING"
-    elif "status" in d:
+    else:
         d["status"] = "PENDING"
     return d
 
@@ -582,6 +616,7 @@ async def get_whatsapp_messages(token: str, phone: str = None, status: str = Non
     await check_admin(token)
 
     db = await get_db()
+    await ensure_whatsapp_messages_schema(db)
     await _normalize_whatsapp_statuses(db)
 
     # Keep this query simple — complex status expressions were breaking the admin list.
@@ -650,6 +685,7 @@ async def get_whatsapp_stats(token: str):
     await check_admin(token)
     
     db = await get_db()
+    await ensure_whatsapp_messages_schema(db)
     await _normalize_whatsapp_statuses(db)
     
     try:
