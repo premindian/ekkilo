@@ -1,13 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = "";
 
+const STATUS_TABS = [
+  { key: 'ALL', label: 'Total', color: '#1f2937' },
+  { key: 'PENDING', label: 'Pending', color: '#fbbf24' },
+  { key: 'SENT', label: 'Sent', color: '#60a5fa' },
+  { key: 'DELIVERED', label: 'Delivered', color: '#22c55e' },
+  { key: 'READ', label: 'Read', color: '#16a34a' },
+  { key: 'FAILED', label: 'Failed', color: '#ef4444' },
+];
+
+function normalizeStatus(status) {
+  return String(status || 'PENDING').trim().toUpperCase();
+}
+
 export default function AdminWhatsApp() {
   const { token } = useAuth();
   const [messages, setMessages] = useState([]);
-  const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('ALL');
   const [searchPhone, setSearchPhone] = useState('');
@@ -15,15 +27,67 @@ export default function AdminWhatsApp() {
   const [inbound, setInbound] = useState([]);
   const [listError, setListError] = useState('');
 
+  const loadMessages = async () => {
+    if (!token) return;
+    setLoading(true);
+    setListError('');
+    try {
+      let url = `${API_BASE}/api/admin/whatsapp/messages?token=${encodeURIComponent(token)}&limit=200`;
+      if (searchPhone.trim()) {
+        url += `&phone=${encodeURIComponent(searchPhone.trim())}`;
+      }
+
+      const res = await fetch(url);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const detail =
+          typeof data?.detail === 'string'
+            ? data.detail
+            : `Failed to load messages (${res.status})`;
+        setListError(detail);
+        return;
+      }
+      if (!Array.isArray(data)) {
+        setListError('Unexpected response loading messages');
+        setMessages([]);
+        return;
+      }
+      setMessages(
+        data.map((m) => ({
+          ...m,
+          status: normalizeStatus(m.status),
+          last_error: m.last_error != null ? String(m.last_error) : null,
+          message: m.message != null ? String(m.message) : '',
+        }))
+      );
+    } catch (err) {
+      console.error('Failed to load messages:', err);
+      setListError('Cannot reach server for WhatsApp messages');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadInbound = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/whatsapp/inbound?token=${encodeURIComponent(token)}&limit=20`
+      );
+      const data = await res.json();
+      setInbound(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load inbound webhooks:', err);
+    }
+  };
+
   useEffect(() => {
     if (token) {
-      loadStats();
       loadMessages();
       loadInbound();
     }
   }, [token]);
 
-  // Live updates via WebSocket
   useEffect(() => {
     if (!token) return undefined;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -43,8 +107,6 @@ export default function AdminWhatsApp() {
         };
         ws.onerror = () => setLive(false);
         ws.onmessage = () => {
-          // Refresh on any admin broadcast (message_update / new_order / inbound)
-          loadStats();
           loadMessages();
           loadInbound();
         };
@@ -62,78 +124,28 @@ export default function AdminWhatsApp() {
     };
   }, [token]);
 
-  const loadStats = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/whatsapp/stats?token=${token}`);
-      const data = await res.json();
-      if (!res.ok) {
-        console.error('Failed to load stats:', data);
-        return;
-      }
-      setStats(data || {});
-    } catch (err) {
-      console.error('Failed to load stats:', err);
+  const counts = useMemo(() => {
+    const c = { ALL: messages.length, PENDING: 0, SENT: 0, DELIVERED: 0, READ: 0, FAILED: 0 };
+    for (const m of messages) {
+      const s = normalizeStatus(m.status);
+      if (c[s] != null) c[s] += 1;
+      else c.PENDING += 1; // unknown statuses show under Pending bucket
     }
-  };
+    return c;
+  }, [messages]);
 
-  const loadMessages = async () => {
-    setLoading(true);
-    setListError('');
-    try {
-      // Always load the full recent list; status tabs filter client-side
-      let url = `${API_BASE}/api/admin/whatsapp/messages?token=${token}&limit=200`;
-      if (searchPhone) {
-        url += `&phone=${encodeURIComponent(searchPhone)}`;
-      }
-
-      const res = await fetch(url);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const detail = typeof data.detail === 'string' ? data.detail : `Failed to load messages (${res.status})`;
-        console.error('Failed to load messages:', data);
-        setListError(detail);
-        setMessages([]);
-        return;
-      }
-      setMessages(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Failed to load messages:', err);
-      setListError('Cannot reach server for WhatsApp messages');
-      setMessages([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const normalizeStatus = (status) => String(status || 'PENDING').trim().toUpperCase();
-
-  const statusCount = (key) => {
-    if (key === 'ALL') return messages.length;
-    return messages.filter((m) => normalizeStatus(m.status) === key).length;
-  };
-
-  const visibleMessages =
-    filter === 'ALL'
-      ? messages
-      : messages.filter((m) => normalizeStatus(m.status) === filter);
-
-  const loadInbound = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/whatsapp/inbound?token=${token}&limit=20`);
-      const data = await res.json();
-      setInbound(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Failed to load inbound webhooks:', err);
-    }
-  };
+  const visibleMessages = useMemo(() => {
+    if (filter === 'ALL') return messages;
+    return messages.filter((m) => normalizeStatus(m.status) === filter);
+  }, [messages, filter]);
 
   const resendMessage = async (messageId) => {
     if (!window.confirm('Resend this message?')) return;
-    
     try {
-      await fetch(`${API_BASE}/api/admin/whatsapp/resend/${messageId}?token=${token}`, {
-        method: 'POST'
-      });
+      await fetch(
+        `${API_BASE}/api/admin/whatsapp/resend/${messageId}?token=${encodeURIComponent(token)}`,
+        { method: 'POST' }
+      );
       alert('Message queued for resend!');
       loadMessages();
     } catch (err) {
@@ -147,7 +159,7 @@ export default function AdminWhatsApp() {
       SENT: '#60a5fa',
       DELIVERED: '#34d399',
       READ: '#22c55e',
-      FAILED: '#ef4444'
+      FAILED: '#ef4444',
     };
     return colors[status] || '#9ca3af';
   };
@@ -155,62 +167,65 @@ export default function AdminWhatsApp() {
   const formatDate = (dateStr) => {
     if (!dateStr) return '-';
     const date = new Date(dateStr);
-    return date.toLocaleString('en-IN', { 
-      month: 'short', 
-      day: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    if (Number.isNaN(date.getTime())) return String(dateStr);
+    return date.toLocaleString('en-IN', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
   return (
     <div style={styles.container}>
-      {/* Header */}
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>💬 WhatsApp Messages</h1>
           <p style={styles.subtitle}>
-            {visibleMessages.length}
-            {filter !== 'ALL' ? ` ${filter}` : ''} / {messages.length} messages{' '}
+            Showing {visibleMessages.length} of {messages.length}{' '}
             <span style={{ color: live ? '#22c55e' : '#9ca3af', fontSize: 12 }}>
               ● {live ? 'Live' : 'Connecting...'}
             </span>
           </p>
         </div>
-        <button onClick={() => navigate('/admin')} style={styles.backBtn}>
-          ← Back
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={loadMessages} style={styles.searchBtn}>
+            🔄 Refresh
+          </button>
+          <button onClick={() => navigate('/admin')} style={styles.backBtn}>
+            ← Back
+          </button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Clickable status tabs (these are the numbered cards) */}
       <div style={styles.statsGrid}>
-        <div style={styles.statCard}>
-          <div style={styles.statValue}>{stats.total_messages || 0}</div>
-          <div style={styles.statLabel}>Total</div>
-        </div>
-        <div style={styles.statCard}>
-          <div style={{...styles.statValue, color: '#fbbf24'}}>{stats.pending || 0}</div>
-          <div style={styles.statLabel}>Pending</div>
-        </div>
-        <div style={styles.statCard}>
-          <div style={{...styles.statValue, color: '#60a5fa'}}>{stats.sent || 0}</div>
-          <div style={styles.statLabel}>Sent</div>
-        </div>
-        <div style={styles.statCard}>
-          <div style={{...styles.statValue, color: '#22c55e'}}>{stats.delivered || 0}</div>
-          <div style={styles.statLabel}>Delivered</div>
-        </div>
-        <div style={styles.statCard}>
-          <div style={{...styles.statValue, color: '#16a34a'}}>{stats.read || 0}</div>
-          <div style={styles.statLabel}>Read</div>
-        </div>
-        <div style={styles.statCard}>
-          <div style={{...styles.statValue, color: '#ef4444'}}>{stats.failed || 0}</div>
-          <div style={styles.statLabel}>Failed</div>
-        </div>
+        {STATUS_TABS.map((tab) => {
+          const active = filter === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setFilter(tab.key)}
+              style={{
+                ...styles.statCard,
+                cursor: 'pointer',
+                border: active ? `2px solid ${tab.color}` : '2px solid transparent',
+                boxShadow: active
+                  ? `0 0 0 3px ${tab.color}33`
+                  : '0 1px 3px rgba(0,0,0,0.1)',
+                background: active ? '#f8fafc' : '#fff',
+              }}
+            >
+              <div style={{ ...styles.statValue, color: tab.color }}>
+                {counts[tab.key] || 0}
+              </div>
+              <div style={styles.statLabel}>{tab.label}</div>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Inbound webhook diagnostic */}
       <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
           <b>📥 Inbound from Meta (STATUS# / ACCEPT#)</b>
@@ -218,11 +233,16 @@ export default function AdminWhatsApp() {
             <button
               onClick={async () => {
                 try {
-                  const res = await fetch(`${API_BASE}/api/admin/whatsapp/subscribe-waba?token=${token}`, { method: 'POST' });
+                  const res = await fetch(
+                    `${API_BASE}/api/admin/whatsapp/subscribe-waba?token=${encodeURIComponent(token)}`,
+                    { method: 'POST' }
+                  );
                   const data = await res.json();
-                  alert(data.ok
-                    ? `✅ Subscribed to WABA ${data.waba_id}\nNow reply STATUS#1 on WhatsApp again.`
-                    : `❌ ${data.error || JSON.stringify(data)}`);
+                  alert(
+                    data.ok
+                      ? `✅ Subscribed to WABA ${data.waba_id}\nNow reply STATUS#1 on WhatsApp again.`
+                      : `❌ ${data.error || JSON.stringify(data)}`
+                  );
                   loadInbound();
                 } catch (e) {
                   alert('Subscribe failed');
@@ -232,13 +252,13 @@ export default function AdminWhatsApp() {
             >
               Fix inbound (subscribe WABA)
             </button>
-            <button onClick={loadInbound} style={styles.searchBtn}>Refresh</button>
+            <button onClick={loadInbound} style={styles.searchBtn}>
+              Refresh
+            </button>
           </div>
         </div>
         <p style={{ fontSize: 13, color: '#9a3412', marginTop: 0 }}>
-          <b>messages</b> can be toggled ON in Meta but inbound still fails until the app is subscribed to the WhatsApp Business Account.
-          Click <b>Fix inbound</b>, wait for redeploy/startup, then reply <code>STATUS#1</code> again.
-          If this list stays empty, Meta is still not delivering.
+          Click a status card above to filter the table. Counts come from the loaded messages.
         </p>
         {inbound.length === 0 ? (
           <div style={{ fontSize: 13, color: '#666' }}>No inbound webhook events yet.</div>
@@ -253,26 +273,13 @@ export default function AdminWhatsApp() {
         )}
       </div>
 
-      {/* Filters */}
-      <div style={styles.filters}>
-        {['ALL', 'PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED'].map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            style={filter === f ? styles.filterBtnActive : styles.filterBtn}
-          >
-            {f} ({statusCount(f)})
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
       <div style={styles.searchBox}>
         <input
           type="text"
           placeholder="Search by phone number..."
           value={searchPhone}
           onChange={(e) => setSearchPhone(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && loadMessages()}
           style={styles.searchInput}
         />
         <button onClick={loadMessages} style={styles.searchBtn}>
@@ -281,22 +288,32 @@ export default function AdminWhatsApp() {
       </div>
 
       {listError && (
-        <div style={{ ...styles.empty, color: '#b91c1c', background: '#fef2f2', borderRadius: 8, marginBottom: 12 }}>
+        <div
+          style={{
+            ...styles.empty,
+            color: '#b91c1c',
+            background: '#fef2f2',
+            borderRadius: 8,
+            marginBottom: 12,
+          }}
+        >
           {listError}
         </div>
       )}
 
-      {/* Messages Table */}
-      {loading ? (
+      {loading && messages.length === 0 ? (
         <div style={styles.loading}>Loading...</div>
       ) : visibleMessages.length === 0 ? (
         <div style={styles.empty}>
           {messages.length === 0
             ? 'No messages found'
-            : `No ${filter} messages (try ALL — ${messages.length} total loaded)`}
+            : `No ${filter} messages in the loaded list. Click Total to see all ${messages.length}.`}
         </div>
       ) : (
         <div style={styles.tableContainer}>
+          {loading && (
+            <div style={{ padding: 8, fontSize: 12, color: '#6b7280' }}>Refreshing…</div>
+          )}
           <table style={styles.table}>
             <thead>
               <tr>
@@ -309,7 +326,7 @@ export default function AdminWhatsApp() {
               </tr>
             </thead>
             <tbody>
-              {visibleMessages.map(msg => (
+              {visibleMessages.map((msg) => (
                 <tr key={msg.id} style={styles.tr}>
                   <td style={styles.td}>
                     <div style={styles.dateCell}>
@@ -324,15 +341,20 @@ export default function AdminWhatsApp() {
                     <div style={styles.messageCell}>{msg.message}</div>
                   </td>
                   <td style={styles.td}>
-                    <span style={{...styles.statusBadge, background: getStatusColor(normalizeStatus(msg.status))}}>
+                    <span
+                      style={{
+                        ...styles.statusBadge,
+                        background: getStatusColor(normalizeStatus(msg.status)),
+                      }}
+                    >
                       {normalizeStatus(msg.status)}
                     </span>
-                    {msg.attempts > 0 && (
+                    {Number(msg.attempts) > 0 && (
                       <div style={styles.smallText}>Attempts: {msg.attempts}</div>
                     )}
                     {msg.last_error && (
-                      <div style={{...styles.smallText, color: '#ef4444'}}>
-                        {msg.last_error.substring(0, 50)}...
+                      <div style={{ ...styles.smallText, color: '#ef4444' }}>
+                        {String(msg.last_error).slice(0, 80)}
                       </div>
                     )}
                   </td>
@@ -344,11 +366,13 @@ export default function AdminWhatsApp() {
                           <div style={styles.smallText}>{msg.order_customer}</div>
                         )}
                       </div>
-                    ) : '-'}
+                    ) : (
+                      '-'
+                    )}
                   </td>
                   <td style={styles.td}>
                     {normalizeStatus(msg.status) === 'FAILED' && (
-                      <button 
+                      <button
                         onClick={() => resendMessage(msg.id)}
                         style={styles.resendBtn}
                       >
@@ -397,49 +421,26 @@ const styles = {
   },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '20px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+    gap: '12px',
     marginBottom: '30px',
   },
   statCard: {
     background: 'white',
-    padding: '20px',
+    padding: '16px',
     borderRadius: '12px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     textAlign: 'center',
+    font: 'inherit',
   },
   statValue: {
-    fontSize: '32px',
+    fontSize: '28px',
     fontWeight: 'bold',
     color: '#1f2937',
   },
   statLabel: {
-    fontSize: '14px',
+    fontSize: '13px',
     color: '#6b7280',
     marginTop: '5px',
-  },
-  filters: {
-    display: 'flex',
-    gap: '10px',
-    marginBottom: '20px',
-    flexWrap: 'wrap',
-  },
-  filterBtn: {
-    padding: '10px 20px',
-    background: 'white',
-    border: '1px solid #e5e7eb',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px',
-  },
-  filterBtnActive: {
-    padding: '10px 20px',
-    background: '#3b82f6',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px',
   },
   searchBox: {
     display: 'flex',
@@ -471,61 +472,65 @@ const styles = {
     textAlign: 'center',
     padding: '40px',
     color: '#9ca3af',
+    background: 'white',
+    borderRadius: '12px',
   },
   tableContainer: {
     background: 'white',
     borderRadius: '12px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     overflow: 'auto',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
   },
   table: {
     width: '100%',
     borderCollapse: 'collapse',
   },
   th: {
-    padding: '15px',
+    padding: '12px 16px',
     textAlign: 'left',
-    borderBottom: '2px solid #e5e7eb',
+    fontSize: '12px',
     fontWeight: '600',
-    color: '#374151',
+    color: '#6b7280',
+    borderBottom: '1px solid #e5e7eb',
     background: '#f9fafb',
   },
   tr: {
     borderBottom: '1px solid #f3f4f6',
   },
   td: {
-    padding: '15px',
+    padding: '12px 16px',
+    fontSize: '14px',
     verticalAlign: 'top',
   },
   dateCell: {
-    fontSize: '14px',
+    whiteSpace: 'nowrap',
+  },
+  smallText: {
+    fontSize: '11px',
+    color: '#9ca3af',
+    marginTop: '4px',
   },
   messageCell: {
-    maxWidth: '300px',
+    maxWidth: '320px',
     whiteSpace: 'pre-wrap',
-    fontSize: '14px',
-    lineHeight: '1.5',
+    wordBreak: 'break-word',
+    fontSize: '13px',
   },
   statusBadge: {
     display: 'inline-block',
-    padding: '4px 12px',
-    borderRadius: '12px',
-    fontSize: '12px',
-    fontWeight: '600',
+    padding: '4px 10px',
+    borderRadius: '999px',
     color: 'white',
-  },
-  smallText: {
-    fontSize: '12px',
-    color: '#6b7280',
-    marginTop: '4px',
+    fontSize: '11px',
+    fontWeight: 600,
   },
   resendBtn: {
-    padding: '6px 12px',
-    background: '#f59e0b',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
+    padding: '6px 10px',
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    border: '1px solid #bfdbfe',
+    borderRadius: 6,
     cursor: 'pointer',
-    fontSize: '12px',
+    fontSize: 12,
   },
 };

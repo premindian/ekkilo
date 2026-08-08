@@ -578,60 +578,40 @@ def _serialize_wa_row(row) -> dict:
 
 @router.get("/whatsapp/messages")
 async def get_whatsapp_messages(token: str, phone: str = None, status: str = None, limit: int = 100, offset: int = 0):
-    """Get WhatsApp message history"""
+    """Get WhatsApp message history (status filtering is done in the admin UI)."""
     await check_admin(token)
-    
+
     db = await get_db()
     await _normalize_whatsapp_statuses(db)
-    
+
+    # Keep this query simple — complex status expressions were breaking the admin list.
     query = """
-        SELECT wm.id, wm.phone, wm.message,
-               COALESCE(NULLIF(UPPER(BTRIM(wm.status::text)), ''), 'PENDING') as status,
-               wm.whatsapp_message_id, wm.attempts, wm.last_error,
-               wm.created_at, wm.sent_at, wm.delivered_at, wm.read_at,
-               wm.final_order_id,
-               fo.customer_phone as order_customer
-        FROM whatsapp_messages wm
-        LEFT JOIN final_orders fo ON wm.final_order_id = fo.id
+        SELECT id, phone, message, status, whatsapp_message_id, attempts, last_error,
+               created_at, sent_at, delivered_at, read_at, final_order_id
+        FROM whatsapp_messages
         WHERE 1=1
     """
-    
     params = []
     param_count = 1
-    
+
     if phone:
         query += (
-            f" AND RIGHT(REGEXP_REPLACE(COALESCE(wm.phone, ''), '[^0-9]', '', 'g'), 10)"
+            f" AND RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10)"
             f" = RIGHT(REGEXP_REPLACE(${param_count}::text, '[^0-9]', '', 'g'), 10)"
         )
         params.append(phone)
         param_count += 1
-    
+
+    # Optional server filter (UI usually sends none and filters client-side)
     if status:
-        query += (
-            f" AND COALESCE(NULLIF(UPPER(BTRIM(wm.status::text)), ''), 'PENDING')"
-            f" = ${param_count}"
-        )
+        query += f" AND UPPER(COALESCE(status, 'PENDING')) = ${param_count}"
         params.append(status.upper())
         param_count += 1
-    
-    query += f" ORDER BY wm.created_at DESC NULLS LAST LIMIT ${param_count} OFFSET ${param_count + 1}"
+
+    query += f" ORDER BY id DESC LIMIT ${param_count} OFFSET ${param_count + 1}"
     params.extend([limit, offset])
-    
-    try:
-        messages = await db.fetch(query, *params)
-    except Exception as e:
-        print(f"❌ whatsapp/messages query failed: {e}")
-        # Fallback: simplest query so the admin screen is never blank
-        messages = await db.fetch("""
-            SELECT id, phone, message, status, whatsapp_message_id, attempts, last_error,
-                   created_at, sent_at, delivered_at, read_at, final_order_id,
-                   NULL::text as order_customer
-            FROM whatsapp_messages
-            ORDER BY id DESC
-            LIMIT $1 OFFSET $2
-        """, limit, offset)
-    
+
+    messages = await db.fetch(query, *params)
     return [_serialize_wa_row(m) for m in messages]
 
 
