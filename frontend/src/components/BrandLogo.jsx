@@ -1,5 +1,8 @@
+import logoFull from '../assets/ekkilo-logo.png';
+import logoIcon from '../assets/ekkilo-icon.png';
+
 /**
- * Ekkilo brand mark. White background was stripped to transparency in /public assets.
+ * Ekkilo brand mark (bundled so it always ships with the React build).
  * - full: scale + wordmark (headers, login)
  * - icon: scale only (nav, small buttons)
  */
@@ -9,7 +12,7 @@ export default function BrandLogo({
   alt = 'Ekkilo',
   style = {},
 }) {
-  const src = variant === 'icon' ? '/ekkilo-icon.png' : '/ekkilo-logo.png';
+  const src = variant === 'icon' ? logoIcon : logoFull;
   return (
     <img
       src={src}

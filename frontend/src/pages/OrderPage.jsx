@@ -342,7 +342,7 @@ export default function OrderPage({ initialSearchText }) {
 
     const grandTotal = normalized.reduce((sum, store) => sum + Number(store.total || 0), 0);
 
-    const confirmMessage = `🛒 Confirm Your Order?\n\n${orderSummary}\n\n💳 Grand Total: ₹${grandTotal.toFixed(2)}\n\n${normalized.length} store(s) will be notified.`;
+    const confirmMessage = `Confirm Your Order?\n\n${orderSummary}\n\nGrand Total: ₹${grandTotal.toFixed(2)}\n\n${normalized.length} store(s) will be notified.`;
 
     if (!window.confirm(confirmMessage)) {
       return;

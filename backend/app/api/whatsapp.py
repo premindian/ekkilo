@@ -323,7 +323,7 @@ async def receive(req: Request):
         # Free-text → portal redirect
         await _safe_reply(
             phone,
-            "🛒 Please place orders on Ekkilo:\n"
+            "Please place orders on Ekkilo:\n"
             "https://ekkilo.onrender.com\n\n"
             "WhatsApp commands:\n"
             "Customer: STATUS#orderid | CANCEL#orderid\n"
