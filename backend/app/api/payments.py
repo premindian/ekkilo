@@ -21,11 +21,17 @@ async def queue_order_notifications(final_order_id: int, background_tasks: Backg
 
     db = db or await get_db()
     order = await db.fetchrow("""
-        SELECT id, customer_phone, track_token, status
+        SELECT id, customer_phone, track_token, status, payment_status, payment_method
         FROM final_orders WHERE id = $1
     """, final_order_id)
     if not order:
         return
+
+    pay_at_store = (
+        (order.get("payment_method") or "").lower() == "pay_at_store"
+        or (order.get("payment_status") or "").upper() == "PAY_AT_STORE"
+    )
+    pay_label = "PAY AT STORE" if pay_at_store else "PAID ONLINE"
 
     stores = await db.fetch("""
         SELECT id, store_name, store_phone, status
@@ -47,11 +53,13 @@ async def queue_order_notifications(final_order_id: int, background_tasks: Backg
         item_text = "\n".join(
             f"{i['product_name']} x{i['quantity'] or 1}" for i in items
         )
-        message = f"""🆕 New Order (PAID)
+        message = f"""🆕 New Order ({pay_label})
 
 Order ID: {final_order_id}
 
 {item_text}
+
+{"Customer will pay at pickup." if pay_at_store else "Already paid online via Ekkilo."}
 
 Reply:
 ACCEPT#{final_order_id} 2h - Accept (ETA 2 hours)
@@ -86,11 +94,13 @@ NOSHOW#{final_order_id} - Customer missed pickup
         )
         names = ", ".join(i["product_name"] or "" for i in items)
         summary.append(f"{so['store_name']}: {names}")
-    customer_message = f"""🧾 Order Confirmed (Paid)
+    customer_message = f"""🧾 Order Confirmed ({'Pay at store' if pay_at_store else 'Paid'})
 
 Order ID: {final_order_id}
 
 {chr(10).join(summary)}
+
+{"Pay when you pick up." if pay_at_store else "Payment received. Show this when you pick up."}
 
 Track: {track_url}
 
@@ -162,6 +172,7 @@ async def verify_payment(data: dict, background_tasks: BackgroundTasks, token: s
     await db.execute("""
         UPDATE final_orders
         SET payment_status = 'PAID',
+            payment_method = COALESCE(payment_method, 'upi'),
             payment_id = $2,
             razorpay_order_id = COALESCE(razorpay_order_id, $3),
             paid_at = NOW(),

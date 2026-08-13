@@ -202,6 +202,18 @@ export default function TrackOrder() {
                 📞 {orderDetails.customer_phone} |
                 🕐 {new Date(orderDetails.created_at).toLocaleString()}
               </p>
+              {(orderDetails.payment_method || orderDetails.payment_status) && (
+                <p style={{ ...styles.orderMeta, marginTop: 4 }}>
+                  {(orderDetails.payment_method === 'pay_at_store' ||
+                    orderDetails.payment_status === 'PAY_AT_STORE')
+                    ? '💵 Pay at store on pickup'
+                    : orderDetails.payment_status === 'PAID'
+                    ? '✅ Paid online'
+                    : orderDetails.payment_status === 'PENDING'
+                    ? '⏳ UPI payment pending'
+                    : `Payment: ${orderDetails.payment_status || orderDetails.payment_method}`}
+                </p>
+              )}
             </div>
             <div style={styles.statusBadge}>
               {orderDetails.order_status}

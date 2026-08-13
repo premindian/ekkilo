@@ -375,7 +375,34 @@ export default function OrderPage({ initialSearchText }) {
 
     const grandTotal = normalized.reduce((sum, store) => sum + Number(store.total || 0), 0);
 
-    const confirmMessage = `Confirm Your Order?\n\n${orderSummary}\n\nGrand Total: ₹${grandTotal.toFixed(2)}\n\nPay with UPI to notify store(s).`;
+    // 1 = UPI online, 2 = pay at store
+    const payChoice = window.prompt(
+      `Order total: ₹${grandTotal.toFixed(2)}\n\n` +
+        `How do you want to pay?\n\n` +
+        `1 = UPI online (stores notified after payment)\n` +
+        `2 = Pay at store (stores notified now)\n\n` +
+        `Type 1 or 2:`,
+      "2"
+    );
+    if (payChoice === null) return;
+    const paymentMethod =
+      String(payChoice).trim() === "1" || String(payChoice).toLowerCase() === "upi"
+        ? "upi"
+        : String(payChoice).trim() === "2" ||
+          String(payChoice).toLowerCase().includes("store")
+        ? "pay_at_store"
+        : null;
+    if (!paymentMethod) {
+      alert("Please enter 1 (UPI) or 2 (Pay at store).");
+      return;
+    }
+
+    const payLabel =
+      paymentMethod === "upi"
+        ? "Pay with UPI online — stores notified after payment."
+        : "Pay at store when you pick up — stores notified now.";
+
+    const confirmMessage = `Confirm Your Order?\n\n${orderSummary}\n\nGrand Total: ₹${grandTotal.toFixed(2)}\n\n${payLabel}`;
 
     if (!window.confirm(confirmMessage)) {
       return;
@@ -458,6 +485,7 @@ export default function OrderPage({ initialSearchText }) {
         body: JSON.stringify({
           phone: formatted,
           stores: normalized,
+          payment_method: paymentMethod,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -479,7 +507,21 @@ export default function OrderPage({ initialSearchText }) {
       }
 
       if (orderId) {
-        finishPlaced(orderId, trackToken);
+        if (data.payment_method === "pay_at_store") {
+          setCart({});
+          const track = window.confirm(
+            `✅ Order #${orderId} placed!\n\nPay at the store when you pick up.\nStores have been notified.\n\nOpen tracking page now?`
+          );
+          if (track) {
+            navigate(
+              trackToken
+                ? `/track?t=${encodeURIComponent(trackToken)}`
+                : `/track?order_id=${orderId}`
+            );
+          }
+        } else {
+          finishPlaced(orderId, trackToken);
+        }
       } else {
         alert(data.error || data.detail || "✅ Order placed!");
       }

@@ -29,6 +29,7 @@ async def ensure_payment_schema(db=None):
     db = db or await get_db()
     for stmt in (
         "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS payment_status VARCHAR(30) DEFAULT 'UNPAID'",
+        "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)",
         "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS payment_id TEXT",
         "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS razorpay_order_id TEXT",
         "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ",

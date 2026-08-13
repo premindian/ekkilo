@@ -61,6 +61,13 @@ async def create_order(
     from app.services.abuse import assert_first_order_caps, assert_profile_complete
     from app.api.payments import queue_order_notifications
 
+    payment_method = (data.get("payment_method") or "upi").strip().lower()
+    if payment_method not in ("upi", "pay_at_store"):
+        raise HTTPException(
+            status_code=400,
+            detail="payment_method must be 'upi' or 'pay_at_store'",
+        )
+
     await ensure_order_schema(db)
     await ensure_payment_schema(db)
     await assert_can_place_order(phone, db=db)
@@ -69,67 +76,78 @@ async def create_order(
     ip = client_ip(request)
     await assert_order_rate_limit(phone, ip=ip, db=db)
 
-    require_pay = payments_enabled()
-    result = await create_full_order(stores, phone, awaiting_payment=require_pay)
+    # Pay at store → notify stores now. UPI → hold until Razorpay success.
+    use_upi = payment_method == "upi" and payments_enabled()
+    if payment_method == "upi" and not payments_enabled():
+        # No Razorpay keys yet — fall back to pay-at-store rather than blocking
+        print("⚠️ UPI requested but Razorpay not configured — using pay_at_store")
+        payment_method = "pay_at_store"
+        use_upi = False
+
+    result = await create_full_order(stores, phone, awaiting_payment=use_upi)
     final_order_id, track_token, whatsapp_jobs, order_total = result
     await record_abuse_event("order", phone=phone, ip=ip, db=db)
 
     # -----------------------------
-    # 💳 UPI REQUIRED (Razorpay) — stores notified only after pay
+    # 🏪 PAY AT STORE — confirm + notify immediately
     # -----------------------------
-    if require_pay:
-        try:
-            rz = await create_razorpay_order(
-                order_total,
-                receipt=f"ekkilo_{final_order_id}",
-                notes={"final_order_id": str(final_order_id), "phone": phone},
-            )
-        except Exception as e:
-            print(f"❌ Razorpay create failed: {e}")
-            raise HTTPException(
-                status_code=502,
-                detail="Could not start UPI payment. Please try again in a moment.",
-            )
-
+    if payment_method == "pay_at_store":
+        await set_final_order_status(final_order_id, "CONFIRMED", db=db)
         await db.execute("""
             UPDATE final_orders
-            SET payment_status = 'PENDING',
-                razorpay_order_id = $2,
-                total_amount = $3,
-                status = 'PENDING_PAYMENT',
+            SET payment_status = 'PAY_AT_STORE',
+                payment_method = 'pay_at_store',
+                total_amount = $2,
                 updated_at = NOW()
             WHERE id = $1
-        """, final_order_id, rz.get("id"), order_total)
-
+        """, final_order_id, order_total)
+        await queue_order_notifications(final_order_id, background_tasks, db=db)
         return {
             "final_order_id": final_order_id,
             "track_token": track_token,
-            "payment_required": True,
-            "payment": {
-                "key_id": razorpay_key_id(),
-                "razorpay_order_id": rz.get("id"),
-                "amount": rz.get("amount"),  # paise
-                "currency": rz.get("currency") or "INR",
-                "total_rupees": order_total,
-            },
+            "payment_required": False,
+            "payment_method": "pay_at_store",
         }
 
     # -----------------------------
-    # Legacy: no Razorpay keys → confirm + notify immediately
+    # 💳 UPI (Razorpay) — stores notified only after pay
     # -----------------------------
-    print("⚠️ Payments disabled (no RAZORPAY keys) — confirming order without UPI")
-    await set_final_order_status(final_order_id, "CONFIRMED", db=db)
+    try:
+        rz = await create_razorpay_order(
+            order_total,
+            receipt=f"ekkilo_{final_order_id}",
+            notes={"final_order_id": str(final_order_id), "phone": phone},
+        )
+    except Exception as e:
+        print(f"❌ Razorpay create failed: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="Could not start UPI payment. Try Pay at store, or try again later.",
+        )
+
     await db.execute("""
         UPDATE final_orders
-        SET payment_status = 'SKIPPED', total_amount = $2, updated_at = NOW()
+        SET payment_status = 'PENDING',
+            payment_method = 'upi',
+            razorpay_order_id = $2,
+            total_amount = $3,
+            status = 'PENDING_PAYMENT',
+            updated_at = NOW()
         WHERE id = $1
-    """, final_order_id, order_total)
-    await queue_order_notifications(final_order_id, background_tasks, db=db)
+    """, final_order_id, rz.get("id"), order_total)
 
     return {
         "final_order_id": final_order_id,
         "track_token": track_token,
-        "payment_required": False,
+        "payment_required": True,
+        "payment_method": "upi",
+        "payment": {
+            "key_id": razorpay_key_id(),
+            "razorpay_order_id": rz.get("id"),
+            "amount": rz.get("amount"),  # paise
+            "currency": rz.get("currency") or "INR",
+            "total_rupees": order_total,
+        },
     }
 
 # OLD ADMIN & TRACKING ROUTES REMOVED

@@ -20,8 +20,19 @@ async def _build_track_payload(db, order_id: int):
 
     await ensure_order_schema(db)
 
+    try:
+        await db.execute("""
+            ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS payment_status VARCHAR(30)
+        """)
+        await db.execute("""
+            ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)
+        """)
+    except Exception:
+        pass
+
     order = await db.fetchrow("""
         SELECT fo.id, fo.customer_phone, fo.created_at, fo.status as order_status,
+               fo.payment_status, fo.payment_method,
                COUNT(DISTINCT so.id) as store_count,
                COUNT(DISTINCT so.id) FILTER (WHERE so.status = 'ACCEPTED') as accepted_count,
                COUNT(DISTINCT so.id) FILTER (WHERE so.status = 'READY') as ready_count,
@@ -29,7 +40,8 @@ async def _build_track_payload(db, order_id: int):
         FROM final_orders fo
         LEFT JOIN store_orders so ON fo.id = so.final_order_id
         WHERE fo.id = $1
-        GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status
+        GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status,
+                 fo.payment_status, fo.payment_method
     """, order_id)
 
     if not order:
@@ -96,6 +108,8 @@ async def _build_track_payload(db, order_id: int):
         "customer_phone": order["customer_phone"],
         "created_at": order["created_at"].isoformat() if order["created_at"] else None,
         "order_status": order["order_status"],
+        "payment_status": order.get("payment_status"),
+        "payment_method": order.get("payment_method"),
         "store_count": int(order["store_count"] or 0),
         "accepted_count": int(order["accepted_count"] or 0),
         "ready_count": int(order["ready_count"] or 0),

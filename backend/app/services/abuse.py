@@ -371,7 +371,7 @@ async def assert_first_order_caps(phone: str, stores: list, db=None):
                 OR RIGHT(REGEXP_REPLACE(COALESCE(customer_phone, ''), '[^0-9]', '', 'g'), 10) = $2
             )
             AND UPPER(COALESCE(status, '')) IN ('COMPLETED', 'READY', 'CONFIRMED', 'ACCEPTED', 'PARTIAL_READY')
-            AND UPPER(COALESCE(payment_status, 'SKIPPED')) IN ('PAID', 'SKIPPED')
+            AND UPPER(COALESCE(payment_status, 'SKIPPED')) IN ('PAID', 'SKIPPED', 'PAY_AT_STORE')
         """, phone, tail)
         if (prior or 0) > 0:
             return
