@@ -84,6 +84,12 @@ export default function AdminDashboard() {
           📦 Products
         </button>
         <button
+          onClick={() => navigate('/admin/qc-benchmarks')}
+          style={styles.navBtn}
+        >
+          📊 QC Samples
+        </button>
+        <button
           onClick={() => navigate('/admin/orders')}
           style={styles.navBtn}
         >

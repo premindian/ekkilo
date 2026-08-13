@@ -23,17 +23,19 @@ export default function OrderPage({ initialSearchText }) {
   const { user, token } = useAuth();
   const [text, setText] = useState("");
   const [result, setResult] = useState(null);
-  const [mode, setMode] = useState("smart");
+  const [mode, setMode] = useState("regular");
+  const [modeTouched, setModeTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState(null);
   const [radius, setRadius] = useState(5);
-  const [cart, setCart] = useState({}); // selected items across Smart/Favorites/Regular/Manual
+  const [cart, setCart] = useState({}); // selected items across Complete/Favorites/Regular/Manual
   const [favorites, setFavorites] = useState([]);
   const [regularStore, setRegularStore] = useState(null);
   const [gpsError, setGpsError] = useState(false);
   const [showCitySelector, setShowCitySelector] = useState(false);
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedStoreDetails, setSelectedStoreDetails] = useState(null);
+  const [qcEstimate, setQcEstimate] = useState(null);
   
   // Auto-search when initialSearchText is provided
   useEffect(() => {
@@ -179,6 +181,17 @@ export default function OrderPage({ initialSearchText }) {
     loadPreferences();
   }, [token]);
 
+  // Prefer Regular when set; otherwise Complete list — unless user picked a tab
+  useEffect(() => {
+    if (modeTouched) return;
+    setMode(regularStore ? "regular" : "smart");
+  }, [regularStore, modeTouched]);
+
+  const pickMode = (next) => {
+    setModeTouched(true);
+    setMode(next);
+  };
+
   // 🔍 SEARCH
   const search = async (searchText) => {
     const queryText = searchText || text;
@@ -201,6 +214,26 @@ export default function OrderPage({ initialSearchText }) {
     setResult(data);
     setCart({}); // fresh selection for new search results
     setLoading(false);
+
+    // Sampled quick-commerce estimate (published weekly samples — not live)
+    try {
+      const itemNames =
+        data?.comparison && typeof data.comparison === 'object'
+          ? Object.keys(data.comparison)
+          : queryText.split(/[,\n]+/).map((s) => s.trim()).filter(Boolean);
+      const qcRes = await fetch(`${API_BASE}/api/qc-benchmarks/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: itemNames,
+          city: selectedCity || undefined,
+        }),
+      });
+      const qcData = await qcRes.json().catch(() => null);
+      setQcEstimate(qcData?.available && qcData.matched_count > 0 ? qcData : null);
+    } catch (e) {
+      setQcEstimate(null);
+    }
   };
 
   const stores = Array.isArray(result?.stores) ? result.stores : [];
@@ -636,20 +669,33 @@ export default function OrderPage({ initialSearchText }) {
         </div>
       )}
 
-      {/* SAVINGS */}
-      {result?.comparison && Object.keys(result.comparison).length > 0 && (() => {
-        const maxSavings = Math.max(...Object.values(result.comparison).flat().map(o=>o.savings||0), 0);
-        return maxSavings > 0 ? (
-          <div style={{ color: "green", marginTop: 10 }}>
-            💰 Save up to ₹{format(maxSavings)}
+      {/* QC vs local estimate (sampled weekly — not live Blinkit prices) */}
+      {!loading && qcEstimate && (
+        <div style={{
+          marginTop: 12,
+          padding: 12,
+          background: '#ecfdf5',
+          borderRadius: 8,
+          borderLeft: '4px solid #10b981',
+        }}>
+          <div style={{ fontWeight: 'bold', color: '#065f46', marginBottom: 4 }}>
+            Quick-commerce estimate ≈ ₹{format(qcEstimate.qc_total)}
           </div>
-        ) : null;
-      })()}
+          <div style={{ fontSize: 13, color: '#047857' }}>
+            Based on {qcEstimate.matched_count} sampled item(s) from {qcEstimate.source || 'QC'}
+            {qcEstimate.sampled_on ? ` (${qcEstimate.sampled_on})` : ''}
+            {qcEstimate.city ? ` · ${qcEstimate.city}` : ''}
+          </div>
+          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+            {qcEstimate.disclaimer || 'Sampled weekly estimate — not live prices.'}
+          </div>
+        </div>
+      )}
 
       {/* LOADING */}
       {loading && (
         <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>
-          🔍 Searching for best prices...
+          🔍 Finding items at local kiranas...
         </div>
       )}
 

@@ -20,6 +20,7 @@ import AdminUsers from './pages/AdminUsers';
 import AdminOrders from './pages/AdminOrders';
 import AdminWhatsApp from './pages/AdminWhatsApp';
 import AdminProducts from './pages/AdminProducts';
+import AdminQcBenchmarks from './pages/AdminQcBenchmarks';
 
 const API_BASE = "";
 
@@ -135,6 +136,9 @@ function App() {
     }
     if (currentPage === '/admin/products') {
       return <AdminProducts />;
+    }
+    if (currentPage === '/admin/qc-benchmarks') {
+      return <AdminQcBenchmarks />;
     }
     return <AdminDashboard />;
   }

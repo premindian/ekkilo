@@ -820,3 +820,99 @@ async def simulate_whatsapp_inbound(token: str, data: dict):
         return {**result, "action": action, "whatsapp_sent": sent}
 
     return {"ok": False, "error": f"Unsupported action {action}"}
+
+
+# ============================================
+# QC BENCHMARKS — weekly Blinkit/Instamart samples
+# ============================================
+@router.get("/qc-benchmarks")
+async def admin_list_qc_benchmarks(token: str, city: str = None):
+    await check_admin(token)
+    from app.services.qc_benchmark import list_baskets
+    rows = await list_baskets(city=city)
+    for r in rows:
+        if r.get("sampled_on") and hasattr(r["sampled_on"], "isoformat"):
+            r["sampled_on"] = r["sampled_on"].isoformat()
+        if r.get("created_at") and hasattr(r["created_at"], "isoformat"):
+            r["created_at"] = r["created_at"].isoformat()
+        r["basket_total"] = float(r.get("basket_total") or 0)
+    return rows
+
+
+@router.get("/qc-benchmarks/{basket_id}")
+async def admin_get_qc_benchmark(basket_id: int, token: str):
+    await check_admin(token)
+    from app.services.qc_benchmark import get_basket
+    basket = await get_basket(basket_id)
+    if not basket:
+        raise HTTPException(status_code=404, detail="Basket not found")
+    if basket.get("sampled_on") and hasattr(basket["sampled_on"], "isoformat"):
+        basket["sampled_on"] = basket["sampled_on"].isoformat()
+    if basket.get("created_at") and hasattr(basket["created_at"], "isoformat"):
+        basket["created_at"] = basket["created_at"].isoformat()
+    return basket
+
+
+@router.post("/qc-benchmarks/sanity")
+async def admin_qc_sanity_preview(token: str, data: dict):
+    """Preview sanity warnings before saving/publishing."""
+    await check_admin(token)
+    from app.services.qc_benchmark import preview_sanity
+    return {
+        "warnings": await preview_sanity(
+            city=(data or {}).get("city") or "",
+            source=(data or {}).get("source") or "typical_qc",
+            items=(data or {}).get("items") or [],
+            exclude_id=(data or {}).get("exclude_id"),
+        )
+    }
+
+
+@router.post("/qc-benchmarks")
+async def admin_create_qc_benchmark(token: str, data: dict):
+    admin = await check_admin(token)
+    from app.services.qc_benchmark import create_basket
+    try:
+        basket = await create_basket(
+            city=(data or {}).get("city"),
+            source=(data or {}).get("source") or "typical_qc",
+            sampled_on=(data or {}).get("sampled_on"),
+            note=(data or {}).get("note"),
+            items=(data or {}).get("items") or [],
+            created_by=admin["id"],
+            proof_url=(data or {}).get("proof_url"),
+            proof_note=(data or {}).get("proof_note"),
+            status=(data or {}).get("status") or "draft",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return basket
+
+
+@router.post("/qc-benchmarks/{basket_id}/publish")
+async def admin_publish_qc_benchmark(basket_id: int, token: str):
+    admin = await check_admin(token)
+    from app.services.qc_benchmark import publish_basket
+    try:
+        basket = await publish_basket(basket_id, published_by=admin["id"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return basket
+
+
+@router.post("/qc-benchmarks/{basket_id}/unpublish")
+async def admin_unpublish_qc_benchmark(basket_id: int, token: str):
+    await check_admin(token)
+    from app.services.qc_benchmark import unpublish_basket
+    basket = await unpublish_basket(basket_id)
+    if not basket:
+        raise HTTPException(status_code=404, detail="Basket not found")
+    return basket
+
+
+@router.delete("/qc-benchmarks/{basket_id}")
+async def admin_delete_qc_benchmark(basket_id: int, token: str):
+    await check_admin(token)
+    from app.services.qc_benchmark import delete_basket
+    await delete_basket(basket_id)
+    return {"status": "deleted", "id": basket_id}
