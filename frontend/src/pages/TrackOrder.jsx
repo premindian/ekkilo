@@ -115,6 +115,7 @@ export default function TrackOrder() {
       'PARTIAL_READY': '🟡',
       'READY': '📦',
       'COMPLETED': '✓',
+      'NO_SHOW': '👻',
       'REJECTED': '🚫',
       'CANCELLED': '❌'
     };
@@ -127,6 +128,7 @@ export default function TrackOrder() {
       'ACCEPTED': '#22c55e',
       'READY': '#3b82f6',
       'COMPLETED': '#10b981',
+      'NO_SHOW': '#f59e0b',
       'REJECTED': '#ef4444',
       'CANCELLED': '#ef4444'
     };

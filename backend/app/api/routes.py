@@ -32,7 +32,7 @@ async def create_order(
     from app.services.order_status import ensure_order_schema, set_final_order_status
     from app.services.abuse import (
         assert_order_rate_limit,
-        assert_phone_not_blocked,
+        assert_can_place_order,
         client_ip,
         record_abuse_event,
     )
@@ -53,7 +53,7 @@ async def create_order(
     print("🔥 ORDER API HIT")
 
     await ensure_order_schema(db)
-    await assert_phone_not_blocked(phone, db=db)
+    await assert_can_place_order(phone, db=db)
     ip = client_ip(request)
     await assert_order_rate_limit(phone, ip=ip, db=db)
 

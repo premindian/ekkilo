@@ -472,17 +472,26 @@ async def update_final_order_status(final_order_id: int, db=None):
     store_count = len(stores)
 
     rejected_count = sum(1 for s in statuses if s == "REJECTED")
+    no_show_count = sum(1 for s in statuses if s == "NO_SHOW")
     completed_count = sum(1 for s in statuses if s == "COMPLETED")
     ready_count = sum(1 for s in statuses if s == "READY")
     accepted_count = sum(1 for s in statuses if s == "ACCEPTED")
     pending_count = sum(1 for s in statuses if s == "PENDING")
     cancelled_count = sum(1 for s in statuses if s == "CANCELLED")
-    active_count = store_count - rejected_count - cancelled_count
+    # NO_SHOW is terminal for that store (like reject) for aggregation
+    inactive = rejected_count + cancelled_count + no_show_count
+    active_count = store_count - inactive
 
     notify_customer = False
 
     if cancelled_count == store_count:
         final_status = "CANCELLED"
+        notify_customer = True
+    elif no_show_count == store_count:
+        final_status = "NO_SHOW"
+        notify_customer = True
+    elif (rejected_count + no_show_count) == store_count and store_count > 0:
+        final_status = "REJECTED" if rejected_count == store_count else "NO_SHOW"
         notify_customer = True
     elif rejected_count == store_count:
         final_status = "REJECTED"
@@ -496,10 +505,10 @@ async def update_final_order_status(final_order_id: int, db=None):
     elif ready_count > 0 or completed_count > 0:
         final_status = "PARTIAL_READY"
         notify_customer = True
-    elif rejected_count > 0 and (ready_count > 0 or accepted_count > 0):
+    elif (rejected_count > 0 or no_show_count > 0) and (ready_count > 0 or accepted_count > 0):
         final_status = "PARTIAL"
         notify_customer = True
-    elif accepted_count == active_count and rejected_count > 0 and active_count > 0:
+    elif accepted_count == active_count and (rejected_count > 0 or no_show_count > 0) and active_count > 0:
         final_status = "PARTIAL"
         notify_customer = True
     elif accepted_count > 0:
@@ -544,6 +553,12 @@ async def notify_customer_status(final_order_id: int, final_status: str, store_n
         await send_message(
             phone,
             f"😔 Sorry, order #{final_order_id} cannot be fulfilled. Please try again later."
+        )
+    elif status == "NO_SHOW":
+        # Strike-specific WhatsApp is sent by record_no_show; keep a short fallback.
+        await send_message(
+            phone,
+            f"⚠️ Order #{final_order_id}: store marked this as a missed pickup (no-show)."
         )
     elif status == "CANCELLED":
         await send_message(
@@ -593,7 +608,7 @@ async def notify_customer_status(final_order_id: int, final_status: str, store_n
 
 async def apply_store_action(order_id: int, action: str, sender_phone: str, db=None, eta_minutes: int = None):
     """
-    Apply ACCEPT / READY / REJECT / COMPLETED from WhatsApp or web.
+    Apply ACCEPT / READY / REJECT / COMPLETED / NO_SHOW from WhatsApp or web.
     Optional eta_minutes on ACCEPT (default DEFAULT_ETA_MINUTES).
     Returns dict: {ok, message, final_status, store_order_id, match_mode}
     """
@@ -601,6 +616,8 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
     await ensure_order_schema(db)
 
     action = action.upper()
+    if action in ("NOSHOW", "NO-SHOW"):
+        action = "NO_SHOW"
     action_to_status = {
         "ACCEPT": "ACCEPTED",
         "ACCEPTED": "ACCEPTED",
@@ -609,6 +626,8 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
         "REJECTED": "REJECTED",
         "COMPLETE": "COMPLETED",
         "COMPLETED": "COMPLETED",
+        "NO_SHOW": "NO_SHOW",
+        "NOSHOW": "NO_SHOW",
     }
     new_status = action_to_status.get(action)
     if not new_status:
@@ -619,7 +638,7 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
         return {"ok": False, "message": f"❌ Order {order_id} not found"}
 
     current = current.upper()
-    if current in ("CANCELLED", "COMPLETED", "REJECTED"):
+    if current in ("CANCELLED", "COMPLETED", "REJECTED", "NO_SHOW"):
         return {
             "ok": False,
             "message": f"⚠️ Order {order_id} is already {current}",
@@ -667,7 +686,7 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
             }
 
     if new_status == "REJECTED":
-        if store_status in ("READY", "COMPLETED"):
+        if store_status in ("READY", "COMPLETED", "NO_SHOW"):
             return {"ok": False, "message": f"❌ Cannot reject — Order {order_id} is already {store_status}"}
         if store_status == "REJECTED":
             return {
@@ -677,6 +696,25 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
                 "final_status": current,
                 "store_order_id": store_order_id,
                 "match_mode": match_mode,
+            }
+
+    if new_status == "NO_SHOW":
+        if store_status == "NO_SHOW":
+            return {
+                "ok": True,
+                "already": True,
+                "message": f"ℹ️ Order {order_id} already marked NO_SHOW",
+                "final_status": current,
+                "store_order_id": store_order_id,
+                "match_mode": match_mode,
+            }
+        if store_status != "READY":
+            return {
+                "ok": False,
+                "message": (
+                    f"❌ NO_SHOW only after READY (current: {store_status}). "
+                    f"Mark READY first, then NOSHOW#{order_id} if customer never collected."
+                ),
             }
 
     accept_eta = None
@@ -694,6 +732,24 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
             await notify_customer_accept(order_id, store_name, accept_eta, db=db)
         except Exception as e:
             print(f"⚠️ Customer accept notify failed: {e}")
+    elif new_status == "NO_SHOW":
+        try:
+            from app.services.abuse import record_no_show
+            from app.services.whatsapp import send_message
+
+            customer = await db.fetchrow(
+                "SELECT customer_phone FROM final_orders WHERE id = $1", order_id
+            )
+            cust_phone = normalize_phone(customer["customer_phone"]) if customer else None
+            trust = await record_no_show(
+                cust_phone, order_id, store_order_id=store_order_id, db=db
+            ) if cust_phone else {}
+            if trust.get("customer_message"):
+                await send_message(cust_phone, trust["customer_message"])
+            elif notify:
+                await notify_customer_status(order_id, final_status, store_name=store_name, db=db)
+        except Exception as e:
+            print(f"⚠️ No-show handling failed: {e}")
     elif notify:
         try:
             await notify_customer_status(order_id, final_status, store_name=store_name, db=db)
@@ -709,7 +765,22 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
         "READY": f"📦 Order {order_id} marked READY",
         "REJECTED": f"❌ Order {order_id} rejected",
         "COMPLETED": f"✅ Order {order_id} completed",
+        "NO_SHOW": f"👻 Order {order_id} marked NO_SHOW (customer missed pickup)",
     }.get(new_status, f"✅ Order {order_id} → {new_status}")
+
+    if new_status == "NO_SHOW":
+        # Append strike info if we just recorded it above
+        try:
+            from app.services.abuse import record_no_show
+            # Already recorded; fetch summary for store reply
+            row = await db.fetchrow(
+                "SELECT strike_number, action FROM no_show_events WHERE final_order_id = $1",
+                order_id,
+            )
+            if row:
+                label += f"\nCustomer strike {row['strike_number']}/4 ({row['action']})"
+        except Exception:
+            pass
 
     if match_mode == "single_store_fallback":
         label += "\n(Note: matched via single-store fallback — update store phone if needed)"
@@ -723,6 +794,7 @@ async def apply_store_action(order_id: int, action: str, sender_phone: str, db=N
         "match_mode": match_mode,
         "eta_minutes": accept_eta,
     }
+
 
 
 async def cancel_final_order(order_id: int, db=None, notify_stores: bool = True):

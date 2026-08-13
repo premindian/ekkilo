@@ -52,7 +52,7 @@ def _parse_command(text: str):
     )
     cleaned = " ".join(cleaned.strip().split())
     match = re.match(
-        r"^(confirm|cancel|status|accept|ready|reject|complete|completed|delay)\s*#\s*(\d+)\b(.*)$",
+        r"^(confirm|cancel|status|accept|ready|reject|complete|completed|delay|noshow|no_show|no-show)\s*#\s*(\d+)\b(.*)$",
         cleaned,
         flags=re.IGNORECASE,
     )
@@ -279,8 +279,11 @@ async def receive(req: Request):
                         "order_id": order_id,
                     }
 
-                # -------- STORE: ACCEPT / READY / REJECT / COMPLETE --------
-                if action in ("ACCEPT", "READY", "REJECT", "COMPLETE", "COMPLETED"):
+                # -------- STORE: ACCEPT / READY / REJECT / COMPLETE / NOSHOW --------
+                if action in (
+                    "ACCEPT", "READY", "REJECT", "COMPLETE", "COMPLETED",
+                    "NOSHOW", "NO_SHOW", "NO-SHOW",
+                ):
                     eta = parse_eta_minutes(cmd_rest) if action == "ACCEPT" else None
                     result = await apply_store_action(
                         order_id, action, phone, db=db, eta_minutes=eta
@@ -303,7 +306,7 @@ async def receive(req: Request):
                     phone,
                     "Unknown command.\n"
                     "Customer: STATUS#id | CANCEL#id\n"
-                    "Store: ACCEPT#id 2h | DELAY#id 30m busy | READY#id | REJECT#id"
+                    "Store: ACCEPT#id 2h | DELAY#id 30m busy | READY#id | REJECT#id | NOSHOW#id"
                 )
                 return {"status": "unknown_command"}
 
@@ -327,7 +330,7 @@ async def receive(req: Request):
             "https://ekkilo.onrender.com\n\n"
             "WhatsApp commands:\n"
             "Customer: STATUS#orderid | CANCEL#orderid\n"
-            "Store: ACCEPT#orderid 2h | DELAY#orderid 30m | READY#orderid | REJECT#orderid"
+            "Store: ACCEPT#orderid 2h | DELAY#orderid 30m | READY#orderid | REJECT#orderid | NOSHOW#orderid"
         )
         return {"status": "redirect_to_portal"}
 

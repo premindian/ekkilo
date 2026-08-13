@@ -1,6 +1,13 @@
 """
 Anti-abuse helpers: phone blocklist + rate limits for OTP and orders.
+
+No-show ladder (soft — not a harsh 2-strike ban):
+  1st no-show → warning only
+  2nd        → 48h cool-down
+  3rd        → 7-day cool-down
+  4th+       → blocked (admin can unblock)
 """
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException, Request
@@ -16,6 +23,11 @@ ORDER_PHONE_WINDOW_MINUTES = 15
 
 ORDER_MAX_PER_IP = 5
 ORDER_IP_WINDOW_MINUTES = 60
+
+# Soft no-show ladder
+NO_SHOW_COOLDOWN_2_HOURS = 48
+NO_SHOW_COOLDOWN_3_HOURS = 24 * 7
+NO_SHOW_BLOCK_AT = 4
 
 
 async def ensure_abuse_schema(db=None):
@@ -44,6 +56,26 @@ async def ensure_abuse_schema(db=None):
     await db.execute("""
         CREATE INDEX IF NOT EXISTS idx_abuse_events_type_ip_time
         ON abuse_events (event_type, ip, created_at DESC)
+    """)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS customer_trust (
+            phone TEXT PRIMARY KEY,
+            no_show_count INTEGER NOT NULL DEFAULT 0,
+            cooldown_until TIMESTAMPTZ,
+            last_no_show_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS no_show_events (
+            id SERIAL PRIMARY KEY,
+            phone TEXT NOT NULL,
+            final_order_id INTEGER NOT NULL UNIQUE,
+            store_order_id INTEGER,
+            strike_number INTEGER,
+            action VARCHAR(30),
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
     """)
 
 
@@ -87,6 +119,45 @@ async def assert_phone_not_blocked(phone: str, db=None):
         )
 
 
+async def get_trust_row(phone: str, db=None):
+    db = db or await get_db()
+    await ensure_abuse_schema(db)
+    phone = normalize_phone(phone)
+    if not phone:
+        return None
+    return await db.fetchrow("SELECT * FROM customer_trust WHERE phone = $1", phone)
+
+
+async def assert_can_place_order(phone: str, db=None):
+    """Blocklist + no-show cool-down gate before placing an order."""
+    await assert_phone_not_blocked(phone, db=db)
+    try:
+        db = db or await get_db()
+        await ensure_abuse_schema(db)
+        phone = normalize_phone(phone)
+        row = await get_trust_row(phone, db=db)
+        if not row or not row.get("cooldown_until"):
+            return
+        until = row["cooldown_until"]
+        now = datetime.now(timezone.utc)
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=timezone.utc)
+        if until > now:
+            hours = max(1, int((until - now).total_seconds() // 3600))
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Ordering paused after missed pickups. "
+                    f"You can order again in about {hours} hour(s). "
+                    f"Please collect ready orders on time."
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"⚠️ Cool-down check skipped: {e}")
+
+
 async def block_phone(phone: str, reason: str = None, blocked_by: int = None, db=None):
     db = db or await get_db()
     await ensure_abuse_schema(db)
@@ -114,6 +185,112 @@ async def unblock_phone(phone: str, db=None):
         WHERE phone = $1
            OR RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $2
     """, phone, tail)
+    # Forgive cool-down / reset strike counter on admin unblock
+    await db.execute("""
+        UPDATE customer_trust
+        SET no_show_count = 0,
+            cooldown_until = NULL,
+            updated_at = NOW()
+        WHERE phone = $1
+           OR RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $2
+    """, phone, tail)
+
+
+async def record_no_show(
+    phone: str,
+    final_order_id: int,
+    store_order_id: int = None,
+    db=None,
+):
+    """
+    Record a missed pickup. One strike per final_order_id.
+    Returns {already, strikes, action, cooldown_until, customer_message, store_message}
+    """
+    db = db or await get_db()
+    await ensure_abuse_schema(db)
+    phone = normalize_phone(phone)
+    if not phone or not final_order_id:
+        return {"already": False, "strikes": 0, "action": "none"}
+
+    existing = await db.fetchrow(
+        "SELECT id, strike_number, action FROM no_show_events WHERE final_order_id = $1",
+        final_order_id,
+    )
+    if existing:
+        return {
+            "already": True,
+            "strikes": existing["strike_number"] or 0,
+            "action": existing["action"] or "none",
+            "customer_message": None,
+            "store_message": "ℹ️ No-show already recorded for this order",
+        }
+
+    trust = await get_trust_row(phone, db=db)
+    strikes = int(trust["no_show_count"] if trust else 0) + 1
+    now = datetime.now(timezone.utc)
+    cooldown_until = None
+    action = "warn"
+
+    if strikes == 1:
+        action = "warn"
+        customer_message = (
+            f"⚠️ Missed pickup for order #{final_order_id}.\n\n"
+            f"Please collect orders when they're marked READY. "
+            f"This is a friendly reminder — no ban yet."
+        )
+    elif strikes == 2:
+        action = "cooldown_48h"
+        cooldown_until = now + timedelta(hours=NO_SHOW_COOLDOWN_2_HOURS)
+        customer_message = (
+            f"⚠️ Second missed pickup (order #{final_order_id}).\n\n"
+            f"Ordering is paused for 48 hours so kiranas aren't left packing for no-shows. "
+            f"You can order again after that."
+        )
+    elif strikes == 3:
+        action = "cooldown_7d"
+        cooldown_until = now + timedelta(hours=NO_SHOW_COOLDOWN_3_HOURS)
+        customer_message = (
+            f"⚠️ Third missed pickup (order #{final_order_id}).\n\n"
+            f"Ordering is paused for 7 days. Please only place orders you can collect."
+        )
+    else:
+        action = "blocked"
+        await block_phone(
+            phone,
+            reason=f"Repeated no-shows ({strikes}) — last order #{final_order_id}",
+            db=db,
+        )
+        customer_message = (
+            f"🚫 Repeated missed pickups (order #{final_order_id}).\n\n"
+            f"Ordering is blocked on this number. Contact Ekkilo support if this was a mistake."
+        )
+
+    await db.execute("""
+        INSERT INTO customer_trust (phone, no_show_count, cooldown_until, last_no_show_at, updated_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (phone) DO UPDATE
+        SET no_show_count = $2,
+            cooldown_until = $3,
+            last_no_show_at = $4,
+            updated_at = NOW()
+    """, phone, strikes, cooldown_until, now)
+
+    await db.execute("""
+        INSERT INTO no_show_events (phone, final_order_id, store_order_id, strike_number, action)
+        VALUES ($1, $2, $3, $4, $5)
+    """, phone, final_order_id, store_order_id, strikes, action)
+
+    await record_abuse_event("no_show", phone=phone, db=db)
+
+    store_message = f"📝 No-show recorded (customer strike {strikes}/4 — {action})"
+    return {
+        "already": False,
+        "strikes": strikes,
+        "action": action,
+        "cooldown_until": cooldown_until,
+        "customer_message": customer_message,
+        "store_message": store_message,
+    }
 
 
 async def record_abuse_event(event_type: str, phone: str = None, ip: str = None, db=None):

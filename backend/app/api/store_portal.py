@@ -225,7 +225,9 @@ async def update_store_order(order_id: int, data: dict, token: str):
         raise HTTPException(status_code=404, detail="Order not found")
     
     new_status = data.get("status", "").upper()
-    allowed_statuses = ["ACCEPTED", "READY", "REJECTED", "COMPLETED", "DELAY"]
+    if new_status in ("NOSHOW", "NO-SHOW"):
+        new_status = "NO_SHOW"
+    allowed_statuses = ["ACCEPTED", "READY", "REJECTED", "COMPLETED", "DELAY", "NO_SHOW"]
     
     if new_status not in allowed_statuses:
         raise HTTPException(
@@ -302,6 +304,16 @@ async def update_store_order(order_id: int, data: dict, token: str):
     except (TypeError, ValueError):
         eta_minutes = None
 
+    if new_status == "NO_SHOW":
+        current = (order.get("status") or "").upper()
+        if current == "NO_SHOW":
+            return {"status": "success", "new_status": "NO_SHOW", "final_status": None, "already": True}
+        if current != "READY":
+            raise HTTPException(
+                status_code=400,
+                detail=f"NO_SHOW only after READY (current: {current})",
+            )
+
     if new_status == "ACCEPTED":
         await set_store_order_status(
             order_id, new_status, db=db, eta_minutes=eta_minutes or DEFAULT_ETA_MINUTES
@@ -321,6 +333,33 @@ async def update_store_order(order_id: int, data: dict, token: str):
             )
         except Exception as e:
             print(f"⚠️ Portal accept notify failed: {e}")
+    elif new_status == "NO_SHOW":
+        try:
+            from app.services.abuse import record_no_show
+            from app.services.whatsapp import send_message
+            from app.utils.phone import normalize_phone
+
+            customer = await db.fetchrow(
+                "SELECT customer_phone FROM final_orders WHERE id = $1", final_order_id
+            )
+            cust_phone = normalize_phone(customer["customer_phone"]) if customer else None
+            trust = {}
+            if cust_phone:
+                trust = await record_no_show(
+                    cust_phone, final_order_id, store_order_id=order_id, db=db
+                )
+                if trust.get("customer_message"):
+                    await send_message(cust_phone, trust["customer_message"])
+            return {
+                "status": "success",
+                "new_status": new_status,
+                "final_status": final_status,
+                "strikes": trust.get("strikes"),
+                "action": trust.get("action"),
+                "message": trust.get("store_message"),
+            }
+        except Exception as e:
+            print(f"⚠️ Portal no-show handling failed: {e}")
     elif notify_customer:
         await notify_customer_status(
             final_order_id,

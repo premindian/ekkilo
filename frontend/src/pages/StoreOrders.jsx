@@ -32,8 +32,8 @@ export default function StoreOrders() {
     }
   };
 
-  const updateStatus = async (orderId, status) => {
-    if (!window.confirm(`${status} this order?`)) return;
+  const updateStatus = async (orderId, status, { skipConfirm = false } = {}) => {
+    if (!skipConfirm && !window.confirm(`${status} this order?`)) return;
     
     try {
       const res = await fetch(`${API_BASE}/api/store/orders/${orderId}?token=${token}`, {
@@ -47,7 +47,10 @@ export default function StoreOrders() {
         return;
       }
       loadOrders();
-      alert(`✅ Order ${status.toLowerCase()}!${data.final_status ? ` (final: ${data.final_status})` : ''}`);
+      const extra = data.message || data.action
+        ? `\n${data.message || ''}${data.strikes ? ` (strike ${data.strikes})` : ''}`
+        : '';
+      alert(`✅ Order ${status.toLowerCase()}!${data.final_status ? ` (final: ${data.final_status})` : ''}${extra}`);
     } catch (err) {
       alert('❌ Failed to update order');
     }
@@ -65,7 +68,7 @@ export default function StoreOrders() {
 
       {/* Filters */}
       <div style={styles.filters}>
-        {['ALL', 'PENDING', 'ACCEPTED', 'READY', 'COMPLETED', 'REJECTED'].map(f => (
+        {['ALL', 'PENDING', 'ACCEPTED', 'READY', 'COMPLETED', 'NO_SHOW', 'REJECTED'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -164,12 +167,27 @@ export default function StoreOrders() {
                   </button>
                 )}
                 {order.status === 'READY' && (
-                  <button 
-                    onClick={() => updateStatus(order.id, 'COMPLETED')}
-                    style={{...styles.actionBtn, background: '#10b981', width: '100%'}}
-                  >
-                    ✅ Mark Completed
-                  </button>
+                  <>
+                    <button 
+                      onClick={() => updateStatus(order.id, 'COMPLETED')}
+                      style={{...styles.actionBtn, background: '#10b981', flex: 1}}
+                    >
+                      ✅ Picked up
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(
+                          'Mark as no-show?\n\nOnly if the customer never collected after READY.\n' +
+                          'Soft ladder: 1 warn → 2 pause 48h → 3 pause 7d → 4 block.'
+                        )) {
+                          updateStatus(order.id, 'NO_SHOW', { skipConfirm: true });
+                        }
+                      }}
+                      style={{...styles.actionBtn, background: '#f59e0b', flex: 1}}
+                    >
+                      👻 No-show
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -193,6 +211,7 @@ function getStatusStyle(status) {
     'ACCEPTED': { background: '#d1fae5', color: '#065f46' },
     'READY': { background: '#dbeafe', color: '#1e40af' },
     'COMPLETED': { background: '#e0e7ff', color: '#3730a3' },
+    'NO_SHOW': { background: '#ffedd5', color: '#9a3412' },
     'REJECTED': { background: '#fee2e2', color: '#991b1b' },
   };
 
