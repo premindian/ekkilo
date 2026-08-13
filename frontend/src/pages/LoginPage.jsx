@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { navigate } from '../utils/navigate';
+import BrandLogo from '../components/BrandLogo';
 
 const API_BASE = "";
 
@@ -123,7 +124,9 @@ export default function LoginPage() {
   return (
     <div style={styles.container}>
       <div style={styles.box}>
-        <h1 style={styles.title}>🛒 Ekkilo</h1>
+        <h1 style={styles.title}>
+          <BrandLogo height={56} alt="Ekkilo" style={{ margin: '0 auto' }} />
+        </h1>
         <p style={styles.subtitle}>Your Smart Kirana Platform</p>
 
         <div style={styles.tabs}>
@@ -242,11 +245,10 @@ const styles = {
     boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
   },
   title: {
-    fontSize: 36,
-    fontWeight: 'bold',
     marginBottom: 8,
-    textAlign: 'center',
-    color: '#333'
+    display: 'flex',
+    justifyContent: 'center',
+    lineHeight: 0
   },
   subtitle: {
     fontSize: 14,

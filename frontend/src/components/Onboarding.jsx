@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import BrandLogo from './BrandLogo';
 
 const API_BASE = "";
 
@@ -73,7 +74,9 @@ export default function Onboarding({ onComplete, onSkip, token }) {
       case 1:
         return (
           <div style={styles.stepContent}>
-            <div style={styles.emoji}>🎉</div>
+            <div style={styles.emoji}>
+              <BrandLogo height={64} alt="Ekkilo" style={{ margin: '0 auto' }} />
+            </div>
             <h2 style={styles.stepTitle}>Welcome to Ekkilo!</h2>
             <p style={styles.stepDesc}>
               Compare grocery prices from your local kiranas and save money on every order.
@@ -181,7 +184,9 @@ export default function Onboarding({ onComplete, onSkip, token }) {
       case 3:
         return (
           <div style={styles.stepContent}>
-            <div style={styles.emoji}>🛒</div>
+            <div style={styles.emoji}>
+              <BrandLogo variant="icon" height={56} alt="" style={{ margin: '0 auto' }} />
+            </div>
             <h2 style={styles.stepTitle}>How to Order</h2>
             <p style={styles.stepDesc}>
               Just type what you need - "milk, rice, oil" - and we'll find the best deals!

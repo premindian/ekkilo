@@ -8,6 +8,7 @@ import OrderHistoryPage from './pages/OrderHistoryPage';
 import TrackOrder from './pages/TrackOrder';
 import ProfilePage from './pages/ProfilePage';
 import Onboarding from './components/Onboarding';
+import BrandLogo from './components/BrandLogo';
 import StoreDashboard from './pages/StoreDashboard';
 import StoreProducts from './pages/StoreProducts';
 import StoreOrders from './pages/StoreOrders';
@@ -170,7 +171,9 @@ function App() {
       )}
       {/* Header */}
       <div style={styles.header}>
-        <h1 style={styles.logo}>🛒 Ekkilo</h1>
+        <h1 style={styles.logo}>
+          <BrandLogo height={40} alt="Ekkilo" />
+        </h1>
         <div style={styles.userInfo}>
           <span style={styles.userName}>{user?.name || user?.phone}</span>
         </div>
@@ -182,7 +185,10 @@ function App() {
           onClick={() => setCurrentPage('order')}
           style={currentPage === 'order' ? styles.navBtnActive : styles.navBtn}
         >
-          🛒 Order
+          <span style={styles.navLabel}>
+            <BrandLogo variant="icon" height={18} alt="" style={{ display: 'inline-block' }} />
+            Order
+          </span>
         </button>
         <button
           onClick={() => setCurrentPage('lists')}
@@ -251,9 +257,13 @@ const styles = {
     borderBottom: '1px solid #e5e7eb'
   },
   logo: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    margin: 0
+    margin: 0,
+    lineHeight: 0
+  },
+  navLabel: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6
   },
   userInfo: {
     display: 'flex',

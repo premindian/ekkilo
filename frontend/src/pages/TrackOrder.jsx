@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
+import BrandLogo from '../components/BrandLogo';
 
 const API_BASE = "";
 
@@ -136,7 +137,9 @@ export default function TrackOrder() {
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <div style={styles.logo}>🛒 Ekkilo</div>
+        <div style={styles.logo}>
+          <BrandLogo height={36} alt="Ekkilo" />
+        </div>
         <button onClick={() => navigate('/')} style={styles.homeBtn}>
           Home
         </button>
@@ -326,9 +329,10 @@ const styles = {
     alignItems: 'center',
   },
   logo: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: 'white',
+    lineHeight: 0,
+    background: 'rgba(255,255,255,0.95)',
+    borderRadius: 10,
+    padding: '6px 10px',
   },
   homeBtn: {
     padding: '8px 16px',

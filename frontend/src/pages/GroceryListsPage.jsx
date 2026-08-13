@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import BrandLogo from '../components/BrandLogo';
 
 const API_BASE = "";
 
@@ -227,7 +228,10 @@ export default function GroceryListsPage({ onSelectList }) {
 
         {items.length > 0 && (
           <button onClick={quickOrder} style={s.orderBtn}>
-            🛒 Order All ({items.length} items)
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <BrandLogo variant="icon" height={18} alt="" />
+              Order All ({items.length} items)
+            </span>
           </button>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
+import BrandLogo from '../components/BrandLogo';
 
 const API_BASE = "";
 
@@ -216,7 +217,10 @@ export default function OrderHistoryPage({ onReorder }) {
                 onClick={() => handleReorder(selectedOrder.order.id)}
                 style={styles.reorderBtn}
               >
-                🛒 Shop these items
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <BrandLogo variant="icon" height={18} alt="" />
+                  Shop these items
+                </span>
               </button>
             </div>
           </>

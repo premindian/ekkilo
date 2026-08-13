@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { navigate } from '../utils/navigate';
 import { useAuth } from "../context/AuthContext";
+import BrandLogo from '../components/BrandLogo';
 
 // Backend and frontend on SAME domain now!
 const API_BASE = "";
@@ -1074,8 +1075,9 @@ export default function OrderPage({ initialSearchText }) {
               {/* Items Available */}
               {selectedStoreDetails.items && selectedStoreDetails.items.length > 0 && (
                 <div style={{ padding: 12, background: '#fffbeb', borderRadius: 8 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#92400e' }}>
-                    🛒 Items Available ({selectedStoreDetails.items.length})
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <BrandLogo variant="icon" height={18} alt="" />
+                    Items Available ({selectedStoreDetails.items.length})
                   </div>
                   {selectedStoreDetails.items.map((item, i) => (
                     <div key={i} style={{ fontSize: 13, color: '#666', padding: '4px 0' }}>
