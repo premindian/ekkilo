@@ -183,7 +183,15 @@ async def update_preferences(data: dict, token: str):
     radius = data.get("default_radius")
     regular_store_id = data.get("regular_store_id")
     onboarding_completed = data.get("onboarding_completed")
-    
+    pickup_area = data.get("pickup_area")
+
+    try:
+        await db.execute("""
+            ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS pickup_area TEXT
+        """)
+    except Exception:
+        pass
+
     await db.execute("""
         UPDATE user_preferences
         SET show_product_pictures = COALESCE($1, show_product_pictures),
@@ -191,9 +199,10 @@ async def update_preferences(data: dict, token: str):
             default_radius = COALESCE($3, default_radius),
             regular_store_id = COALESCE($4, regular_store_id),
             onboarding_completed = COALESCE($5, onboarding_completed),
+            pickup_area = COALESCE($6, pickup_area),
             updated_at = NOW()
-        WHERE user_id = $6
-    """, show_pictures, view_mode, radius, regular_store_id, onboarding_completed, user["id"])
+        WHERE user_id = $7
+    """, show_pictures, view_mode, radius, regular_store_id, onboarding_completed, pickup_area, user["id"])
     
     return {"status": "updated"}
 

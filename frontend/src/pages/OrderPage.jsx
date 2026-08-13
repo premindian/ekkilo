@@ -375,13 +375,77 @@ export default function OrderPage({ initialSearchText }) {
 
     const grandTotal = normalized.reduce((sum, store) => sum + Number(store.total || 0), 0);
 
-    const confirmMessage = `Confirm Your Order?\n\n${orderSummary}\n\nGrand Total: ₹${grandTotal.toFixed(2)}\n\n${normalized.length} store(s) will be notified.`;
+    const confirmMessage = `Confirm Your Order?\n\n${orderSummary}\n\nGrand Total: ₹${grandTotal.toFixed(2)}\n\nPay with UPI to notify store(s).`;
 
     if (!window.confirm(confirmMessage)) {
       return;
     }
 
     const formatted = user.phone.startsWith("91") ? user.phone : "91" + user.phone;
+
+    const finishPlaced = (orderId, trackToken) => {
+      setCart({});
+      const track = window.confirm(
+        `✅ Order #${orderId} placed!\n\nYou'll get a WhatsApp confirmation.\n\nOpen tracking page now?`
+      );
+      if (track) {
+        navigate(trackToken ? `/track?t=${encodeURIComponent(trackToken)}` : `/track?order_id=${orderId}`);
+      }
+    };
+
+    const openRazorpay = (orderId, trackToken, payment) => {
+      if (!window.Razorpay) {
+        alert("Payment checkout failed to load. Refresh and try again.");
+        return;
+      }
+      const rzp = new window.Razorpay({
+        key: payment.key_id,
+        amount: payment.amount,
+        currency: payment.currency || "INR",
+        name: "Ekkilo",
+        description: `Order #${orderId}`,
+        order_id: payment.razorpay_order_id,
+        prefill: {
+          contact: formatted.replace(/^91/, ""),
+          name: user?.name || "",
+        },
+        theme: { color: "#22c55e" },
+        handler: async (response) => {
+          try {
+            const verifyRes = await fetch(
+              `${API_BASE}/api/payments/verify?token=${encodeURIComponent(token)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  final_order_id: orderId,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              }
+            );
+            const verifyData = await verifyRes.json().catch(() => ({}));
+            if (!verifyRes.ok) {
+              alert(`❌ Payment verify failed: ${verifyData.detail || verifyRes.statusText}`);
+              return;
+            }
+            finishPlaced(orderId, verifyData.track_token || trackToken);
+          } catch (err) {
+            alert("❌ Payment verify failed. Contact support with your Order ID.");
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            alert(
+              `Payment not completed. Order #${orderId} is unpaid — stores were NOT notified.\n` +
+              `You can track it, but please place again and complete UPI to confirm.`
+            );
+          },
+        },
+      });
+      rzp.open();
+    };
 
     try {
       if (!token) {
@@ -409,14 +473,13 @@ export default function OrderPage({ initialSearchText }) {
         return;
       }
 
+      if (orderId && data.payment_required && data.payment) {
+        openRazorpay(orderId, trackToken, data.payment);
+        return;
+      }
+
       if (orderId) {
-        setCart({});
-        const track = window.confirm(
-          `✅ Order #${orderId} placed!\n\nYou'll get a WhatsApp confirmation.\n\nOpen tracking page now?`
-        );
-        if (track) {
-          navigate(trackToken ? `/track?t=${encodeURIComponent(trackToken)}` : `/track?order_id=${orderId}`);
-        }
+        finishPlaced(orderId, trackToken);
       } else {
         alert(data.error || data.detail || "✅ Order placed!");
       }
@@ -643,18 +706,18 @@ export default function OrderPage({ initialSearchText }) {
         <button style={btn} onClick={() => search()}>Search</button>
       </div>
 
-      {/* MODES */}
+      {/* MODES — Regular first; Complete list fills gaps (not store-vs-store war) */}
       <div style={{ marginTop: 10, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        <button onClick={() => setMode("regular")} style={mode==="regular"?active:tab}>
+        <button onClick={() => pickMode("regular")} style={mode==="regular"?active:tab}>
           🏪 Regular
         </button>
-        <button onClick={() => setMode("favorites")} style={mode==="favorites"?active:tab}>
+        <button onClick={() => pickMode("smart")} style={mode==="smart"?active:tab}>
+          ✅ Complete list
+        </button>
+        <button onClick={() => pickMode("favorites")} style={mode==="favorites"?active:tab}>
           ⭐ Favorites
         </button>
-        <button onClick={() => setMode("smart")} style={mode==="smart"?active:tab}>
-          💰 Smart Buy
-        </button>
-        <button onClick={() => setMode("manual")} style={mode==="manual"?active:tab}>
+        <button onClick={() => pickMode("manual")} style={mode==="manual"?active:tab}>
           ✋ Manual
         </button>
       </div>
@@ -718,9 +781,9 @@ export default function OrderPage({ initialSearchText }) {
         }}>
           {mode === "smart" && (
             <>
-              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>💰 Smart Buy Mode</div>
+              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>✅ Complete list</div>
               <div style={{ fontSize: 14, color: '#666' }}>
-                Best-price suggestions — tap <strong>Add</strong> on items you want, then Place Order
+                See what’s also available nearby. Nothing is added unless you tap <strong>Add</strong> — then Place Order + UPI
               </div>
             </>
           )}
@@ -751,100 +814,84 @@ export default function OrderPage({ initialSearchText }) {
         </div>
       )}
 
-      {/* 💡 SAVINGS HINT */}
-      {!loading && result && stores.length > 0 && mode !== "smart" && splitTotal > 0 && (() => {
-        let currentTotal = 0;
-        
-        // Calculate current mode's total
-        if (mode === "regular") {
-          const myRegularStore = stores.find(s => s.store === regularStore);
-          currentTotal = myRegularStore?.total || 0;
-        } else if (mode === "favorites") {
-          const favoriteStoreNames = favoriteStores.map(f => f.store_name);
-          const filteredStores = stores.filter(s => favoriteStoreNames.includes(s.store));
-          const bestFavorite = filteredStores.sort((a, b) => a.total - b.total)[0];
-          currentTotal = bestFavorite?.total || 0;
-        } else if (mode === "manual") {
-          currentTotal = cartTotal;
-        }
-        
-        const savings = currentTotal - splitTotal;
-        
-        if (savings > 5) { // Only show if savings is significant (>₹5)
+      {/* Fill gaps tip (not store-vs-store price war) */}
+      {!loading && result && stores.length > 0 && mode === "regular" && (
+        <div
+          onClick={() => pickMode("smart")}
+          style={{
+            marginTop: 10,
+            padding: 12,
+            background: '#ecfeff',
+            borderRadius: 8,
+            borderLeft: '4px solid #06b6d4',
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ fontWeight: 'bold', color: '#0e7490', marginBottom: 4 }}>
+            Want to check nearby?
+          </div>
+          <div style={{ fontSize: 14, color: '#666' }}>
+            Open <strong>Complete list</strong> for items also available nearby — you choose what to add (we don’t auto-fill).
+          </div>
+        </div>
+      )}
+
+      {/* ✅ COMPLETE LIST (was Smart Buy) */}
+      {!loading && mode==="smart" && (() => {
+        const optimizedStores = stores.filter(s => s.is_optimized !== false);
+        const sorted = [...optimizedStores].sort((a, b) => {
+          const aReg = a.store?.toLowerCase().trim() === regularStore?.toLowerCase().trim();
+          const bReg = b.store?.toLowerCase().trim() === regularStore?.toLowerCase().trim();
+          if (aReg && !bReg) return -1;
+          if (!aReg && bReg) return 1;
+          return 0;
+        });
+
+        return sorted.map((store, i) => {
+          const isRegular =
+            store.store?.toLowerCase().trim() === regularStore?.toLowerCase().trim();
           return (
-            <div 
-              onClick={() => setMode("smart")}
-              style={{ 
-                marginTop: 10,
-                padding: 12, 
-                background: '#fff8e1', 
-                borderRadius: 8, 
-                borderLeft: '4px solid #FFC107',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#fff3cd'}
-              onMouseLeave={(e) => e.currentTarget.style.background = '#fff8e1'}
-            >
-              <div style={{ fontWeight: 'bold', color: '#f57c00', marginBottom: 4 }}>
-                💡 Savings Tip
+            <div key={i} style={card}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 8,
+                  cursor: 'pointer',
+                  padding: '4px 0',
+                }}
+                onClick={() => setSelectedStoreDetails(store)}
+              >
+                <div>
+                  <b style={{ fontSize: 16 }}>🏪 {store.store}</b>
+                  <div style={{ fontSize: 12, color: isRegular ? '#166534' : '#0e7490', marginTop: 2 }}>
+                    {isRegular ? 'Your kirana' : 'Also available nearby'}
+                  </div>
+                </div>
+                {store.distance !== undefined ? (
+                  <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
+                    📍 {store.distance} km
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 13, color: '#999' }}>⏳ Distance...</span>
+                )}
               </div>
-              <div style={{ fontSize: 14, color: '#666' }}>
-                Switch to <strong>Smart Buy</strong> mode to save ₹{format(savings)}
-                <span style={{ marginLeft: 8, fontSize: 12, color: '#999' }}>
-                  👆 Click here to switch
-                </span>
+
+              {store.items.map((it) => renderSelectableItem(store.store, it, "row"))}
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                <b>Subtotal: ₹{format(store.total)}</b>
+                <button
+                  style={{ ...orderButton, marginTop: 0, padding: "8px 12px", fontSize: 13 }}
+                  onClick={() => addAllToCart(store.store, store.items)}
+                >
+                  ➕ Add all
+                </button>
               </div>
             </div>
           );
-        }
-        return null;
-      })()}
-
-      {/* 🧠 SMART */}
-      {!loading && mode==="smart" && (() => {
-        // Show only optimized stores in Smart mode
-        const optimizedStores = stores.filter(s => s.is_optimized !== false);
-        console.log('🧠 Smart mode: Showing optimized stores:', optimizedStores);
-        
-        return optimizedStores.map((store, i) => (
-          <div key={i} style={card}>
-            <div 
-              style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                marginBottom: 8,
-                cursor: 'pointer',
-                padding: '4px 0'
-              }}
-              onClick={() => setSelectedStoreDetails(store)}
-            >
-              <b style={{ fontSize: 16 }}>🏪 {store.store}</b>
-              {store.distance !== undefined ? (
-                <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
-                  📍 {store.distance} km
-                </span>
-              ) : (
-                <span style={{ fontSize: 13, color: '#999' }}>
-                  ⏳ Distance...
-                </span>
-              )}
-            </div>
-
-            {store.items.map((it) => renderSelectableItem(store.store, it, "row"))}
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-              <b>Subtotal: ₹{format(store.total)}</b>
-              <button
-                style={{ ...orderButton, marginTop: 0, padding: "8px 12px", fontSize: 13 }}
-                onClick={() => addAllToCart(store.store, store.items)}
-              >
-                ➕ Add all
-              </button>
-            </div>
-          </div>
-        ));
+        });
       })()}
 
       {/* ⭐ FAVORITES MODE */}
@@ -858,7 +905,7 @@ export default function OrderPage({ initialSearchText }) {
           return (
             <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
               <p>😕 None of your favorite stores have these items</p>
-              <p style={{ fontSize: 14 }}>Try switching to Smart mode or add more favorites</p>
+              <p style={{ fontSize: 14 }}>Try Complete list or add more favorites</p>
             </div>
           );
         }
@@ -871,7 +918,7 @@ export default function OrderPage({ initialSearchText }) {
             >
               <div>
                 <b>⭐ {store.store}</b>
-                {store.is_best && <span style={bestBadge}>Best Price</span>}
+                {store.is_best && <span style={bestBadge}>Good match</span>}
               </div>
               <div>
                 ₹{format(store.total)}
@@ -920,7 +967,7 @@ export default function OrderPage({ initialSearchText }) {
           return (
             <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
               <p>😕 {regularStore} doesn't have these items</p>
-              <p style={{ fontSize: 14 }}>Try switching to Smart mode</p>
+              <p style={{ fontSize: 14 }}>Try Complete list for items also available nearby</p>
             </div>
           );
         }

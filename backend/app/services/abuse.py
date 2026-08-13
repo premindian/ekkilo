@@ -328,6 +328,93 @@ async def assert_otp_rate_limit(phone: str, db=None):
         print(f"⚠️ OTP rate limit check skipped: {e}")
 
 
+async def assert_profile_complete(user: dict, db=None):
+    """Require name + pickup area before ordering (reduces fake/prank orders)."""
+    db = db or await get_db()
+    name = (user.get("name") or "").strip()
+    if len(name) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Please add your name in Profile before ordering.",
+        )
+    try:
+        await db.execute("""
+            ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS pickup_area TEXT
+        """)
+    except Exception:
+        pass
+    prefs = await db.fetchrow(
+        "SELECT pickup_area FROM user_preferences WHERE user_id = $1",
+        user["id"],
+    )
+    area = (prefs["pickup_area"] if prefs else None) or ""
+    if len(str(area).strip()) < 3:
+        raise HTTPException(
+            status_code=400,
+            detail="Please set your pickup area in Profile → Preferences before ordering.",
+        )
+
+
+async def assert_first_order_caps(phone: str, stores: list, db=None):
+    """
+    Soft caps for brand-new customers (no completed/paid history):
+    max 2 stores, 15 items, ₹2000.
+    """
+    try:
+        db = db or await get_db()
+        phone = normalize_phone(phone)
+        tail = phone_tail(phone)
+        prior = await db.fetchval("""
+            SELECT COUNT(*) FROM final_orders
+            WHERE (
+                customer_phone = $1
+                OR RIGHT(REGEXP_REPLACE(COALESCE(customer_phone, ''), '[^0-9]', '', 'g'), 10) = $2
+            )
+            AND UPPER(COALESCE(status, '')) IN ('COMPLETED', 'READY', 'CONFIRMED', 'ACCEPTED', 'PARTIAL_READY')
+            AND UPPER(COALESCE(payment_status, 'SKIPPED')) IN ('PAID', 'SKIPPED')
+        """, phone, tail)
+        if (prior or 0) > 0:
+            return
+
+        store_count = len(stores or [])
+        item_count = 0
+        total = 0.0
+        for s in stores or []:
+            items = s.get("items") or []
+            item_count += len(items)
+            if s.get("total") is not None:
+                try:
+                    total += float(s["total"])
+                except (TypeError, ValueError):
+                    pass
+            else:
+                for it in items:
+                    try:
+                        total += float(it.get("price") or 0)
+                    except (TypeError, ValueError):
+                        pass
+
+        if store_count > 2:
+            raise HTTPException(
+                status_code=400,
+                detail="First orders can include at most 2 stores. Complete a pickup, then order freely.",
+            )
+        if item_count > 15:
+            raise HTTPException(
+                status_code=400,
+                detail="First orders are limited to 15 items. Complete a pickup to unlock larger orders.",
+            )
+        if total > 2000:
+            raise HTTPException(
+                status_code=400,
+                detail="First orders are limited to ₹2000. Complete a pickup to unlock higher amounts.",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"⚠️ First-order caps skipped: {e}")
+
+
 async def assert_order_rate_limit(phone: str, ip: str = None, db=None):
     """
     Max ORDER_MAX_PER_PHONE orders / 15 min per phone,

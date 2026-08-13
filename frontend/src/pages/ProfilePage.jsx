@@ -410,20 +410,33 @@ function PreferencesTab({ token }) {
       </div>
 
       <div style={styles.prefItem}>
+        <div style={{ flex: 1, marginRight: 12 }}>
+          <p style={styles.prefTitle}>Pickup area</p>
+          <p style={styles.prefDesc}>Area / landmark for pickup (required to order)</p>
+          <input
+            value={prefs?.pickup_area || ''}
+            onChange={(e) => setPrefs({ ...prefs, pickup_area: e.target.value })}
+            onBlur={(e) => updatePref('pickup_area', e.target.value.trim())}
+            placeholder="e.g. MVP Colony, Vizag"
+            style={{ ...styles.select, width: '100%', marginTop: 8 }}
+          />
+        </div>
+      </div>
+
+      <div style={styles.prefItem}>
         <div>
           <p style={styles.prefTitle}>Default View Mode</p>
           <p style={styles.prefDesc}>How stores are displayed by default</p>
         </div>
         <select
-          value={prefs?.default_view_mode || 'smart'}
+          value={prefs?.default_view_mode || 'regular'}
           onChange={(e) => updatePref('default_view_mode', e.target.value)}
           style={styles.select}
         >
-          <option value="smart">Smart (Best Price)</option>
+          <option value="regular">Regular (My kirana)</option>
+          <option value="smart">Complete list</option>
           <option value="favorites">My Favorites</option>
-          <option value="nearby">Nearby Stores</option>
           <option value="manual">Manual Selection</option>
-          <option value="support">Support Local</option>
         </select>
       </div>
 

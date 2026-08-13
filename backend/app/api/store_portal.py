@@ -73,6 +73,7 @@ async def get_store_dashboard(token: str):
         JOIN final_orders fo ON so.final_order_id = fo.id
         WHERE so.store_id = $1 
         AND so.status IN ('PENDING', 'ACCEPTED')
+        AND so.status <> 'AWAITING_PAYMENT'
         ORDER BY so.created_at DESC
         LIMIT 10
     """, store_id)
@@ -156,6 +157,8 @@ async def get_store_orders(
         query += " ORDER BY so.created_at DESC LIMIT $3 OFFSET $4"
         params.extend([limit, offset])
     else:
+        # Hide unpaid held orders from store portal
+        query += " AND so.status <> 'AWAITING_PAYMENT'"
         query += " ORDER BY so.created_at DESC LIMIT $2 OFFSET $3"
         params.extend([limit, offset])
     

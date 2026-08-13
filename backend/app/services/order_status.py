@@ -809,11 +809,12 @@ async def cancel_final_order(order_id: int, db=None, notify_stores: bool = True)
         return {"ok": False, "message": f"❌ Order {order_id} not found"}
 
     current = current.upper()
-    if current in ("READY", "COMPLETED", "CANCELLED"):
+    if current in ("READY", "COMPLETED", "CANCELLED", "NO_SHOW"):
         return {
             "ok": False,
             "message": f"❌ Cannot cancel Order {order_id} (status: {current})",
         }
+    # Unpaid / pending payment can always be cancelled by customer
 
     # Capture store phones before status update
     stores = await db.fetch("""

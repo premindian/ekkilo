@@ -52,82 +52,84 @@ async def create_order(
 
     print("🔥 ORDER API HIT")
 
+    from app.services.payments import (
+        payments_enabled,
+        ensure_payment_schema,
+        create_razorpay_order,
+        razorpay_key_id,
+    )
+    from app.services.abuse import assert_first_order_caps, assert_profile_complete
+    from app.api.payments import queue_order_notifications
+
     await ensure_order_schema(db)
+    await ensure_payment_schema(db)
     await assert_can_place_order(phone, db=db)
+    await assert_profile_complete(user, db=db)
+    await assert_first_order_caps(phone, stores, db=db)
     ip = client_ip(request)
     await assert_order_rate_limit(phone, ip=ip, db=db)
 
-    final_order_id, track_token, whatsapp_jobs = await create_full_order(stores, phone)
+    require_pay = payments_enabled()
+    result = await create_full_order(stores, phone, awaiting_payment=require_pay)
+    final_order_id, track_token, whatsapp_jobs, order_total = result
     await record_abuse_event("order", phone=phone, ip=ip, db=db)
-    
+
     # -----------------------------
-    # ✅ WEB ORDERS AUTO-CONFIRMED
+    # 💳 UPI REQUIRED (Razorpay) — stores notified only after pay
     # -----------------------------
+    if require_pay:
+        try:
+            rz = await create_razorpay_order(
+                order_total,
+                receipt=f"ekkilo_{final_order_id}",
+                notes={"final_order_id": str(final_order_id), "phone": phone},
+            )
+        except Exception as e:
+            print(f"❌ Razorpay create failed: {e}")
+            raise HTTPException(
+                status_code=502,
+                detail="Could not start UPI payment. Please try again in a moment.",
+            )
+
+        await db.execute("""
+            UPDATE final_orders
+            SET payment_status = 'PENDING',
+                razorpay_order_id = $2,
+                total_amount = $3,
+                status = 'PENDING_PAYMENT',
+                updated_at = NOW()
+            WHERE id = $1
+        """, final_order_id, rz.get("id"), order_total)
+
+        return {
+            "final_order_id": final_order_id,
+            "track_token": track_token,
+            "payment_required": True,
+            "payment": {
+                "key_id": razorpay_key_id(),
+                "razorpay_order_id": rz.get("id"),
+                "amount": rz.get("amount"),  # paise
+                "currency": rz.get("currency") or "INR",
+                "total_rupees": order_total,
+            },
+        }
+
+    # -----------------------------
+    # Legacy: no Razorpay keys → confirm + notify immediately
+    # -----------------------------
+    print("⚠️ Payments disabled (no RAZORPAY keys) — confirming order without UPI")
     await set_final_order_status(final_order_id, "CONFIRMED", db=db)
-
-    # -----------------------------
-    # 📲 STORE MESSAGES
-    # -----------------------------
-    for store_phone, message in whatsapp_jobs:
-        store_phone = normalize_phone(store_phone)
-
-        row = await db.fetchrow("""
-         INSERT INTO whatsapp_messages (phone, message, status, final_order_id)
-              VALUES ($1, $2, 'PENDING', $3)
-              RETURNING id
-            """, store_phone, message, final_order_id)
-
-        msg_id = row["id"]
-
-        print("📤 Queue store message:", store_phone)
-
-        background_tasks.add_task(send_message, store_phone, message, msg_id)
-
-    # -----------------------------
-    # 📲 CUSTOMER MESSAGE
-    # -----------------------------
-    from app.services.order_status import get_track_url
-
-    summary = []
-
-    for store in stores:
-        items = ", ".join(
-            i.get("name", "") for i in store.get("items", [])
-        )
-        summary.append(f"{store.get('store')}: {items}")
-
-    summary_text = "\n".join(summary)
-    track_url = await get_track_url(final_order_id, db=db)
-
-    customer_message = f"""🧾 Order Confirmed
-
-Order ID: {final_order_id}
-
-{summary_text}
-
-Track: {track_url}
-
-Commands:
-STATUS#{final_order_id}
-CANCEL#{final_order_id}
-
-We will notify you when ready 🚀
-"""
-
-    row = await db.fetchrow("""
-        INSERT INTO whatsapp_messages (phone, message, status, final_order_id)
-              VALUES ($1, $2, 'PENDING', $3)
-              RETURNING id
-            """, phone, customer_message, final_order_id)
-
-    msg_id = row["id"]
-    print("📤 Queue customer message:", phone)
-
-    background_tasks.add_task(send_message, phone, customer_message, msg_id)
+    await db.execute("""
+        UPDATE final_orders
+        SET payment_status = 'SKIPPED', total_amount = $2, updated_at = NOW()
+        WHERE id = $1
+    """, final_order_id, order_total)
+    await queue_order_notifications(final_order_id, background_tasks, db=db)
 
     return {
         "final_order_id": final_order_id,
         "track_token": track_token,
+        "payment_required": False,
     }
 
 # OLD ADMIN & TRACKING ROUTES REMOVED

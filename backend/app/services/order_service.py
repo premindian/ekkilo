@@ -8,22 +8,29 @@ from app.services.order_status import (
 )
 
 
-async def create_full_order(stores, customer_phone):
+async def create_full_order(stores, customer_phone, awaiting_payment: bool = False):
+    """
+    Persist order + build WhatsApp jobs.
+    If awaiting_payment=True: store lines are AWAITING_PAYMENT and admin WS is deferred
+    until payment succeeds (see activate_paid_order).
+    """
     db = await get_db()
     await ensure_order_schema(db)
 
     whatsapp_jobs = []
     customer_phone = normalize_phone(customer_phone)
     track_token = new_track_token()
+    initial_store_status = "AWAITING_PAYMENT" if awaiting_payment else "PENDING"
+    initial_final_status = "PENDING_PAYMENT" if awaiting_payment else "CREATED"
 
     # -----------------------------
     # 🧾 FINAL ORDER - Create with initial status
     # -----------------------------
     final_order = await db.fetchrow("""
         INSERT INTO final_orders (customer_phone, status, track_token)
-        VALUES ($1, 'CREATED', $2)
+        VALUES ($1, $2, $3)
         RETURNING id, track_token
-    """, customer_phone, track_token)
+    """, customer_phone, initial_final_status, track_token)
 
     final_order_id = final_order["id"]
     track_token = final_order["track_token"]
@@ -31,8 +38,10 @@ async def create_full_order(stores, customer_phone):
     # Create initial event
     await db.execute("""
         INSERT INTO final_order_events (final_order_id, status)
-        VALUES ($1, 'CREATED')
-    """, final_order_id)
+        VALUES ($1, $2)
+    """, final_order_id, initial_final_status)
+
+    order_total = 0.0
 
     # -----------------------------
     # 🏪 STORE ORDERS
@@ -72,9 +81,9 @@ async def create_full_order(stores, customer_phone):
         
         so = await db.fetchrow("""
             INSERT INTO store_orders (final_order_id, store_name, store_phone, store_id, status)
-            VALUES ($1, $2, $3, $4, 'PENDING')
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING id
-        """, final_order_id, store.get("store"), store_phone, store_id)
+        """, final_order_id, store.get("store"), store_phone, store_id, initial_store_status)
 
         store_order_id = so["id"]
 
@@ -117,6 +126,7 @@ async def create_full_order(stores, customer_phone):
             SET total_amount = $1
             WHERE id = $2
         """, store_total, store_order_id)
+        order_total += float(store_total or 0)
 
         # -----------------------------
         # 📊 EVENT
@@ -124,7 +134,7 @@ async def create_full_order(stores, customer_phone):
         await db.execute("""
             INSERT INTO store_order_events (store_order_id, status)
             VALUES ($1, $2)
-        """, store_order_id, "PENDING")
+        """, store_order_id, initial_store_status)
 
         # -----------------------------
         # 📲 MESSAGE
@@ -154,12 +164,20 @@ REJECT#{final_order_id} - Cannot fulfill
         whatsapp_jobs.append((store_phone, message))
 
         # -----------------------------
-        # 🔴 ADMIN UPDATE
+        # 🔴 ADMIN UPDATE (only once paid / legacy flow)
         # -----------------------------
-        await manager.broadcast(0, {
-            "type": "new_order",
-            "final_order_id": final_order_id,
-            "store": store.get("store")
-        })
+        if not awaiting_payment:
+            await manager.broadcast(0, {
+                "type": "new_order",
+                "final_order_id": final_order_id,
+                "store": store.get("store")
+            })
 
-    return final_order_id, track_token, whatsapp_jobs
+    try:
+        await db.execute("""
+            UPDATE final_orders SET total_amount = $1 WHERE id = $2
+        """, order_total, final_order_id)
+    except Exception:
+        pass
+
+    return final_order_id, track_token, whatsapp_jobs, order_total

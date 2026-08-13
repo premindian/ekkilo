@@ -232,10 +232,10 @@ export default function Onboarding({ onComplete, onSkip, token }) {
                 </div>
               </div>
               <div style={styles.mode}>
-                <span style={styles.modeIcon}>💰</span>
+                <span style={styles.modeIcon}>✅</span>
                 <div>
-                  <div style={styles.modeTitle}>Smart Buy</div>
-                  <div style={styles.modeDesc}>Best price guaranteed</div>
+                  <div style={styles.modeTitle}>Complete list</div>
+                  <div style={styles.modeDesc}>Optionally add from nearby — you choose</div>
                 </div>
               </div>
               <div style={styles.mode}>
