@@ -24,6 +24,7 @@ export default function CatalogShop({ onOrder }) {
   const [isNarrow, setIsNarrow] = useState(
     typeof window !== 'undefined' ? window.innerWidth < 720 : true
   );
+  const [showPictures, setShowPictures] = useState(true);
 
   useEffect(() => {
     loadCategories();
@@ -32,6 +33,22 @@ export default function CatalogShop({ onOrder }) {
   useEffect(() => {
     loadProducts();
   }, [category, query]);
+
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/preferences?token=${encodeURIComponent(token)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (typeof data.show_product_pictures === 'boolean') {
+          setShowPictures(data.show_product_pictures);
+        }
+      } catch (e) {
+        /* keep default */
+      }
+    })();
+  }, [token]);
 
   useEffect(() => {
     const onResize = () => setIsNarrow(window.innerWidth < 720);
@@ -314,17 +331,19 @@ export default function CatalogShop({ onOrder }) {
                 const inCart = cart[p.id];
                 return (
                   <article key={p.id} style={styles.card}>
-                    <div style={styles.imgWrap}>
-                      <img
-                        src={p.image_url}
-                        alt={p.name}
-                        style={styles.img}
-                        loading="lazy"
-                        onError={(e) => {
-                          e.currentTarget.style.opacity = '0.35';
-                        }}
-                      />
-                    </div>
+                    {showPictures && (
+                      <div style={styles.imgWrap}>
+                        <img
+                          src={p.image_url}
+                          alt={p.name}
+                          style={styles.img}
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.opacity = '0.35';
+                          }}
+                        />
+                      </div>
+                    )}
                     <div style={styles.cardBody}>
                       <div style={styles.metaRow}>
                         <span style={styles.unit}>{p.unit_note || ' '}</span>

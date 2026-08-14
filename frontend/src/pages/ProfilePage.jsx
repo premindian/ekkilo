@@ -418,15 +418,21 @@ function PreferencesTab({ token }) {
   };
 
   const updatePref = async (key, value) => {
+    const prev = prefs;
+    setPrefs({ ...prefs, [key]: value });
     try {
-      await fetch(`${API_BASE}/api/preferences?token=${token}`, {
+      const res = await fetch(`${API_BASE}/api/preferences?token=${token}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: value })
       });
-      setPrefs({ ...prefs, [key]: value });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Failed to update preference');
+      }
     } catch (err) {
-      alert('Failed to update preference');
+      setPrefs(prev);
+      alert(err.message || 'Failed to update preference');
     }
   };
 
@@ -434,6 +440,40 @@ function PreferencesTab({ token }) {
 
   return (
     <div>
+      <style>{`
+        .ekkilo-switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+          position: absolute;
+        }
+        .ekkilo-switch .ekkilo-slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: #d1d5db;
+          border-radius: 32px;
+          transition: 0.2s;
+        }
+        .ekkilo-switch .ekkilo-slider:before {
+          content: "";
+          position: absolute;
+          height: 24px;
+          width: 24px;
+          left: 4px;
+          bottom: 4px;
+          background: #fff;
+          border-radius: 50%;
+          transition: 0.2s;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .ekkilo-switch input:checked + .ekkilo-slider {
+          background: #22c55e;
+        }
+        .ekkilo-switch input:checked + .ekkilo-slider:before {
+          transform: translateX(24px);
+        }
+      `}</style>
       <div style={styles.prefItem}>
         <div style={{ flex: 1 }}>
           <p style={styles.prefTitle}>How Ekkilo works</p>
@@ -460,15 +500,15 @@ function PreferencesTab({ token }) {
       <div style={styles.prefItem}>
         <div>
           <p style={styles.prefTitle}>Show Product Pictures</p>
-          <p style={styles.prefDesc}>Display images in product listings</p>
+          <p style={styles.prefDesc}>Display images in Shop product listings</p>
         </div>
-        <label style={styles.switch}>
+        <label className="ekkilo-switch" style={styles.switch}>
           <input
             type="checkbox"
-            checked={prefs?.show_product_pictures}
+            checked={Boolean(prefs?.show_product_pictures)}
             onChange={(e) => updatePref('show_product_pictures', e.target.checked)}
           />
-          <span style={styles.slider}></span>
+          <span className="ekkilo-slider" />
         </label>
       </div>
 

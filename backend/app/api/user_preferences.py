@@ -211,10 +211,12 @@ async def update_preferences(data: dict, token: str):
     db = await get_db()
     user = await get_current_user(token, db)
     
-    show_pictures = data.get("show_product_pictures")
+    show_pictures = data["show_product_pictures"] if "show_product_pictures" in data else None
     view_mode = data.get("default_view_mode")
     radius = data.get("default_radius")
-    regular_store_id = data.get("regular_store_id")
+    # Allow clearing regular store with null; only skip when key omitted
+    regular_store_id = data["regular_store_id"] if "regular_store_id" in data else None
+    clear_regular = "regular_store_id" in data and data["regular_store_id"] is None
     onboarding_completed = data.get("onboarding_completed")
     pickup_area = data.get("pickup_area")
 
@@ -225,17 +227,24 @@ async def update_preferences(data: dict, token: str):
     except Exception:
         pass
 
+    # Ensure a preferences row exists (GET usually creates it; guard updates)
+    await db.execute("""
+        INSERT INTO user_preferences (user_id)
+        VALUES ($1)
+        ON CONFLICT (user_id) DO NOTHING
+    """, user["id"])
+
     await db.execute("""
         UPDATE user_preferences
         SET show_product_pictures = COALESCE($1, show_product_pictures),
             default_view_mode = COALESCE($2, default_view_mode),
             default_radius = COALESCE($3, default_radius),
-            regular_store_id = COALESCE($4, regular_store_id),
+            regular_store_id = CASE WHEN $8::boolean THEN NULL ELSE COALESCE($4, regular_store_id) END,
             onboarding_completed = COALESCE($5, onboarding_completed),
             pickup_area = COALESCE($6, pickup_area),
             updated_at = NOW()
         WHERE user_id = $7
-    """, show_pictures, view_mode, radius, regular_store_id, onboarding_completed, pickup_area, user["id"])
+    """, show_pictures, view_mode, radius, regular_store_id, onboarding_completed, pickup_area, user["id"], clear_regular)
     
     return {"status": "updated"}
 
