@@ -19,6 +19,28 @@ function brandNote(it) {
   return `${wanted} not available — showing alternative`;
 }
 
+function DeliveryChip({ opt, subtotal }) {
+  if (!opt?.delivery_enabled) {
+    return <span style={pickupChip}>Pickup</span>;
+  }
+  const freeMin = Number(opt.free_delivery_min || 0);
+  const fee = Number(opt.delivery_fee || 0);
+  const sub = Number(subtotal || 0);
+  if (freeMin > 0 && sub >= freeMin) {
+    return <span style={deliveryChip}>🚚 Free delivery</span>;
+  }
+  if (freeMin > 0) {
+    return (
+      <span style={deliveryChip}>
+        🚚 Free ≥ ₹{freeMin}
+        {fee > 0 ? ` · else ₹${fee}` : ""}
+      </span>
+    );
+  }
+  if (fee > 0) return <span style={deliveryChip}>🚚 ₹{fee} delivery</span>;
+  return <span style={deliveryChip}>🚚 Delivery</span>;
+}
+
 export default function OrderPage({ initialSearchText }) {
   const { user, token } = useAuth();
   const [text, setText] = useState("");
@@ -41,8 +63,44 @@ export default function OrderPage({ initialSearchText }) {
   const [upiEnabled, setUpiEnabled] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [payStatus, setPayStatus] = useState(""); // '', verifying, …
+  const [deliveryByPhone, setDeliveryByPhone] = useState({});
 
   const phoneTail = (p) => String(p || "").replace(/\D/g, "").slice(-10);
+
+  const loadDeliveryOptions = async (storeList) => {
+    const phones = (storeList || [])
+      .map((s) => s.store_phone)
+      .filter(Boolean);
+    if (!phones.length) {
+      setDeliveryByPhone({});
+      return;
+    }
+    const subtotals = {};
+    (storeList || []).forEach((s) => {
+      const t = phoneTail(s.store_phone);
+      if (t) subtotals[t] = Number(s.total || 0);
+    });
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/stores/fulfillment-options${token ? `?token=${encodeURIComponent(token)}` : ""}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phones, subtotals }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      setDeliveryByPhone(data.stores || {});
+    } catch (e) {
+      console.error(e);
+      setDeliveryByPhone({});
+    }
+  };
+
+  const deliveryOptFor = (store) => {
+    if (!store) return null;
+    return deliveryByPhone[phoneTail(store.store_phone)] || null;
+  };
 
   useEffect(() => {
     fetch(`${API_BASE}/api/payments/config`)
@@ -79,6 +137,7 @@ export default function OrderPage({ initialSearchText }) {
           const data = await res.json();
           setResult(data);
           setCart({});
+          loadDeliveryOptions(Array.isArray(data?.stores) ? data.stores : []);
         } catch (err) {
           console.error("Search error:", err);
         } finally {
@@ -235,6 +294,7 @@ export default function OrderPage({ initialSearchText }) {
     setResult(data);
     setCart({}); // fresh selection for new search results
     setLoading(false);
+    loadDeliveryOptions(Array.isArray(data?.stores) ? data.stores : []);
 
     // Sampled quick-commerce estimate (published weekly samples — not live)
     try {
@@ -426,9 +486,11 @@ export default function OrderPage({ initialSearchText }) {
   };
 
   const buildCheckoutStores = () => {
-    if (!checkout?.normalized) return { stores: [], grandTotal: 0, lines: [] };
+    if (!checkout?.normalized) return { stores: [], grandTotal: 0, lines: [], itemsTotal: 0, deliveryTotal: 0 };
     const lines = [];
     let grandTotal = 0;
+    let itemsTotal = 0;
+    let deliveryTotal = 0;
     const stores = checkout.normalized.map((store) => {
       const t = phoneTail(store.store_phone);
       const opt = checkout.deliveryMap?.[t] || {};
@@ -448,6 +510,8 @@ export default function OrderPage({ initialSearchText }) {
       }
       const total = itemsSub + delivery_fee;
       grandTotal += total;
+      itemsTotal += itemsSub;
+      deliveryTotal += delivery_fee;
       lines.push({
         store: store.store,
         phoneTail: t,
@@ -472,7 +536,7 @@ export default function OrderPage({ initialSearchText }) {
         delivery_note: (checkout.deliveryNotes?.[t] || "").trim() || undefined,
       };
     });
-    return { stores, grandTotal, lines };
+    return { stores, grandTotal, lines, itemsTotal, deliveryTotal };
   };
 
   const confirmCheckout = async () => {
@@ -1035,6 +1099,9 @@ export default function OrderPage({ initialSearchText }) {
                   <div style={{ fontSize: 12, color: isRegular ? '#166534' : '#0e7490', marginTop: 2, fontWeight: isRegular ? 700 : 400 }}>
                     {isRegular ? 'Your kirana · preferred' : 'Also available nearby'}
                   </div>
+                  <div style={{ marginTop: 6 }}>
+                    <DeliveryChip opt={deliveryOptFor(store)} subtotal={store.total} />
+                  </div>
                 </div>
                 {store.distance !== undefined ? (
                   <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
@@ -1086,6 +1153,9 @@ export default function OrderPage({ initialSearchText }) {
               <div>
                 <b>⭐ {store.store}</b>
                 {store.is_best && <span style={bestBadge}>Good match</span>}
+                <div style={{ marginTop: 6 }}>
+                  <DeliveryChip opt={deliveryOptFor(store)} subtotal={store.total} />
+                </div>
               </div>
               <div>
                 ₹{format(store.total)}
@@ -1158,6 +1228,9 @@ export default function OrderPage({ initialSearchText }) {
                 <div style={{ fontSize: 12, color: '#166534', fontWeight: 700, marginTop: 4 }}>
                   Your kirana · preferred
                 </div>
+                <div style={{ marginTop: 6 }}>
+                  <DeliveryChip opt={deliveryOptFor(myRegularStore)} subtotal={myRegularStore.total} />
+                </div>
               </div>
               <div>
                 ₹{format(myRegularStore.total)}
@@ -1210,14 +1283,27 @@ export default function OrderPage({ initialSearchText }) {
               const storeData = stores.find(s => 
                 s.store?.toLowerCase().trim() === store?.toLowerCase().trim()
               );
-              return storeData?.distance !== undefined ? (
-                <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
-                  📍 {storeData.distance} km
-                </span>
-              ) : (
-                <span style={{ fontSize: 13, color: '#999' }}>
-                  ⏳ Distance...
-                </span>
+              return (
+                <div style={{ textAlign: 'right' }}>
+                  {storeData?.distance !== undefined ? (
+                    <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
+                      📍 {storeData.distance} km
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 13, color: '#999' }}>
+                      ⏳ Distance...
+                    </span>
+                  )}
+                  <div style={{ marginTop: 6 }}>
+                    <DeliveryChip
+                      opt={deliveryOptFor(storeData)}
+                      subtotal={
+                        storeData?.total ??
+                        Object.values(items || {}).reduce((s, it) => s + Number(it.price || 0) * Number(it.packs || 1), 0)
+                      }
+                    />
+                  </div>
+                </div>
               );
             })()}
           </div>
@@ -1305,6 +1391,19 @@ export default function OrderPage({ initialSearchText }) {
                   </div>
                 </div>
               )}
+
+              <div style={{ padding: 12, background: '#f0fdfa', borderRadius: 8 }}>
+                <div style={{ fontSize: 14, color: '#666', marginBottom: 6 }}>Fulfillment</div>
+                <DeliveryChip
+                  opt={deliveryOptFor(selectedStoreDetails)}
+                  subtotal={selectedStoreDetails.total}
+                />
+                {deliveryOptFor(selectedStoreDetails)?.delivery_notes ? (
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
+                    {deliveryOptFor(selectedStoreDetails).delivery_notes}
+                  </div>
+                ) : null}
+              </div>
 
               {/* Phone */}
               {selectedStoreDetails.store_phone && (
@@ -1407,6 +1506,17 @@ export default function OrderPage({ initialSearchText }) {
               <span>Total</span>
               <strong>₹{format(checkoutView.grandTotal)}</strong>
             </div>
+            {(checkoutView.deliveryTotal > 0 || checkoutView.lines.length > 1) && (
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: -8, marginBottom: 12 }}>
+                Items ₹{format(checkoutView.itemsTotal)}
+                {checkoutView.deliveryTotal > 0
+                  ? ` · Delivery ₹${format(checkoutView.deliveryTotal)}`
+                  : ''}
+                {checkoutView.lines.length > 1
+                  ? ' · Each store handles its own pickup/delivery'
+                  : ''}
+              </div>
+            )}
 
             <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 14 }}>
               {checkoutView.lines.map((line) => (
@@ -1741,6 +1851,30 @@ const bestBadge={
   borderRadius:6,
   fontSize:11,
   fontWeight:600
+};
+
+const deliveryChip={
+  display:"inline-block",
+  background:"#ecfdf5",
+  color:"#065f46",
+  border:"1px solid #a7f3d0",
+  padding:"3px 8px",
+  borderRadius:999,
+  fontSize:11,
+  fontWeight:700,
+  lineHeight:1.3,
+};
+
+const pickupChip={
+  display:"inline-block",
+  background:"#f3f4f6",
+  color:"#4b5563",
+  border:"1px solid #e5e7eb",
+  padding:"3px 8px",
+  borderRadius:999,
+  fontSize:11,
+  fontWeight:700,
+  lineHeight:1.3,
 };
 
 const distance={

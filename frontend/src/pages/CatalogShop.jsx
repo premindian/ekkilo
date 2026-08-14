@@ -205,6 +205,14 @@ export default function CatalogShop({ onOrder }) {
         </div>
         <p style={styles.heroSub}>
           Pick for Daily or Monthly — then compare prices across your kiranas. Nothing is auto-added.
+          {' '}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('app:show-onboarding'))}
+            style={styles.howLink}
+          >
+            How it works
+          </button>
         </p>
       </div>
 
@@ -487,6 +495,18 @@ const styles = {
     fontSize: 13,
     opacity: 0.9,
     lineHeight: 1.4,
+  },
+  howLink: {
+    display: 'inline',
+    padding: 0,
+    margin: 0,
+    border: 'none',
+    background: 'none',
+    color: '#fff',
+    fontWeight: 700,
+    textDecoration: 'underline',
+    cursor: 'pointer',
+    fontSize: 13,
   },
   catScroll: {
     display: 'flex',

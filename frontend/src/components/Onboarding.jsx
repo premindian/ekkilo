@@ -77,22 +77,22 @@ export default function Onboarding({ onComplete, onSkip, token }) {
             <div style={styles.emoji}>
               <BrandLogo height={64} alt="Ekkilo" style={{ margin: '0 auto' }} />
             </div>
-            <h2 style={styles.stepTitle}>Welcome to Ekkilo!</h2>
+            <h2 style={styles.stepTitle}>Welcome to Ekkilo</h2>
             <p style={styles.stepDesc}>
-              Compare grocery prices from your local kiranas and save money on every order.
+              Order from your local kiranas — browse, compare prices, pay, and track. We don’t replace your store; we help you shop smarter.
             </p>
             <div style={styles.features}>
               <div style={styles.feature}>
+                <span style={styles.featureIcon}>🛒</span>
+                <span>Shop like a catalog</span>
+              </div>
+              <div style={styles.feature}>
                 <span style={styles.featureIcon}>💰</span>
-                <span>Best prices automatically</span>
+                <span>Compare kirana prices</span>
               </div>
               <div style={styles.feature}>
-                <span style={styles.featureIcon}>⭐</span>
-                <span>Save your favorites</span>
-              </div>
-              <div style={styles.feature}>
-                <span style={styles.featureIcon}>🚀</span>
-                <span>Quick reordering</span>
+                <span style={styles.featureIcon}>📦</span>
+                <span>Pickup or store delivery</span>
               </div>
             </div>
           </div>
@@ -184,25 +184,31 @@ export default function Onboarding({ onComplete, onSkip, token }) {
       case 3:
         return (
           <div style={styles.stepContent}>
-            <div style={styles.emoji}>
-              <BrandLogo variant="icon" height={56} alt="" style={{ margin: '0 auto' }} />
-            </div>
-            <h2 style={styles.stepTitle}>How to Order</h2>
+            <div style={styles.emoji}>🛒</div>
+            <h2 style={styles.stepTitle}>How Ekkilo works</h2>
             <p style={styles.stepDesc}>
-              Just type what you need - "milk, rice, oil" - and we'll find the best deals!
+              Five quick steps — nothing is ordered until you confirm checkout.
             </p>
             <div style={styles.howto}>
               <div style={styles.step}>
                 <div style={styles.stepNum}>1</div>
-                <div>Search for your groceries</div>
+                <div><strong>Shop</strong> — browse categories or search products</div>
               </div>
               <div style={styles.step}>
                 <div style={styles.stepNum}>2</div>
-                <div>Choose your ordering mode</div>
+                <div><strong>List</strong> — add to Daily or Monthly (your cart)</div>
               </div>
               <div style={styles.step}>
                 <div style={styles.stepNum}>3</div>
-                <div>Place order & get it delivered!</div>
+                <div><strong>Prices</strong> — compare across your kiranas</div>
+              </div>
+              <div style={styles.step}>
+                <div style={styles.stepNum}>4</div>
+                <div><strong>Pay</strong> — UPI or pay at store; pickup or delivery</div>
+              </div>
+              <div style={styles.step}>
+                <div style={styles.stepNum}>5</div>
+                <div><strong>Track</strong> — WhatsApp + Track link for updates</div>
               </div>
             </div>
           </div>
@@ -212,37 +218,37 @@ export default function Onboarding({ onComplete, onSkip, token }) {
         return (
           <div style={styles.stepContent}>
             <div style={styles.emoji}>🎯</div>
-            <h2 style={styles.stepTitle}>4 Ordering Modes</h2>
+            <h2 style={styles.stepTitle}>Prices modes</h2>
             <p style={styles.stepDesc}>
-              Choose how you want to shop:
+              On the Prices tab, pick how you want to buy:
             </p>
             <div style={styles.modes}>
               <div style={styles.mode}>
                 <span style={styles.modeIcon}>🏪</span>
                 <div>
                   <div style={styles.modeTitle}>Regular</div>
-                  <div style={styles.modeDesc}>Your trusted store</div>
+                  <div style={styles.modeDesc}>Your go-to kirana first</div>
                 </div>
               </div>
               <div style={styles.mode}>
                 <span style={styles.modeIcon}>⭐</span>
                 <div>
                   <div style={styles.modeTitle}>Favorites</div>
-                  <div style={styles.modeDesc}>Your preferred stores</div>
+                  <div style={styles.modeDesc}>Compare your preferred stores</div>
                 </div>
               </div>
               <div style={styles.mode}>
                 <span style={styles.modeIcon}>✅</span>
                 <div>
                   <div style={styles.modeTitle}>Complete list</div>
-                  <div style={styles.modeDesc}>Optionally add from nearby — you choose</div>
+                  <div style={styles.modeDesc}>Fill gaps from nearby — you choose</div>
                 </div>
               </div>
               <div style={styles.mode}>
                 <span style={styles.modeIcon}>✋</span>
                 <div>
                   <div style={styles.modeTitle}>Manual</div>
-                  <div style={styles.modeDesc}>Full control</div>
+                  <div style={styles.modeDesc}>Pick items store by store</div>
                 </div>
               </div>
             </div>
@@ -253,27 +259,27 @@ export default function Onboarding({ onComplete, onSkip, token }) {
         return (
           <div style={styles.stepContent}>
             <div style={styles.emoji}>🚀</div>
-            <h2 style={styles.stepTitle}>Ready to Start!</h2>
+            <h2 style={styles.stepTitle}>You’re ready</h2>
             <p style={styles.stepDesc}>
-              You're all set! Here's what to do next:
+              Start on Shop, build a list, then open Prices to checkout.
             </p>
             <div style={styles.nextSteps}>
               <div style={styles.nextStep}>
                 <div style={styles.nextStepNum}>1</div>
                 <div style={styles.nextStepText}>
-                  <strong>Search</strong> for your first order
+                  <strong>Shop</strong> for milk, atta, oil…
                 </div>
               </div>
               <div style={styles.nextStep}>
                 <div style={styles.nextStepNum}>2</div>
                 <div style={styles.nextStepText}>
-                  <strong>Add favorites</strong> in your Profile
+                  <strong>Prices</strong> to compare & place order
                 </div>
               </div>
               <div style={styles.nextStep}>
                 <div style={styles.nextStepNum}>3</div>
                 <div style={styles.nextStepText}>
-                  <strong>Set your regular store</strong> for quick orders
+                  Replay anytime in <strong>Profile → Settings</strong>
                 </div>
               </div>
             </div>

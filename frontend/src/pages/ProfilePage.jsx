@@ -435,6 +435,29 @@ function PreferencesTab({ token }) {
   return (
     <div>
       <div style={styles.prefItem}>
+        <div style={{ flex: 1 }}>
+          <p style={styles.prefTitle}>How Ekkilo works</p>
+          <p style={styles.prefDesc}>Shop → list → compare → pay → track</p>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('app:show-onboarding'))}
+            style={{
+              marginTop: 8,
+              padding: '10px 14px',
+              background: '#667eea',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Replay tour
+          </button>
+        </div>
+      </div>
+
+      <div style={styles.prefItem}>
         <div>
           <p style={styles.prefTitle}>Show Product Pictures</p>
           <p style={styles.prefDesc}>Display images in product listings</p>

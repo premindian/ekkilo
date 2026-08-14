@@ -66,6 +66,15 @@ function App() {
     }
   }, [isAuthenticated, token, loading, user?.is_admin, user?.is_store_owner]);
 
+  useEffect(() => {
+    const show = () => {
+      if (user?.is_admin || user?.is_store_owner) return;
+      setShowOnboarding(true);
+    };
+    window.addEventListener('app:show-onboarding', show);
+    return () => window.removeEventListener('app:show-onboarding', show);
+  }, [user?.is_admin, user?.is_store_owner]);
+
   const checkOnboardingStatus = async () => {
     try {
       // Staff portals skip customer onboarding
