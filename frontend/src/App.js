@@ -4,6 +4,7 @@ import { pathToPage } from './utils/navigate';
 import LoginPage from './pages/LoginPage';
 import OrderPage from './pages/OrderPage';
 import GroceryListsPage from './pages/GroceryListsPage';
+import CatalogShop from './pages/CatalogShop';
 import OrderHistoryPage from './pages/OrderHistoryPage';
 import TrackOrder from './pages/TrackOrder';
 import ProfilePage from './pages/ProfilePage';
@@ -27,7 +28,12 @@ const API_BASE = "";
 function App() {
   const { isAuthenticated, loading, user, token } = useAuth();
   // Initialize currentPage from URL pathname
-  const [currentPage, setCurrentPage] = useState(() => pathToPage(window.location.pathname));
+  const [currentPage, setCurrentPage] = useState(() => {
+    const page = pathToPage(window.location.pathname);
+    // Default logged-in home → Shop browse
+    if (page === '/' || page === 'order' || page === '') return 'shop';
+    return page;
+  });
   const [searchText, setSearchText] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
@@ -186,12 +192,18 @@ function App() {
       {/* Navigation */}
       <div style={styles.nav}>
         <button
+          onClick={() => setCurrentPage('shop')}
+          style={currentPage === 'shop' ? styles.navBtnActive : styles.navBtn}
+        >
+          🛍️ Shop
+        </button>
+        <button
           onClick={() => setCurrentPage('order')}
           style={currentPage === 'order' ? styles.navBtnActive : styles.navBtn}
         >
           <span style={styles.navLabel}>
             <BrandLogo variant="icon" height={18} alt="" style={{ display: 'inline-block' }} />
-            Order
+            Prices
           </span>
         </button>
         <button
@@ -216,6 +228,14 @@ function App() {
 
       {/* Content */}
       <div style={styles.content}>
+        {currentPage === 'shop' && (
+          <CatalogShop
+            onOrder={(text) => {
+              setSearchText(text);
+              setCurrentPage('order');
+            }}
+          />
+        )}
         {currentPage === 'order' && (
           <OrderPage initialSearchText={searchText} />
         )}

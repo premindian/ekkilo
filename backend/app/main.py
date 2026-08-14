@@ -18,6 +18,7 @@ from app.api.store_portal import router as store_portal_router
 from app.api.admin_portal import router as admin_portal_router
 from app.api.qc_benchmarks import router as qc_benchmarks_router
 from app.api.payments import router as payments_router
+from app.api.catalog import router as catalog_router
 
 # services
 from app.services.whatsapp_retry import retry_failed_messages
@@ -36,10 +37,12 @@ async def lifespan(app: FastAPI):
         from app.db.database import get_db
         from app.services.order_status import ensure_order_schema
         from app.api.admin_portal import ensure_whatsapp_messages_schema
+        from app.services.catalog import ensure_catalog_schema
         db = await get_db()
         await ensure_order_schema(db)
         await ensure_whatsapp_messages_schema(db)
-        print("✅ Order + WhatsApp schema verified")
+        await ensure_catalog_schema(db)
+        print("✅ Order + WhatsApp + Catalog schema verified")
     except Exception as e:
         print(f"⚠️ Schema ensure failed: {e}")
 
@@ -109,6 +112,7 @@ app.include_router(store_portal_router, prefix="/api")
 app.include_router(admin_portal_router, prefix="/api")
 app.include_router(qc_benchmarks_router, prefix="/api")
 app.include_router(payments_router, prefix="/api")
+app.include_router(catalog_router, prefix="/api")
 
 
 # -----------------------------------------
