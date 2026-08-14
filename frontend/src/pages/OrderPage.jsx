@@ -1631,11 +1631,13 @@ export default function OrderPage({ initialSearchText }) {
   );
 }
 
-// 🎨 Mobile-First — Prices screen
+// 🎨 Mobile-First — Prices screen (16px page rhythm)
+const GUTTER = 16;
+
 const container = {
   maxWidth: 560,
   margin: "auto",
-  padding: "0 0 110px",
+  padding: `0 0 110px`,
   fontSize: 16,
   fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
   background: "linear-gradient(180deg, #ecfdf5 0%, #f8fafc 28%, #f8fafc 100%)",
@@ -1644,7 +1646,7 @@ const container = {
 };
 
 const pageHero = {
-  padding: "18px 16px 16px",
+  padding: `20px ${GUTTER}px 18px`,
   background: "linear-gradient(145deg, #0f766e 0%, #15803d 55%, #16a34a 100%)",
   color: "#fff",
   borderRadius: "0 0 22px 22px",
@@ -1657,7 +1659,7 @@ const heroEyebrow = {
   letterSpacing: "0.06em",
   textTransform: "uppercase",
   opacity: 0.85,
-  marginBottom: 4,
+  marginBottom: 6,
 };
 
 const heroTitle = {
@@ -1665,10 +1667,11 @@ const heroTitle = {
   fontSize: 28,
   fontWeight: 800,
   letterSpacing: "-0.02em",
+  lineHeight: 1.15,
 };
 
 const heroSub = {
-  margin: "6px 0 14px",
+  margin: "8px 0 16px",
   fontSize: 13,
   lineHeight: 1.45,
   opacity: 0.92,
@@ -1684,10 +1687,11 @@ const locStrip = {
   border: "1.5px solid",
   marginBottom: 12,
   color: "#14532d",
+  boxSizing: "border-box",
 };
 
-const locTitle = { fontSize: 13, fontWeight: 700 };
-const locMeta = { fontSize: 11, opacity: 0.8, marginTop: 2 };
+const locTitle = { fontSize: 13, fontWeight: 700, lineHeight: 1.3 };
+const locMeta = { fontSize: 11, opacity: 0.8, marginTop: 2, lineHeight: 1.3 };
 
 const locChangeBtn = {
   border: "none",
@@ -1699,6 +1703,7 @@ const locChangeBtn = {
   borderRadius: 8,
   cursor: "pointer",
   flexShrink: 0,
+  lineHeight: 1.2,
 };
 
 const cityPanel = {
@@ -1707,6 +1712,7 @@ const cityPanel = {
   background: "rgba(255,255,255,0.96)",
   borderRadius: 12,
   color: "#111",
+  boxSizing: "border-box",
 };
 
 const cityBtn = {
@@ -1720,6 +1726,7 @@ const cityBtn = {
   textAlign: "left",
   minHeight: 44,
   color: "#0f172a",
+  boxSizing: "border-box",
 };
 
 const cityTip = {
@@ -1729,6 +1736,7 @@ const cityTip = {
   background: "#fffbeb",
   padding: "8px 10px",
   borderRadius: 8,
+  lineHeight: 1.35,
 };
 
 const searchShell = {
@@ -1739,6 +1747,8 @@ const searchShell = {
   borderRadius: 14,
   padding: "4px 4px 4px 12px",
   boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+  boxSizing: "border-box",
+  width: "100%",
 };
 
 const searchInput = {
@@ -1750,6 +1760,7 @@ const searchInput = {
   padding: "11px 0",
   background: "transparent",
   color: "#111",
+  lineHeight: 1.3,
 };
 
 const searchBtn = {
@@ -1761,9 +1772,13 @@ const searchBtn = {
   padding: "10px 14px",
   cursor: "pointer",
   minHeight: 44,
+  flexShrink: 0,
 };
 
-const modeSection = { padding: "14px 14px 0" };
+const modeSection = {
+  padding: `16px ${GUTTER}px 0`,
+  boxSizing: "border-box",
+};
 
 const modeSectionLabel = {
   fontSize: 12,
@@ -1771,29 +1786,35 @@ const modeSectionLabel = {
   color: "#64748b",
   letterSpacing: "0.04em",
   textTransform: "uppercase",
-  marginBottom: 8,
+  marginBottom: 10,
+  lineHeight: 1.2,
 };
 
 const modeGrid = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
-  gap: 8,
+  gap: 10,
+  alignItems: "stretch",
 };
 
 const modeCard = {
   display: "flex",
   flexDirection: "column",
   alignItems: "flex-start",
-  gap: 2,
+  justifyContent: "flex-start",
+  gap: 4,
   textAlign: "left",
-  padding: "12px 12px 10px",
+  padding: "12px",
   borderRadius: 14,
-  border: "1.5px solid #e2e8f0",
+  border: "2px solid #e2e8f0",
   background: "#fff",
   cursor: "pointer",
-  minHeight: 78,
+  minHeight: 88,
+  height: "100%",
   boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
   touchAction: "manipulation",
+  boxSizing: "border-box",
+  width: "100%",
 };
 
 const modeCardOn = {
@@ -1802,37 +1823,40 @@ const modeCardOn = {
   boxShadow: "0 0 0 3px rgba(34,197,94,0.12)",
 };
 
-const modeIcon = { fontSize: 18, lineHeight: 1 };
-const modeLabel = { fontSize: 14, fontWeight: 800, color: "#0f172a", marginTop: 2 };
-const modeHint = { fontSize: 11, color: "#64748b", lineHeight: 1.3 };
+const modeIcon = { fontSize: 18, lineHeight: 1, height: 20 };
+const modeLabel = { fontSize: 14, fontWeight: 800, color: "#0f172a", lineHeight: 1.2 };
+const modeHint = { fontSize: 11, color: "#64748b", lineHeight: 1.35, marginTop: "auto" };
 
 const modeBanner = {
-  marginTop: 10,
+  marginTop: 12,
   padding: "12px 14px",
   background: "#fff",
   borderRadius: 14,
   border: "1px solid #e2e8f0",
   boxShadow: "0 2px 8px rgba(15,23,42,0.04)",
+  boxSizing: "border-box",
 };
 
-const modeBannerTitle = { fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 4 };
-const modeBannerBody = { fontSize: 13, color: "#4b5563", lineHeight: 1.4 };
+const modeBannerTitle = { fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 4, lineHeight: 1.25 };
+const modeBannerBody = { fontSize: 13, color: "#4b5563", lineHeight: 1.45 };
 
 const fillGapsTip = {
-  margin: "10px 14px 0",
+  margin: `12px ${GUTTER}px 0`,
   padding: 14,
   background: "#f0fdfa",
   borderRadius: 14,
   border: "1px solid #99f6e4",
   cursor: "pointer",
+  boxSizing: "border-box",
 };
 
 const qcCard = {
-  margin: "12px 14px 0",
+  margin: `12px ${GUTTER}px 0`,
   padding: 14,
   background: "#ecfdf5",
   borderRadius: 14,
   border: "1px solid #a7f3d0",
+  boxSizing: "border-box",
 };
 
 const searchBox = {
@@ -1847,11 +1871,12 @@ const searchBox = {
 
 const card = {
   background: "#fff",
-  padding: "16px",
-  margin: "10px 14px 0",
+  padding: 16,
+  margin: `12px ${GUTTER}px 0`,
   borderRadius: 16,
   boxShadow: "0 2px 10px rgba(15,23,42,0.05)",
   border: "1px solid #eef2f7",
+  boxSizing: "border-box",
 };
 
 const row = {
@@ -1911,10 +1936,12 @@ const bottom = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  padding: "14px 16px",
+  gap: 12,
+  padding: `14px max(${GUTTER}px, calc(50% - 280px))`,
   boxShadow: "0 -8px 24px rgba(0,0,0,0.2)",
   zIndex: 1000,
   minHeight: 70,
+  boxSizing: "border-box",
 };
 
 const popup={
@@ -1946,11 +1973,12 @@ const input={
 
 const premiumCard={
   background:"#fff",
-  padding:"16px",
+  padding:16,
   borderRadius:16,
-  margin:"10px 14px 0",
+  margin:`12px ${GUTTER}px 0`,
   boxShadow:"0 2px 10px rgba(15,23,42,0.05)",
-  border:"1px solid #eef2f7"
+  border:"1px solid #eef2f7",
+  boxSizing:"border-box",
 };
 
 const headerRow={
