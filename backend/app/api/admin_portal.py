@@ -365,7 +365,7 @@ async def unblock_user(user_id: int, token: str):
 
 @router.patch("/users/{user_id}")
 async def update_user(user_id: int, data: dict, token: str):
-    """Update user details"""
+    """Update user details (store owner / store link). Admin flag needs dedicated endpoints."""
     admin = await check_admin(token)
     
     db = await get_db()
@@ -373,23 +373,17 @@ async def update_user(user_id: int, data: dict, token: str):
     target = await db.fetchrow("SELECT id, phone, is_admin FROM users WHERE id = $1", user_id)
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if "is_admin" in data:
+        raise HTTPException(
+            status_code=400,
+            detail="Use /make-admin or /remove-admin endpoints (password + phone confirmation required)",
+        )
     
     is_store_owner = data.get("is_store_owner")
     # Allow explicit null to clear store_id when removing owner
     store_id = data["store_id"] if "store_id" in data else None
     clear_store = "store_id" in data and data["store_id"] is None
-    is_admin = data.get("is_admin")
-
-    # Never remove the last remaining admin
-    if is_admin is False and target["is_admin"]:
-        admin_count = await db.fetchval(
-            "SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = TRUE"
-        )
-        if int(admin_count or 0) <= 1:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot remove the last admin. Promote another admin first, or use break-glass recovery.",
-            )
 
     if is_store_owner is True and not data.get("store_id") and not clear_store:
         # If becoming owner without existing store, require store_id
@@ -402,18 +396,16 @@ async def update_user(user_id: int, data: dict, token: str):
         await db.execute("""
             UPDATE users
             SET is_store_owner = COALESCE($1, is_store_owner),
-                store_id = NULL,
-                is_admin = COALESCE($2, is_admin)
-            WHERE id = $3
-        """, is_store_owner, is_admin, user_id)
+                store_id = NULL
+            WHERE id = $2
+        """, is_store_owner, user_id)
     else:
         await db.execute("""
             UPDATE users
             SET is_store_owner = COALESCE($1, is_store_owner),
-                store_id = COALESCE($2, store_id),
-                is_admin = COALESCE($3, is_admin)
-            WHERE id = $4
-        """, is_store_owner, store_id, is_admin, user_id)
+                store_id = COALESCE($2, store_id)
+            WHERE id = $3
+        """, is_store_owner, store_id, user_id)
     
     # Create store_owner_details if making user a store owner
     if is_store_owner:
@@ -423,21 +415,139 @@ async def update_user(user_id: int, data: dict, token: str):
             ON CONFLICT (user_id) DO NOTHING
         """, user_id)
 
-    # If demoted from admin, kill their sessions
-    if is_admin is False and target["is_admin"]:
-        await db.execute("DELETE FROM user_sessions WHERE user_id = $1", user_id)
-
     await log_staff_action(
         actor=admin,
         action="user.update",
         entity_type="user",
         entity_id=user_id,
-        details={k: data.get(k) for k in ("is_store_owner", "store_id", "is_admin") if k in data},
+        details={k: data.get(k) for k in ("is_store_owner", "store_id") if k in data},
         store_id=data.get("store_id") if "store_id" in data else None,
         db=db,
     )
     
     return {"status": "success"}
+
+
+def _phone_tail(phone: str) -> str:
+    return "".join(c for c in str(phone or "") if c.isdigit())[-10:]
+
+
+async def _require_admin_password(admin: dict, password: str, db) -> None:
+    """Re-auth acting admin with staff password before sensitive admin changes."""
+    from app.api.auth import verify_password
+
+    if not password or len(str(password)) < 6:
+        raise HTTPException(status_code=400, detail="Your staff password is required")
+    row = await db.fetchrow(
+        "SELECT password_hash FROM users WHERE id = $1",
+        admin["id"],
+    )
+    if not row or not row.get("password_hash"):
+        raise HTTPException(
+            status_code=400,
+            detail="Set your own Staff Password first (Users → Set Staff Password on your account)",
+        )
+    if not verify_password(str(password), row["password_hash"]):
+        raise HTTPException(status_code=403, detail="Incorrect staff password")
+
+
+@router.post("/users/{user_id}/make-admin")
+async def make_user_admin(user_id: int, data: dict, token: str):
+    """
+    Promote to admin — requires:
+    - acting admin staff password
+    - confirm_phone matching target (last 10 digits)
+    - confirm_phrase exactly MAKE ADMIN
+    """
+    admin = await check_admin(token)
+    db = await get_db()
+    target = await db.fetchrow("SELECT id, phone, is_admin FROM users WHERE id = $1", user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target["is_admin"]:
+        return {"status": "already_admin", "user_id": user_id}
+
+    await _require_admin_password(admin, (data or {}).get("password"), db)
+
+    confirm_phone = _phone_tail((data or {}).get("confirm_phone"))
+    if not confirm_phone or confirm_phone != _phone_tail(target["phone"]):
+        raise HTTPException(
+            status_code=400,
+            detail="Type the user's phone number to confirm (last 10 digits must match)",
+        )
+
+    phrase = str((data or {}).get("confirm_phrase") or "").strip().upper()
+    if phrase != "MAKE ADMIN":
+        raise HTTPException(
+            status_code=400,
+            detail='Type MAKE ADMIN in the confirmation box (exactly)',
+        )
+
+    await db.execute(
+        "UPDATE users SET is_admin = TRUE, updated_at = NOW() WHERE id = $1",
+        user_id,
+    )
+    await log_staff_action(
+        actor=admin,
+        action="user.make_admin",
+        entity_type="user",
+        entity_id=user_id,
+        details={"phone": target["phone"], "confirmed": True},
+        db=db,
+    )
+    return {"status": "admin", "user_id": user_id}
+
+
+@router.post("/users/{user_id}/remove-admin")
+async def remove_user_admin(user_id: int, data: dict, token: str):
+    """Demote admin — requires staff password + phone confirm + REMOVE ADMIN phrase."""
+    admin = await check_admin(token)
+    db = await get_db()
+    target = await db.fetchrow("SELECT id, phone, is_admin FROM users WHERE id = $1", user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not target["is_admin"]:
+        return {"status": "not_admin", "user_id": user_id}
+
+    admin_count = await db.fetchval(
+        "SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = TRUE"
+    )
+    if int(admin_count or 0) <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot remove the last admin. Promote another admin first, or use break-glass recovery.",
+        )
+
+    await _require_admin_password(admin, (data or {}).get("password"), db)
+
+    confirm_phone = _phone_tail((data or {}).get("confirm_phone"))
+    if not confirm_phone or confirm_phone != _phone_tail(target["phone"]):
+        raise HTTPException(
+            status_code=400,
+            detail="Type the user's phone number to confirm (last 10 digits must match)",
+        )
+
+    phrase = str((data or {}).get("confirm_phrase") or "").strip().upper()
+    if phrase != "REMOVE ADMIN":
+        raise HTTPException(
+            status_code=400,
+            detail='Type REMOVE ADMIN in the confirmation box (exactly)',
+        )
+
+    await db.execute(
+        "UPDATE users SET is_admin = FALSE, updated_at = NOW() WHERE id = $1",
+        user_id,
+    )
+    await db.execute("DELETE FROM user_sessions WHERE user_id = $1", user_id)
+    await log_staff_action(
+        actor=admin,
+        action="user.remove_admin",
+        entity_type="user",
+        entity_id=user_id,
+        details={"phone": target["phone"], "confirmed": True},
+        db=db,
+    )
+    return {"status": "removed", "user_id": user_id}
 
 
 @router.post("/sessions/revoke-all")

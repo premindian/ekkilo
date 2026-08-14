@@ -14,6 +14,11 @@ export default function AdminUsers() {
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [passwordUser, setPasswordUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
+  const [adminTarget, setAdminTarget] = useState(null); // { user, mode: 'make'|'remove' }
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminConfirmPhone, setAdminConfirmPhone] = useState('');
+  const [adminConfirmPhrase, setAdminConfirmPhrase] = useState('');
+  const [adminBusy, setAdminBusy] = useState(false);
 
   useEffect(() => {
     if (token) {
@@ -119,7 +124,7 @@ export default function AdminUsers() {
     }
   };
 
-  const toggleAdmin = async (user) => {
+  const toggleAdmin = (user) => {
     if (user.is_admin) {
       const adminCount = users.filter((u) => u.is_admin).length;
       if (adminCount <= 1) {
@@ -128,28 +133,59 @@ export default function AdminUsers() {
         );
         return;
       }
-      if (!window.confirm(`Remove admin access for ${user.name || user.phone}?`)) return;
+      setAdminTarget({ user, mode: 'remove' });
     } else {
-      if (!window.confirm(`Make ${user.name || user.phone} an admin?`)) return;
+      setAdminTarget({ user, mode: 'make' });
+    }
+    setAdminPassword('');
+    setAdminConfirmPhone('');
+    setAdminConfirmPhrase('');
+  };
+
+  const submitAdminChange = async () => {
+    if (!adminTarget?.user) return;
+    const { user, mode } = adminTarget;
+    const expectedPhrase = mode === 'make' ? 'MAKE ADMIN' : 'REMOVE ADMIN';
+    if (!adminPassword || adminPassword.length < 6) {
+      alert('Enter your staff password (min 6 characters)');
+      return;
+    }
+    if (!adminConfirmPhone.trim()) {
+      alert("Type the user's phone number to confirm");
+      return;
+    }
+    if (adminConfirmPhrase.trim().toUpperCase() !== expectedPhrase) {
+      alert(`Type ${expectedPhrase} exactly to confirm`);
+      return;
     }
 
+    setAdminBusy(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${user.id}?token=${token}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          is_admin: !user.is_admin
-        })
-      });
+      const path = mode === 'make' ? 'make-admin' : 'remove-admin';
+      const res = await fetch(
+        `${API_BASE}/api/admin/users/${user.id}/${path}?token=${encodeURIComponent(token)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            password: adminPassword,
+            confirm_phone: adminConfirmPhone.trim(),
+            confirm_phrase: adminConfirmPhrase.trim(),
+          }),
+        }
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(data.detail || 'Failed to update user');
+        alert(typeof data.detail === 'string' ? data.detail : 'Failed to update admin');
         return;
       }
-      alert('✅ User updated!');
+      alert(mode === 'make' ? '✅ User is now an admin' : '✅ Admin access removed');
+      setAdminTarget(null);
       loadUsers();
     } catch (err) {
       alert('❌ Failed to update user');
+    } finally {
+      setAdminBusy(false);
     }
   };
 
@@ -338,6 +374,70 @@ export default function AdminUsers() {
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button onClick={setStaffPassword} style={styles.makeOwnerBtn}>Save Password</button>
               <button onClick={() => setPasswordUser(null)} style={styles.backBtn}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adminTarget && (
+        <div style={styles.modal} onClick={() => !adminBusy && setAdminTarget(null)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>
+              {adminTarget.mode === 'make' ? 'Make Admin' : 'Remove Admin'}
+            </h2>
+            <p style={{ color: '#6b7280', lineHeight: 1.45 }}>
+              This is a sensitive action for{' '}
+              <strong>{adminTarget.user.name || adminTarget.user.phone}</strong>
+              {' '}({adminTarget.user.phone}).
+              You must re-enter <strong>your</strong> staff password and type confirmation fields.
+            </p>
+            <label style={styles.fieldLabel}>Your staff password</label>
+            <input
+              type="password"
+              placeholder="Your staff password"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+              style={styles.select}
+              autoComplete="current-password"
+            />
+            <label style={styles.fieldLabel}>Type their phone to confirm</label>
+            <input
+              type="text"
+              placeholder={adminTarget.user.phone || 'Phone number'}
+              value={adminConfirmPhone}
+              onChange={(e) => setAdminConfirmPhone(e.target.value)}
+              style={styles.select}
+            />
+            <label style={styles.fieldLabel}>
+              Type{' '}
+              <code>{adminTarget.mode === 'make' ? 'MAKE ADMIN' : 'REMOVE ADMIN'}</code>
+            </label>
+            <input
+              type="text"
+              placeholder={adminTarget.mode === 'make' ? 'MAKE ADMIN' : 'REMOVE ADMIN'}
+              value={adminConfirmPhrase}
+              onChange={(e) => setAdminConfirmPhrase(e.target.value)}
+              style={styles.select}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+              <button
+                onClick={submitAdminChange}
+                disabled={adminBusy}
+                style={adminTarget.mode === 'make' ? styles.makeAdminBtn : styles.removeAdminBtn}
+              >
+                {adminBusy
+                  ? 'Working…'
+                  : adminTarget.mode === 'make'
+                  ? 'Confirm make admin'
+                  : 'Confirm remove admin'}
+              </button>
+              <button
+                onClick={() => setAdminTarget(null)}
+                disabled={adminBusy}
+                style={styles.backBtn}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -588,6 +688,14 @@ const styles = {
     padding: 24,
     width: '90%',
     maxWidth: 420,
+  },
+  fieldLabel: {
+    display: 'block',
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#374151',
+    marginTop: 12,
+    marginBottom: 6,
   },
   select: {
     width: '100%',

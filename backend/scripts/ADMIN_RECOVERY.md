@@ -18,9 +18,15 @@ curl -X POST https://ekkilo.onrender.com/api/auth/break-glass `
 
 Then **Staff Login** with that phone + password (or OTP).
 
-## From Admin UI (when you still have access)
+## Sensitive: Make / remove admin
 
-**Admin → Dashboard → Security → Revoke all other sessions**
+From **Admin → Users**, promoting or demoting admin now requires:
+
+1. **Your** staff password (set one on your account first)
+2. Typing the target user’s **phone**
+3. Typing exactly `MAKE ADMIN` or `REMOVE ADMIN`
+
+Plain “Make Admin” one-click is disabled on the API.
 
 ## Rules built into the app
 
