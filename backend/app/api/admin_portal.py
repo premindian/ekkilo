@@ -509,13 +509,16 @@ async def remove_user_admin(user_id: int, data: dict, token: str):
     if not target["is_admin"]:
         return {"status": "not_admin", "user_id": user_id}
 
-    admin_count = await db.fetchval(
-        "SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = TRUE"
+    admin_count = int(
+        await db.fetchval(
+            "SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = TRUE"
+        )
+        or 0
     )
-    if int(admin_count or 0) <= 1:
+    if admin_count <= 1:
         raise HTTPException(
             status_code=400,
-            detail="Cannot remove the last admin. Promote another admin first, or use break-glass recovery.",
+            detail="Cannot remove the last admin. Promote another admin first, or use break-glass / DB recovery.",
         )
 
     await _require_admin_password(admin, (data or {}).get("password"), db)
@@ -534,10 +537,26 @@ async def remove_user_admin(user_id: int, data: dict, token: str):
             detail='Type REMOVE ADMIN in the confirmation box (exactly)',
         )
 
-    await db.execute(
-        "UPDATE users SET is_admin = FALSE, updated_at = NOW() WHERE id = $1",
+    # Atomic: only demote if another admin still exists (blocks last-admin + races)
+    demoted = await db.fetchrow(
+        """
+        UPDATE users
+        SET is_admin = FALSE, updated_at = NOW()
+        WHERE id = $1
+          AND COALESCE(is_admin, FALSE) = TRUE
+          AND (
+            SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = TRUE
+          ) > 1
+        RETURNING id
+        """,
         user_id,
     )
+    if not demoted:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot remove the last admin. Promote another admin first, or use break-glass / DB recovery.",
+        )
+
     await db.execute("DELETE FROM user_sessions WHERE user_id = $1", user_id)
     await log_staff_action(
         actor=admin,

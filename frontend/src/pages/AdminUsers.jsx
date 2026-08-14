@@ -5,11 +5,12 @@ import { useAuth } from '../context/AuthContext';
 const API_BASE = "";
 
 export default function AdminUsers() {
-  const { token } = useAuth();
+  const { token, user: me, logout } = useAuth();
   const [users, setUsers] = useState([]);
   const [stores, setStores] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [assignUser, setAssignUser] = useState(null);
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [passwordUser, setPasswordUser] = useState(null);
@@ -29,15 +30,37 @@ export default function AdminUsers() {
 
   const loadUsers = async () => {
     try {
+      setLoadError('');
       const url = search
-        ? `${API_BASE}/api/admin/users?token=${token}&search=${search}`
-        : `${API_BASE}/api/admin/users?token=${token}`;
-      
+        ? `${API_BASE}/api/admin/users?token=${encodeURIComponent(token)}&search=${encodeURIComponent(search)}`
+        : `${API_BASE}/api/admin/users?token=${encodeURIComponent(token)}`;
+
       const res = await fetch(url);
-      const data = await res.json();
-      setUsers(data);
+      const data = await res.json().catch(() => null);
+
+      // Never setUsers(errorObject) — that causes "t.map is not a function"
+      if (!res.ok) {
+        setUsers([]);
+        const detail =
+          typeof data?.detail === 'string'
+            ? data.detail
+            : 'Failed to load users (not authorized or server error)';
+        setLoadError(detail);
+        if (res.status === 401 || res.status === 403) {
+          // Session lost admin rights (e.g. demoted) — don't crash the page
+          setTimeout(() => {
+            logout?.();
+            navigate('/');
+          }, 1500);
+        }
+        return;
+      }
+
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load users:', err);
+      setUsers([]);
+      setLoadError('Failed to load users');
     } finally {
       setLoading(false);
     }
@@ -126,7 +149,8 @@ export default function AdminUsers() {
 
   const toggleAdmin = (user) => {
     if (user.is_admin) {
-      const count = users.filter((u) => u.is_admin).length;
+      const list = Array.isArray(users) ? users : [];
+      const count = list.filter((u) => u.is_admin).length;
       if (count <= 1) {
         alert(
           'Cannot remove the last admin.\n\n' +
@@ -185,6 +209,12 @@ export default function AdminUsers() {
       }
       alert(mode === 'make' ? '✅ User is now an admin' : '✅ Admin access removed');
       setAdminTarget(null);
+      // Demoting yourself clears your session — don't reload users with a dead token
+      if (mode === 'remove' && me?.id && user.id === me.id) {
+        logout?.();
+        navigate('/');
+        return;
+      }
       loadUsers();
     } catch (err) {
       alert('❌ Failed to update user');
@@ -238,7 +268,8 @@ export default function AdminUsers() {
     }
   };
 
-  const adminCount = users.filter((u) => u.is_admin).length;
+  const userList = Array.isArray(users) ? users : [];
+  const adminCount = userList.filter((u) => u.is_admin).length;
   const isSoleAdmin = (user) => Boolean(user?.is_admin) && adminCount <= 1;
 
   return (
@@ -248,7 +279,7 @@ export default function AdminUsers() {
         <div>
           <h1 style={styles.title}>👥 User Management</h1>
           <p style={styles.subtitle}>
-            {users.length} users · {adminCount} admin{adminCount === 1 ? '' : 's'}
+            {userList.length} users · {adminCount} admin{adminCount === 1 ? '' : 's'}
           </p>
         </div>
         <button onClick={() => navigate('/admin')} style={styles.backBtn}>
@@ -262,6 +293,19 @@ export default function AdminUsers() {
         admin first, then demote. Emergency recovery still works via database or{' '}
         <code>BREAK_GLASS_SECRET</code>.
       </div>
+
+      {loadError && (
+        <div style={styles.errorBox}>
+          {loadError}
+          {(loadError.toLowerCase().includes('admin') ||
+            loadError.toLowerCase().includes('authorized')) && (
+            <div style={{ marginTop: 8, fontSize: 12 }}>
+              If you locked yourself out, restore via DB or{' '}
+              <code>POST /api/auth/break-glass</code> with <code>BREAK_GLASS_SECRET</code>.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Search */}
       <div style={styles.searchBox}>
@@ -277,11 +321,11 @@ export default function AdminUsers() {
       {/* Users List */}
       {loading ? (
         <div style={styles.loading}>🔄 Loading...</div>
-      ) : users.length === 0 ? (
-        <div style={styles.empty}>No users found</div>
+      ) : userList.length === 0 ? (
+        <div style={styles.empty}>{loadError ? '—' : 'No users found'}</div>
       ) : (
         <div style={styles.usersList}>
-          {users.map(user => (
+          {userList.map(user => (
             <div key={user.id} style={styles.userCard}>
               <div style={styles.userHeader}>
                 <div style={styles.userInfo}>
@@ -540,6 +584,16 @@ const styles = {
     marginBottom: 16,
     fontSize: 13,
     color: '#9a3412',
+    lineHeight: 1.45,
+  },
+  errorBox: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    padding: '12px 14px',
+    marginBottom: 16,
+    fontSize: 13,
+    color: '#991b1b',
     lineHeight: 1.45,
   },
   soleNote: {
