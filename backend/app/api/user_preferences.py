@@ -211,7 +211,6 @@ async def update_preferences(data: dict, token: str):
     db = await get_db()
     user = await get_current_user(token, db)
     
-    show_pictures = data["show_product_pictures"] if "show_product_pictures" in data else None
     view_mode = data.get("default_view_mode")
     radius = data.get("default_radius")
     # Allow clearing regular store with null; only skip when key omitted
@@ -236,15 +235,14 @@ async def update_preferences(data: dict, token: str):
 
     await db.execute("""
         UPDATE user_preferences
-        SET show_product_pictures = COALESCE($1, show_product_pictures),
-            default_view_mode = COALESCE($2, default_view_mode),
-            default_radius = COALESCE($3, default_radius),
-            regular_store_id = CASE WHEN $8::boolean THEN NULL ELSE COALESCE($4, regular_store_id) END,
-            onboarding_completed = COALESCE($5, onboarding_completed),
-            pickup_area = COALESCE($6, pickup_area),
+        SET default_view_mode = COALESCE($1, default_view_mode),
+            default_radius = COALESCE($2, default_radius),
+            regular_store_id = CASE WHEN $7::boolean THEN NULL ELSE COALESCE($3, regular_store_id) END,
+            onboarding_completed = COALESCE($4, onboarding_completed),
+            pickup_area = COALESCE($5, pickup_area),
             updated_at = NOW()
-        WHERE user_id = $7
-    """, show_pictures, view_mode, radius, regular_store_id, onboarding_completed, pickup_area, user["id"], clear_regular)
+        WHERE user_id = $6
+    """, view_mode, radius, regular_store_id, onboarding_completed, pickup_area, user["id"], clear_regular)
     
     return {"status": "updated"}
 

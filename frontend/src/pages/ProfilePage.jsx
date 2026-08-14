@@ -440,40 +440,6 @@ function PreferencesTab({ token }) {
 
   return (
     <div>
-      <style>{`
-        .ekkilo-switch input {
-          opacity: 0;
-          width: 0;
-          height: 0;
-          position: absolute;
-        }
-        .ekkilo-switch .ekkilo-slider {
-          position: absolute;
-          cursor: pointer;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: #d1d5db;
-          border-radius: 32px;
-          transition: 0.2s;
-        }
-        .ekkilo-switch .ekkilo-slider:before {
-          content: "";
-          position: absolute;
-          height: 24px;
-          width: 24px;
-          left: 4px;
-          bottom: 4px;
-          background: #fff;
-          border-radius: 50%;
-          transition: 0.2s;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-        }
-        .ekkilo-switch input:checked + .ekkilo-slider {
-          background: #22c55e;
-        }
-        .ekkilo-switch input:checked + .ekkilo-slider:before {
-          transform: translateX(24px);
-        }
-      `}</style>
       <div style={styles.prefItem}>
         <div style={{ flex: 1 }}>
           <p style={styles.prefTitle}>How Ekkilo works</p>
@@ -495,21 +461,6 @@ function PreferencesTab({ token }) {
             Replay tour
           </button>
         </div>
-      </div>
-
-      <div style={styles.prefItem}>
-        <div>
-          <p style={styles.prefTitle}>Show Product Pictures</p>
-          <p style={styles.prefDesc}>Display images in Shop product listings</p>
-        </div>
-        <label className="ekkilo-switch" style={styles.switch}>
-          <input
-            type="checkbox"
-            checked={Boolean(prefs?.show_product_pictures)}
-            onChange={(e) => updatePref('show_product_pictures', e.target.checked)}
-          />
-          <span className="ekkilo-slider" />
-        </label>
       </div>
 
       <div style={styles.prefItem}>
@@ -708,8 +659,6 @@ const styles = {
   prefItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 0', borderBottom: '1px solid #e5e7eb', gap: 16 },
   prefTitle: { fontSize: 16, fontWeight: 600, margin: '0 0 4px 0' },
   prefDesc: { fontSize: 14, color: '#666', margin: 0, lineHeight: 1.4 },
-  switch: { position: 'relative', display: 'inline-block', width: 56, height: 32, flexShrink: 0 },
-  slider: { position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, background: '#ccc', borderRadius: 32, transition: '.4s' },
   select: { padding: '12px 14px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, minHeight: 48, touchAction: 'manipulation' },
   statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 },
   statCard: { background: '#f9fafb', borderRadius: 12, padding: '20px 16px', textAlign: 'center', minHeight: 100 },
