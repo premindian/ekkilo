@@ -60,6 +60,7 @@ export default function OrderHistoryPage({ onReorder }) {
     const colors = {
       'CREATED': '#9ca3af',
       'PENDING': '#f59e0b',
+      'PENDING_PAYMENT': '#f59e0b',
       'CONFIRMED': '#3b82f6',
       'ACCEPTED': '#2563eb',
       'PROCESSING': '#6366f1',
@@ -77,21 +78,35 @@ export default function OrderHistoryPage({ onReorder }) {
     const labels = {
       'CREATED': '📝 Created',
       'PENDING': '⏳ Pending',
+      'PENDING_PAYMENT': '💳 Awaiting UPI',
       'CONFIRMED': '✅ Confirmed',
-      'ACCEPTED': '👍 Accepted',
+      'ACCEPTED': '📦 Accepted',
       'PROCESSING': '🔄 Processing',
       'PARTIAL': '⚠️ Partial',
-      'PARTIAL_READY': '🟡 Partially Ready',
-      'READY': '📦 Ready',
+      'PARTIAL_READY': '🟠 Partial ready',
+      'READY': '✅ Ready',
       'COMPLETED': '🎉 Completed',
-      'REJECTED': '🚫 Rejected',
-      'CANCELLED': '❌ Cancelled'
+      'REJECTED': '❌ Rejected',
+      'CANCELLED': '❌ Cancelled',
     };
     return labels[status] || status;
   };
 
+  const payLabel = (order) => {
+    const ps = (order.payment_status || '').toUpperCase();
+    const pm = (order.payment_method || '').toLowerCase();
+    if (ps === 'PAID') return 'Paid online';
+    if (ps === 'PAY_AT_STORE' || pm === 'pay_at_store') return 'Pay at store';
+    if (ps === 'PENDING' || order.status === 'PENDING_PAYMENT') return 'UPI pending';
+    return null;
+  };
+
+  const lastShopable = orders.find(
+    (o) => !['CANCELLED', 'REJECTED', 'PENDING_PAYMENT'].includes((o.status || '').toUpperCase())
+  );
+
   const canCancel = (status) => {
-    return !['READY', 'COMPLETED', 'CANCELLED'].includes(status);
+    return !['READY', 'COMPLETED', 'CANCELLED', 'PENDING_PAYMENT'].includes(status);
   };
 
   const handleCancel = async (orderId) => {
@@ -233,6 +248,19 @@ export default function OrderHistoryPage({ onReorder }) {
     <div style={styles.container}>
       <h2 style={styles.title}>📜 My Orders</h2>
 
+      {lastShopable && !selectedOrder && (
+        <button
+          type="button"
+          onClick={() => handleReorder(lastShopable.id)}
+          style={styles.lastOrderBanner}
+        >
+          <div style={{ fontWeight: 800, fontSize: 15 }}>Shop last order again</div>
+          <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>
+            Order #{lastShopable.id} · ₹{parseFloat(lastShopable.total_amount || 0).toFixed(2)} · opens Prices with those items
+          </div>
+        </button>
+      )}
+
       {orders.length === 0 ? (
         <div style={styles.empty}>
           <div style={styles.emptyIcon}>📦</div>
@@ -253,6 +281,9 @@ export default function OrderHistoryPage({ onReorder }) {
                   <div style={styles.orderDate}>
                     {new Date(order.created_at).toLocaleDateString()}
                   </div>
+                  {payLabel(order) && (
+                    <div style={styles.payBadge}>{payLabel(order)}</div>
+                  )}
                 </div>
                 <div style={styles.orderAmount}>
                   ₹{parseFloat(order.total_amount || 0).toFixed(2)}
@@ -271,6 +302,17 @@ export default function OrderHistoryPage({ onReorder }) {
                   {getStatusLabel(order.status)}
                 </span>
               </div>
+
+              <button
+                type="button"
+                style={styles.cardReorder}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleReorder(order.id);
+                }}
+              >
+                Shop these items
+              </button>
             </div>
           ))}
         </div>
@@ -356,6 +398,40 @@ const styles = {
   orderDate: {
     fontSize: 13,
     color: '#666'
+  },
+  payBadge: {
+    display: 'inline-block',
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#166534',
+    background: '#f0fdf4',
+    borderRadius: 999,
+    padding: '2px 8px',
+  },
+  lastOrderBanner: {
+    width: '100%',
+    textAlign: 'left',
+    border: 'none',
+    background: 'linear-gradient(135deg, #166534, #22c55e)',
+    color: '#fff',
+    borderRadius: 14,
+    padding: '14px 16px',
+    marginBottom: 16,
+    cursor: 'pointer',
+    boxSizing: 'border-box',
+  },
+  cardReorder: {
+    marginTop: 10,
+    width: '100%',
+    border: '1px solid #bbf7d0',
+    background: '#f0fdf4',
+    color: '#166534',
+    borderRadius: 10,
+    padding: '10px 12px',
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: 'pointer',
   },
   orderAmount: {
     fontSize: 20,

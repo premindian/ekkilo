@@ -209,8 +209,9 @@ export default function TrackOrder() {
                     ? '💵 Pay at store on pickup'
                     : orderDetails.payment_status === 'PAID'
                     ? '✅ Paid online'
-                    : orderDetails.payment_status === 'PENDING'
-                    ? '⏳ UPI payment pending'
+                    : orderDetails.payment_status === 'PENDING' ||
+                      orderDetails.order_status === 'PENDING_PAYMENT'
+                    ? '⏳ UPI payment pending — stores not notified yet'
                     : `Payment: ${orderDetails.payment_status || orderDetails.payment_method}`}
                 </p>
               )}
@@ -219,6 +220,23 @@ export default function TrackOrder() {
               {orderDetails.order_status}
             </div>
           </div>
+
+          {(orderDetails.payment_status === 'PENDING' ||
+            orderDetails.order_status === 'PENDING_PAYMENT') && (
+            <div style={{
+              background: '#fff7ed',
+              border: '1px solid #fed7aa',
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 20,
+              color: '#9a3412',
+              fontSize: 14,
+              lineHeight: 1.45,
+            }}>
+              <strong>Payment not completed.</strong> Kiranas have not been notified.
+              Place the order again from Prices and finish UPI, or choose Pay at store.
+            </div>
+          )}
 
           {/* Progress Bar */}
           <div style={styles.progressSection}>

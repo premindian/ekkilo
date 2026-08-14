@@ -442,32 +442,60 @@ async def delete_product(product_id: int, token: str):
 # ============================================
 @router.get("/orders")
 async def get_all_orders(token: str, status: str = None, limit: int = 50, offset: int = 0):
-    """Get all orders platform-wide"""
+    """Get all orders platform-wide. status=UNPAID filters abandoned UPI checkouts."""
     admin = await check_admin(token)
     
     db = await get_db()
-    
+    try:
+        await db.execute(
+            "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS payment_status VARCHAR(30)"
+        )
+        await db.execute(
+            "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)"
+        )
+        await db.execute(
+            "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12,2)"
+        )
+    except Exception:
+        pass
+
     query = """
         SELECT fo.id, 
                fo.customer_phone,
                fo.created_at,
                fo.status,
+               fo.payment_status,
+               fo.payment_method,
+               fo.track_token,
                COUNT(DISTINCT so.id) as store_count,
-               COALESCE(SUM(so.total_amount), 0) as total_amount
+               COALESCE(fo.total_amount, SUM(so.total_amount), 0) as total_amount
         FROM final_orders fo
         LEFT JOIN store_orders so ON fo.id = so.final_order_id
     """
     
     params = []
-    if status:
-        # Filter by final order status (CREATED/CONFIRMED/READY/etc.)
-        query += " WHERE fo.status = $1"
-        params.append(status.upper())
-        query += " GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status ORDER BY fo.created_at DESC LIMIT $2 OFFSET $3"
-        params.extend([limit, offset])
-    else:
-        query += " GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status ORDER BY fo.created_at DESC LIMIT $1 OFFSET $2"
-        params.extend([limit, offset])
+    where = []
+    status_key = (status or "").strip().upper()
+    if status_key and status_key not in ("ALL", ""):
+        if status_key in ("UNPAID", "PENDING_PAYMENT", "PENDING"):
+            where.append(
+                "(UPPER(COALESCE(fo.status, '')) = 'PENDING_PAYMENT' "
+                "OR UPPER(COALESCE(fo.payment_status, '')) IN ('PENDING', 'UNPAID'))"
+            )
+        else:
+            params.append(status_key)
+            where.append(f"fo.status = ${len(params)}")
+
+    if where:
+        query += " WHERE " + " AND ".join(where)
+
+    query += """
+        GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status,
+                 fo.payment_status, fo.payment_method, fo.track_token, fo.total_amount
+        ORDER BY fo.created_at DESC
+    """
+    params.extend([limit, offset])
+    query += f" LIMIT ${len(params) - 1} OFFSET ${len(params)}"
     
     orders = await db.fetch(query, *params)
     
@@ -484,12 +512,14 @@ async def get_order_details(order_id: int, token: str):
     # Get order basic info
     order = await db.fetchrow("""
         SELECT fo.id, fo.customer_phone, fo.created_at, fo.status,
+               fo.payment_status, fo.payment_method, fo.track_token,
                COUNT(DISTINCT so.id) as store_count,
-               COALESCE(SUM(so.total_amount), 0) as total_amount
+               COALESCE(fo.total_amount, SUM(so.total_amount), 0) as total_amount
         FROM final_orders fo
         LEFT JOIN store_orders so ON fo.id = so.final_order_id
         WHERE fo.id = $1
-        GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status
+        GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status,
+                 fo.payment_status, fo.payment_method, fo.track_token, fo.total_amount
     """, order_id)
     
     if not order:

@@ -67,13 +67,13 @@ export default function AdminOrders() {
 
       {/* Filters */}
       <div style={styles.filters}>
-        {['ALL', 'CREATED', 'CONFIRMED', 'ACCEPTED', 'READY', 'PARTIAL_READY', 'PARTIAL', 'COMPLETED', 'REJECTED', 'CANCELLED'].map(f => (
+        {['ALL', 'UNPAID', 'CREATED', 'CONFIRMED', 'ACCEPTED', 'READY', 'PARTIAL_READY', 'PARTIAL', 'COMPLETED', 'REJECTED', 'CANCELLED', 'PENDING_PAYMENT'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             style={filter === f ? styles.filterActive : styles.filterBtn}
           >
-            {f}
+            {f === 'UNPAID' ? 'UNPAID UPI' : f}
           </button>
         ))}
       </div>
@@ -120,6 +120,11 @@ export default function AdminOrders() {
                   <p style={styles.orderTime}>
                     🕐 {new Date(order.created_at).toLocaleString()}
                   </p>
+                  <p style={{ fontSize: 12, margin: '4px 0 0', fontWeight: 600, color: '#4b5563' }}>
+                    Status: {order.status}
+                    {order.payment_status ? ` · Pay: ${order.payment_status}` : ''}
+                    {order.payment_method ? ` (${order.payment_method})` : ''}
+                  </p>
                 </div>
                 <div style={styles.orderAmount}>
                   ₹{parseFloat(order.total_amount || 0).toFixed(2)}
@@ -153,8 +158,17 @@ export default function AdminOrders() {
                 <h3>📋 Order Information</h3>
                 <p>Customer: {orderDetails.customer_phone}</p>
                 <p>Status: {orderDetails.status}</p>
+                <p>Payment: {orderDetails.payment_status || '—'} {orderDetails.payment_method ? `(${orderDetails.payment_method})` : ''}</p>
                 <p>Created: {new Date(orderDetails.created_at).toLocaleString()}</p>
                 <p>Total: ₹{orderDetails.total_amount}</p>
+                {orderDetails.track_token && (
+                  <p>
+                    Track:{' '}
+                    <a href={`/track?t=${encodeURIComponent(orderDetails.track_token)}`} target="_blank" rel="noreferrer">
+                      open link
+                    </a>
+                  </p>
+                )}
               </div>
 
               {/* Stores */}

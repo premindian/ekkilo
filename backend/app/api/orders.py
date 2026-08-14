@@ -130,6 +130,16 @@ async def get_order_history(token: str, limit: int = 20, offset: int = 0):
     user = await get_current_user(token, db)
     phone = _normalize_phone(user["phone"])
 
+    for stmt in (
+        "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS payment_status VARCHAR(30)",
+        "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)",
+        "ALTER TABLE final_orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12,2)",
+    ):
+        try:
+            await db.execute(stmt)
+        except Exception:
+            pass
+
     orders = await db.fetch("""
         SELECT 
             fo.id,
@@ -137,12 +147,15 @@ async def get_order_history(token: str, limit: int = 20, offset: int = 0):
             fo.created_at,
             fo.status,
             fo.track_token,
+            fo.payment_status,
+            fo.payment_method,
             COUNT(DISTINCT so.id) as store_count,
-            COALESCE(SUM(so.total_amount), 0) as total_amount
+            COALESCE(fo.total_amount, SUM(so.total_amount), 0) as total_amount
         FROM final_orders fo
         LEFT JOIN store_orders so ON fo.id = so.final_order_id
         WHERE fo.customer_phone = $1 OR fo.customer_phone = $2
-        GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status, fo.track_token
+        GROUP BY fo.id, fo.customer_phone, fo.created_at, fo.status, fo.track_token,
+                 fo.payment_status, fo.payment_method, fo.total_amount
         ORDER BY fo.created_at DESC
         LIMIT $3 OFFSET $4
     """, phone, user["phone"], limit, offset)
