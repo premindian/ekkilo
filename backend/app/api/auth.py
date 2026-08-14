@@ -49,6 +49,82 @@ async def _create_session(db, user_id: int) -> str:
     return token
 
 
+async def _ensure_staff_challenges(db):
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS staff_login_challenges (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            phone VARCHAR(20) NOT NULL,
+            challenge VARCHAR(64) NOT NULL UNIQUE,
+            expires_at TIMESTAMP NOT NULL,
+            used BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """
+    )
+
+
+async def _deliver_otp(db, phone: str, purpose: str = "login") -> dict:
+    """Create OTP row + WhatsApp send. Returns {otp, otp_sent, wa_error?}."""
+    from app.services.abuse import assert_otp_rate_limit, assert_phone_not_blocked
+    from app.services.whatsapp.send_message import send_message
+
+    await assert_phone_not_blocked(phone, db=db)
+    await assert_otp_rate_limit(phone, db=db)
+
+    otp = str(random.randint(100000, 999999))
+    expires_at = datetime.now() + timedelta(minutes=10)
+    await db.execute(
+        """
+        INSERT INTO otp_verifications (phone, otp, expires_at)
+        VALUES ($1, $2, $3)
+        """,
+        phone,
+        otp,
+        expires_at,
+    )
+
+    label = "staff login" if purpose == "staff" else "verification"
+    otp_body = (
+        f"🔐 Your Ekkilo {label} code is: {otp}\n\n"
+        f"This code expires in 10 minutes."
+    )
+    msg_row = await db.fetchrow(
+        """
+        INSERT INTO whatsapp_messages (phone, message, status)
+        VALUES ($1, $2, 'PENDING')
+        RETURNING id
+        """,
+        phone,
+        otp_body,
+    )
+
+    otp_sent = False
+    wa_error = None
+    try:
+        otp_sent = bool(await send_message(phone, otp_body, msg_row["id"]))
+        if not otp_sent:
+            err = await db.fetchval(
+                "SELECT last_error FROM whatsapp_messages WHERE id = $1",
+                msg_row["id"],
+            )
+            wa_error = err or "WhatsApp delivery failed"
+    except Exception as e:
+        wa_error = str(e)
+        await db.execute(
+            """
+            UPDATE whatsapp_messages
+            SET status = 'FAILED', last_error = $2, attempts = attempts + 1
+            WHERE id = $1
+            """,
+            msg_row["id"],
+            wa_error,
+        )
+
+    return {"otp": otp, "otp_sent": otp_sent, "wa_error": wa_error}
+
+
 # -----------------------------
 # 📱 SEND OTP
 # -----------------------------
@@ -57,90 +133,41 @@ async def send_otp(data: dict):
     """Send OTP to user's phone number"""
     try:
         phone = data.get("phone")
-        
+
         if not phone:
             raise HTTPException(status_code=400, detail="Phone number required")
-        
+
         from app.utils.phone import normalize_phone
-        from app.services.abuse import assert_otp_rate_limit, assert_phone_not_blocked
 
         phone = normalize_phone(phone)
         if not phone:
             raise HTTPException(status_code=400, detail="Phone number required")
-        
+
         db = await get_db()
-        await assert_phone_not_blocked(phone, db=db)
-        await assert_otp_rate_limit(phone, db=db)
-        
-        # Generate 6-digit OTP
-        otp = str(random.randint(100000, 999999))
-        
-        # Store OTP (expires in 10 minutes)
-        expires_at = datetime.now() + timedelta(minutes=10)
-        
-        await db.execute("""
-            INSERT INTO otp_verifications (phone, otp, expires_at)
-            VALUES ($1, $2, $3)
-        """, phone, otp, expires_at)
+        result = await _deliver_otp(db, phone, purpose="login")
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ send-otp failed: {e}")
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Could not send OTP. Please try again.")
-    
-    # Send OTP via WhatsApp (track row so Admin → WhatsApp shows success/failure)
-    from app.services.whatsapp.send_message import send_message
-
-    otp_body = (
-        f"🔐 Your Ekkilo verification code is: {otp}\n\n"
-        f"This code expires in 10 minutes."
-    )
-    msg_row = await db.fetchrow("""
-        INSERT INTO whatsapp_messages (phone, message, status)
-        VALUES ($1, $2, 'PENDING')
-        RETURNING id
-    """, phone, otp_body)
-
-    otp_sent = False
-    wa_error = None
-    try:
-        otp_sent = bool(await send_message(phone, otp_body, msg_row["id"]))
-        if otp_sent:
-            print(f"✅ OTP sent to {phone}")
-        else:
-            err = await db.fetchval(
-                "SELECT last_error FROM whatsapp_messages WHERE id = $1",
-                msg_row["id"],
-            )
-            wa_error = err or "WhatsApp delivery failed"
-            print(f"❌ OTP WhatsApp failed for {phone}: {wa_error}")
-    except Exception as e:
-        wa_error = str(e)
-        print(f"❌ Failed to send OTP to {phone}: {e}")
-        await db.execute("""
-            UPDATE whatsapp_messages
-            SET status = 'FAILED', last_error = $2, attempts = attempts + 1
-            WHERE id = $1
-        """, msg_row["id"], wa_error)
 
     response = {
-        "status": "sent" if otp_sent else "failed",
+        "status": "sent" if result["otp_sent"] else "failed",
         "phone": phone,
-        "otp_sent": otp_sent,
+        "otp_sent": result["otp_sent"],
     }
 
-    # Include OTP in response ONLY in development mode (never in production)
     if DEV_MODE:
-        response["otp"] = otp
-        print(f"⚠️ DEV MODE: OTP for {phone}: {otp}")
+        response["otp"] = result["otp"]
+        print(f"⚠️ DEV MODE: OTP for {phone}: {result['otp']}")
 
-    if not otp_sent:
-        # Always include Meta's exact error — guessing (Hi / test list) is often wrong.
+    if not result["otp_sent"]:
         detail = f"WhatsApp did not accept OTP for {phone}."
-        if wa_error:
-            detail += f" Meta says: {wa_error}"
+        if result.get("wa_error"):
+            detail += f" Meta says: {result['wa_error']}"
         else:
             detail += " No error detail from Meta. Check Admin → WhatsApp → FAILED."
         raise HTTPException(status_code=502, detail=detail)
@@ -153,87 +180,111 @@ async def send_otp(data: dict):
 # -----------------------------
 @router.post("/auth/verify-otp")
 async def verify_otp(data: dict):
-    """Verify OTP and create/login user"""
+    """Verify OTP and create/login user (customers + store owners). Admins must use Staff Login."""
     phone = data.get("phone")
     otp = data.get("otp")
-    
+
     if not phone or not otp:
         raise HTTPException(status_code=400, detail="Phone and OTP required")
-    
+
     from app.utils.phone import normalize_phone
     from app.services.abuse import assert_phone_not_blocked
 
     phone = normalize_phone(phone)
     db = await get_db()
     await assert_phone_not_blocked(phone, db=db)
-    
-    # Verify OTP
-    otp_record = await db.fetchrow("""
+
+    otp_record = await db.fetchrow(
+        """
         SELECT * FROM otp_verifications
         WHERE phone = $1 AND otp = $2 AND expires_at > NOW() AND verified = FALSE
         ORDER BY created_at DESC
         LIMIT 1
-    """, phone, otp)
-    
+        """,
+        phone,
+        otp,
+    )
+
     if not otp_record:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-    
-    # Mark OTP as verified
-    await db.execute("""
+
+    await db.execute(
+        """
         UPDATE otp_verifications
         SET verified = TRUE
         WHERE id = $1
-    """, otp_record["id"])
-    
-    # Get or create user
-    user = await db.fetchrow("""
+        """,
+        otp_record["id"],
+    )
+
+    user = await db.fetchrow(
+        """
         SELECT * FROM users WHERE phone = $1
-    """, phone)
-    
+        """,
+        phone,
+    )
+
     if not user:
-        # Create new user
-        user = await db.fetchrow("""
+        user = await db.fetchrow(
+            """
             INSERT INTO users (phone)
             VALUES ($1)
             RETURNING *
-        """, phone)
-        
-        # Create default grocery list
-        list_record = await db.fetchrow("""
+            """,
+            phone,
+        )
+
+        await db.fetchrow(
+            """
             INSERT INTO grocery_lists (user_id, name, is_default)
             VALUES ($1, 'My Monthly List', TRUE)
             RETURNING id
-        """, user["id"])
-        
-        # Create default preferences
-        await db.execute("""
+            """,
+            user["id"],
+        )
+
+        await db.execute(
+            """
             INSERT INTO user_preferences (user_id)
             VALUES ($1)
-        """, user["id"])
-    
+            """,
+            user["id"],
+        )
+    elif user.get("is_admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Admins must use Staff Login (password + OTP). Customer OTP cannot open /admin.",
+        )
+
     token = await _create_session(db, user["id"])
-    
+
     return {
         "status": "success",
         "token": token,
-        "user": _user_payload(user)
+        "user": _user_payload(user),
     }
 
 
 # -----------------------------
-# 🔑 STAFF PASSWORD LOGIN (admin / store owner)
+# 🔑 STAFF LOGIN — step 1: password → OTP
 # -----------------------------
 @router.post("/auth/staff-login")
 async def staff_login(data: dict):
-    """Password login for staff (admin or store owner)"""
+    """
+    Staff step 1: verify password, then send OTP.
+    Does NOT issue a session — complete with /auth/staff-verify-otp.
+    """
     phone = data.get("phone")
     password = data.get("password")
 
     if not phone or not password:
         raise HTTPException(status_code=400, detail="Phone and password required")
 
-    if not phone.startswith("91"):
-        phone = "91" + phone
+    from app.utils.phone import normalize_phone
+
+    phone = normalize_phone(phone)
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone and password required")
 
     db = await get_db()
     user = await db.fetchrow("SELECT * FROM users WHERE phone = $1", phone)
@@ -246,6 +297,120 @@ async def staff_login(data: dict):
 
     if not verify_password(password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    await _ensure_staff_challenges(db)
+
+    # Invalidate older unused challenges for this user
+    await db.execute(
+        """
+        UPDATE staff_login_challenges
+        SET used = TRUE
+        WHERE user_id = $1 AND used = FALSE
+        """,
+        user["id"],
+    )
+
+    challenge = secrets.token_urlsafe(24)
+    expires_at = datetime.now() + timedelta(minutes=10)
+    await db.execute(
+        """
+        INSERT INTO staff_login_challenges (user_id, phone, challenge, expires_at)
+        VALUES ($1, $2, $3, $4)
+        """,
+        user["id"],
+        phone,
+        challenge,
+        expires_at,
+    )
+
+    try:
+        result = await _deliver_otp(db, phone, purpose="staff")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ staff-login OTP failed: {e}")
+        raise HTTPException(status_code=500, detail="Could not send staff OTP. Try again.")
+
+    if not result["otp_sent"]:
+        detail = f"WhatsApp did not accept staff OTP for {phone}."
+        if result.get("wa_error"):
+            detail += f" Meta says: {result['wa_error']}"
+        raise HTTPException(status_code=502, detail=detail)
+
+    response = {
+        "status": "otp_required",
+        "phone": phone,
+        "challenge": challenge,
+        "message": "Password OK. Enter the OTP sent to WhatsApp to finish staff login.",
+    }
+    if DEV_MODE:
+        response["otp"] = result["otp"]
+        print(f"⚠️ DEV MODE: staff OTP for {phone}: {result['otp']}")
+    return response
+
+
+# -----------------------------
+# 🔑 STAFF LOGIN — step 2: OTP + challenge → session
+# -----------------------------
+@router.post("/auth/staff-verify-otp")
+async def staff_verify_otp(data: dict):
+    """Staff step 2: verify OTP + password challenge, then issue session."""
+    phone = data.get("phone")
+    otp = data.get("otp")
+    challenge = data.get("challenge")
+
+    if not phone or not otp or not challenge:
+        raise HTTPException(status_code=400, detail="Phone, OTP, and challenge required")
+
+    from app.utils.phone import normalize_phone
+    from app.services.abuse import assert_phone_not_blocked
+
+    phone = normalize_phone(phone)
+    db = await get_db()
+    await assert_phone_not_blocked(phone, db=db)
+    await _ensure_staff_challenges(db)
+
+    row = await db.fetchrow(
+        """
+        SELECT * FROM staff_login_challenges
+        WHERE challenge = $1 AND phone = $2 AND used = FALSE AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        str(challenge),
+        phone,
+    )
+    if not row:
+        raise HTTPException(
+            status_code=400,
+            detail="Staff login challenge expired or invalid. Enter password again.",
+        )
+
+    otp_record = await db.fetchrow(
+        """
+        SELECT * FROM otp_verifications
+        WHERE phone = $1 AND otp = $2 AND expires_at > NOW() AND verified = FALSE
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        phone,
+        str(otp),
+    )
+    if not otp_record:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    user = await db.fetchrow("SELECT * FROM users WHERE id = $1", row["user_id"])
+    if not user or not (user.get("is_admin") or user.get("is_store_owner")):
+        raise HTTPException(status_code=403, detail="Staff access only")
+
+    await db.execute(
+        "UPDATE otp_verifications SET verified = TRUE WHERE id = $1",
+        otp_record["id"],
+    )
+    await db.execute(
+        "UPDATE staff_login_challenges SET used = TRUE WHERE id = $1",
+        row["id"],
+    )
 
     token = await _create_session(db, user["id"])
     return {
@@ -275,9 +440,13 @@ async def set_password(data: dict, token: str):
     if not row or not (row["is_admin"] or row["is_store_owner"]):
         raise HTTPException(status_code=403, detail="Only staff can set passwords")
 
-    await db.execute("""
+    await db.execute(
+        """
         UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2
-    """, hash_password(password), user["id"])
+        """,
+        hash_password(password),
+        user["id"],
+    )
 
     return {"status": "password_set"}
 
@@ -396,7 +565,7 @@ async def break_glass_admin(data: dict):
         "is_admin": True,
         "demoted_others": int(demoted or 0),
         "sessions_cleared": int(deleted_sessions or 0),
-        "message": "Admin restored. Log in with Staff Login (if password set) or OTP.",
+        "message": "Admin restored. Log in with Staff Login (password + OTP).",
     }
 
 

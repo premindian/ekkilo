@@ -186,8 +186,9 @@ export default function AdminDashboard() {
       <div style={styles.securityBox}>
         <h2 style={styles.sectionTitle}>🔐 Security</h2>
         <p style={styles.securityHint}>
-          Keep at least two trusted admins. If an account is compromised, revoke sessions here
-          or use break-glass recovery with <code>BREAK_GLASS_SECRET</code> in Render.
+          Max 3 platform admins. Keep at least two trusted. Staff Login is password + WhatsApp OTP.
+          If compromised, revoke sessions here or use break-glass with{' '}
+          <code>BREAK_GLASS_SECRET</code> in Render.
         </p>
         <button
           type="button"

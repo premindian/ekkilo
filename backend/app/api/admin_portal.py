@@ -458,7 +458,9 @@ async def make_user_admin(user_id: int, data: dict, token: str):
     - acting admin staff password
     - confirm_phone matching target (last 10 digits)
     - confirm_phrase exactly MAKE ADMIN
+    - fewer than MAX_ADMINS (3) existing admins
     """
+    MAX_ADMINS = 3
     admin = await check_admin(token)
     db = await get_db()
     target = await db.fetchrow("SELECT id, phone, is_admin FROM users WHERE id = $1", user_id)
@@ -466,6 +468,18 @@ async def make_user_admin(user_id: int, data: dict, token: str):
         raise HTTPException(status_code=404, detail="User not found")
     if target["is_admin"]:
         return {"status": "already_admin", "user_id": user_id}
+
+    admin_count = int(
+        await db.fetchval(
+            "SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = TRUE"
+        )
+        or 0
+    )
+    if admin_count >= MAX_ADMINS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Admin limit reached ({MAX_ADMINS}). Remove an admin before adding another.",
+        )
 
     await _require_admin_password(admin, (data or {}).get("password"), db)
 
@@ -483,16 +497,33 @@ async def make_user_admin(user_id: int, data: dict, token: str):
             detail='Type MAKE ADMIN in the confirmation box (exactly)',
         )
 
-    await db.execute(
-        "UPDATE users SET is_admin = TRUE, updated_at = NOW() WHERE id = $1",
+    # Atomic: only promote if still under the cap
+    promoted = await db.fetchrow(
+        """
+        UPDATE users
+        SET is_admin = TRUE, updated_at = NOW()
+        WHERE id = $1
+          AND COALESCE(is_admin, FALSE) = FALSE
+          AND (
+            SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = TRUE
+          ) < $2
+        RETURNING id
+        """,
         user_id,
+        MAX_ADMINS,
     )
+    if not promoted:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Admin limit reached ({MAX_ADMINS}). Remove an admin before adding another.",
+        )
+
     await log_staff_action(
         actor=admin,
         action="user.make_admin",
         entity_type="user",
         entity_id=user_id,
-        details={"phone": target["phone"], "confirmed": True},
+        details={"phone": target["phone"], "confirmed": True, "max_admins": MAX_ADMINS},
         db=db,
     )
     return {"status": "admin", "user_id": user_id}

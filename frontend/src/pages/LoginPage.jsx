@@ -8,10 +8,11 @@ const API_BASE = "";
 export default function LoginPage() {
   const { login } = useAuth();
   const [mode, setMode] = useState('otp'); // 'otp' | 'staff'
-  const [step, setStep] = useState('phone'); // 'phone' or 'otp'
+  const [step, setStep] = useState('phone'); // customer: phone|otp ; staff: credentials|otp
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
+  const [staffChallenge, setStaffChallenge] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [sentOtp, setSentOtp] = useState('');
@@ -29,6 +30,13 @@ export default function LoginPage() {
     }
     if (typeof detail === 'object') return detail.msg || detail.message || fallback;
     return String(detail);
+  };
+
+  const resetStaffOtp = () => {
+    setStep('credentials');
+    setOtp('');
+    setSentOtp('');
+    setStaffChallenge('');
   };
 
   const sendOTP = async () => {
@@ -85,7 +93,7 @@ export default function LoginPage() {
         login(data.token, data.user);
         redirectByRole(data.user);
       } else {
-        setError(data.detail || 'Invalid OTP');
+        setError(formatDetail(data.detail, 'Invalid OTP'));
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -94,7 +102,7 @@ export default function LoginPage() {
     }
   };
 
-  const staffLogin = async () => {
+  const staffLoginStep1 = async () => {
     if (!phone || !password) {
       setError('Phone and password required');
       return;
@@ -107,12 +115,52 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, password })
       });
-      const data = await res.json();
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(formatDetail(data.detail, 'Invalid credentials'));
+        return;
+      }
+      // New flow: password OK → OTP required
+      if (data.status === 'otp_required' && data.challenge) {
+        setStaffChallenge(data.challenge);
+        if (data.otp) setSentOtp(data.otp);
+        setOtp('');
+        setStep('otp');
+        return;
+      }
+      // Legacy fallback if old backend still returns a token
+      if (data.token && data.user) {
+        login(data.token, data.user);
+        redirectByRole(data.user);
+        return;
+      }
+      setError('Unexpected staff login response. Please refresh and try again.');
+    } catch (err) {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const staffVerifyOtp = async () => {
+    if (!otp || !staffChallenge) {
+      setError('Enter the OTP sent to WhatsApp');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/staff-verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, otp, challenge: staffChallenge })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.token) {
         login(data.token, data.user);
         redirectByRole(data.user);
       } else {
-        setError(data.detail || 'Invalid credentials');
+        setError(formatDetail(data.detail, 'Invalid or expired OTP'));
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -131,13 +179,23 @@ export default function LoginPage() {
 
         <div style={styles.tabs}>
           <button
-            onClick={() => { setMode('otp'); setError(''); setStep('phone'); }}
+            onClick={() => {
+              setMode('otp');
+              setError('');
+              setStep('phone');
+              setSentOtp('');
+              setOtp('');
+            }}
             style={mode === 'otp' ? styles.tabActive : styles.tab}
           >
             Customer OTP
           </button>
           <button
-            onClick={() => { setMode('staff'); setError(''); }}
+            onClick={() => {
+              setMode('staff');
+              setError('');
+              resetStaffOtp();
+            }}
             style={mode === 'staff' ? styles.tabActive : styles.tab}
           >
             Staff Login
@@ -194,7 +252,7 @@ export default function LoginPage() {
           </>
         )}
 
-        {mode === 'staff' && (
+        {mode === 'staff' && step !== 'otp' && (
           <>
             <input
               type="tel"
@@ -211,15 +269,47 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               style={styles.input}
               disabled={loading}
-              onKeyPress={(e) => e.key === 'Enter' && staffLogin()}
+              onKeyDown={(e) => e.key === 'Enter' && staffLoginStep1()}
             />
             {error && <p style={styles.error}>{error}</p>}
-            <button onClick={staffLogin} disabled={loading} style={styles.button}>
-              {loading ? 'Signing in...' : 'Staff Sign In'}
+            <button onClick={staffLoginStep1} disabled={loading} style={styles.button}>
+              {loading ? 'Checking...' : 'Continue → OTP'}
             </button>
             <p style={styles.hint}>
-              For store owners & admins. Ask an admin to set your password.
+              Staff login is two-step: password, then WhatsApp OTP. Admins cannot use Customer OTP.
             </p>
+          </>
+        )}
+
+        {mode === 'staff' && step === 'otp' && (
+          <>
+            <p style={styles.info}>
+              Password verified. OTP sent to {phone}
+            </p>
+            {sentOtp && (
+              <p style={styles.devOtp}>Dev OTP: <strong>{sentOtp}</strong></p>
+            )}
+            <input
+              type="text"
+              placeholder="Enter 6-digit staff OTP"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              maxLength={6}
+              style={styles.input}
+              disabled={loading}
+              onKeyDown={(e) => e.key === 'Enter' && staffVerifyOtp()}
+            />
+            {error && <p style={styles.error}>{error}</p>}
+            <button onClick={staffVerifyOtp} disabled={loading} style={styles.button}>
+              {loading ? 'Verifying...' : 'Verify & Sign In'}
+            </button>
+            <button
+              onClick={resetStaffOtp}
+              style={styles.backButton}
+              disabled={loading}
+            >
+              ← Back to password
+            </button>
           </>
         )}
       </div>

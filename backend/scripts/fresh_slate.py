@@ -45,6 +45,7 @@ OPTIONAL_TRUNCATE = [
     "store_owner_details",
     "staff_audit_events",
     "otp_verifications",
+    "staff_login_challenges",
     "user_sessions",
     "whatsapp_messages",
     "abuse_events",

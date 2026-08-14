@@ -163,6 +163,15 @@ export default function AdminUsers() {
       }
       setAdminTarget({ user, mode: 'remove' });
     } else {
+      const list = Array.isArray(users) ? users : [];
+      const count = list.filter((u) => u.is_admin).length;
+      if (count >= 3) {
+        alert(
+          'Admin limit reached (max 3).\n\n' +
+            'Remove an existing admin before promoting someone else.'
+        );
+        return;
+      }
       setAdminTarget({ user, mode: 'make' });
     }
     setAdminPassword('');
@@ -271,6 +280,7 @@ export default function AdminUsers() {
   const userList = Array.isArray(users) ? users : [];
   const adminCount = userList.filter((u) => u.is_admin).length;
   const isSoleAdmin = (user) => Boolean(user?.is_admin) && adminCount <= 1;
+  const atAdminCap = adminCount >= 3;
 
   return (
     <div style={styles.container}>
@@ -279,7 +289,7 @@ export default function AdminUsers() {
         <div>
           <h1 style={styles.title}>👥 User Management</h1>
           <p style={styles.subtitle}>
-            {userList.length} users · {adminCount} admin{adminCount === 1 ? '' : 's'}
+            {userList.length} users · {adminCount}/3 admins
           </p>
         </div>
         <button onClick={() => navigate('/admin')} style={styles.backBtn}>
@@ -288,10 +298,9 @@ export default function AdminUsers() {
       </div>
 
       <div style={styles.policyBox}>
-        <strong>Last-admin protection:</strong> you cannot remove or block the only remaining
-        admin in the app — that would lock everyone out of /admin. Promote a second trusted
-        admin first, then demote. Emergency recovery still works via database or{' '}
-        <code>BREAK_GLASS_SECRET</code>.
+        <strong>Admin policy:</strong> max <strong>3</strong> platform admins. You cannot remove or
+        block the only remaining admin. Staff Login is password + WhatsApp OTP (admins cannot use
+        Customer OTP). Emergency recovery: database or <code>BREAK_GLASS_SECRET</code>.
       </div>
 
       {loadError && (
@@ -395,18 +404,28 @@ export default function AdminUsers() {
                 </button>
                 <button 
                   onClick={() => toggleAdmin(user)} 
-                  disabled={isSoleAdmin(user)}
+                  disabled={isSoleAdmin(user) || (!user.is_admin && atAdminCap)}
                   style={{
                     ...(user.is_admin ? styles.removeAdminBtn : styles.makeAdminBtn),
-                    ...(isSoleAdmin(user) ? styles.btnDisabled : {}),
+                    ...((isSoleAdmin(user) || (!user.is_admin && atAdminCap))
+                      ? styles.btnDisabled
+                      : {}),
                   }}
-                  title={isSoleAdmin(user) ? 'Cannot remove the last admin' : undefined}
+                  title={
+                    isSoleAdmin(user)
+                      ? 'Cannot remove the last admin'
+                      : !user.is_admin && atAdminCap
+                        ? 'Admin limit reached (max 3)'
+                        : undefined
+                  }
                 >
                   {user.is_admin
                     ? isSoleAdmin(user)
                       ? '🔒 Last admin'
                       : '❌ Remove Admin'
-                    : '👑 Make Admin'}
+                    : atAdminCap
+                      ? '🔒 Max 3 admins'
+                      : '👑 Make Admin'}
                 </button>
               </div>
               {(user.is_admin || user.is_store_owner) && (
