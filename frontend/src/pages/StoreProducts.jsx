@@ -231,6 +231,25 @@ export default function StoreProducts() {
     setEditStock('');
   };
 
+  const uploadPhoto = async (storeProductId, file) => {
+    if (!file || !storeProductId) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(
+        `${API_BASE}/api/store/products/${storeProductId}/image?token=${token}`,
+        { method: 'POST', body: fd }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Upload failed');
+      }
+      loadProducts();
+    } catch (e) {
+      alert(e.message || 'Upload failed (max ~350KB)');
+    }
+  };
+
   const getFilteredProducts = () => {
     let filtered = products;
     if (filterLowStock) {
@@ -408,6 +427,11 @@ export default function StoreProducts() {
                   onChange={() => toggleSelect(product.id)}
                   style={styles.checkbox}
                 />
+                {product.image_url ? (
+                  <img src={product.image_url} alt="" style={styles.thumb} />
+                ) : (
+                  <div style={styles.thumbEmpty}>📷</div>
+                )}
                 <div style={styles.productInfo}>
                   <div style={styles.productName}>{product.product_name}</div>
                   <div style={styles.productMeta}>
@@ -463,6 +487,19 @@ export default function StoreProducts() {
                     </div>
                   </div>
                   <div style={styles.actions}>
+                    <label style={styles.photoButton} title="Product photo for Shop">
+                      📷
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) uploadPhoto(product.id, f);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
                     <button 
                       onClick={() => startEdit(product)}
                       style={styles.editButton}
@@ -653,6 +690,26 @@ const styles = {
     display: 'flex',
     gap: 12,
     marginBottom: 12,
+    alignItems: 'center',
+  },
+  thumb: {
+    width: 48,
+    height: 48,
+    objectFit: 'cover',
+    borderRadius: 10,
+    background: '#f3f4f6',
+    flexShrink: 0,
+  },
+  thumbEmpty: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    background: '#f3f4f6',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 20,
+    flexShrink: 0,
   },
   productInfo: {
     flex: 1,
@@ -698,6 +755,16 @@ const styles = {
     borderRadius: 8,
     fontSize: 16,
     cursor: 'pointer',
+  },
+  photoButton: {
+    padding: '8px 12px',
+    background: '#0f766e',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 16,
+    cursor: 'pointer',
+    display: 'inline-block',
   },
   deleteButton: {
     padding: '8px 12px',

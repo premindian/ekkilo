@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from app.db.database import get_db
 from app.api.auth import get_current_user
+from app.services.product_images import file_to_data_url, validate_image_url
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/store", tags=["store-portal"])
@@ -390,6 +391,7 @@ async def get_store_products(token: str, search: str = None):
             sp.id,
             p.id as product_id,
             p.name as product_name,
+            p.image_url,
             sp.brand,
             sp.variant,
             sp.size,
@@ -450,6 +452,52 @@ async def update_store_product(product_id: int, data: dict, token: str):
         """, stock, product_id)
     
     return {"status": "success"}
+
+
+@router.post("/products/{product_id}/image")
+async def upload_store_product_image(product_id: int, token: str, file: UploadFile = File(...)):
+    """Upload catalog photo for a SKU this store sells (updates master products.image_url)."""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    db = await get_db()
+    row = await db.fetchrow("""
+        SELECT p.id AS master_id
+        FROM store_products sp
+        JOIN products p ON p.id = sp.product_id
+        WHERE sp.id = $1 AND sp.store_id = $2
+    """, product_id, store_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Product not found")
+    data_url = await file_to_data_url(file)
+    await db.execute(
+        "UPDATE products SET image_url = $1 WHERE id = $2",
+        data_url,
+        row["master_id"],
+    )
+    return {"status": "success", "has_image": True}
+
+
+@router.patch("/products/{product_id}/image-url")
+async def set_store_product_image_url(product_id: int, data: dict, token: str):
+    """Set or clear catalog image via URL for a SKU this store sells."""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    db = await get_db()
+    row = await db.fetchrow("""
+        SELECT p.id AS master_id
+        FROM store_products sp
+        JOIN products p ON p.id = sp.product_id
+        WHERE sp.id = $1 AND sp.store_id = $2
+    """, product_id, store_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Product not found")
+    image_url = validate_image_url(data.get("image_url"))
+    await db.execute(
+        "UPDATE products SET image_url = $1 WHERE id = $2",
+        image_url,
+        row["master_id"],
+    )
+    return {"status": "success", "has_image": bool(image_url)}
 
 
 @router.post("/products")

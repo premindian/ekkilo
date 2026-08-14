@@ -303,7 +303,8 @@ async def list_products(category: str = None, search: str = None, limit: int = 6
         elif unit:
             unit_note = str(unit)
         cat_icon = _rec(r, "category_icon") or "🛒"
-        image = _rec(r, "image_url") or _placeholder(name, cat_icon)
+        raw_img = (_rec(r, "image_url") or "").strip()
+        image = raw_img or _placeholder(name, cat_icon)
         items.append({
             "id": _rec(r, "id"),
             "name": name,

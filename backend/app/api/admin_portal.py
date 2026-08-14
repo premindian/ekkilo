@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from app.db.database import get_db
 from app.api.auth import get_current_user
+from app.services.product_images import file_to_data_url, validate_image_url
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/admin", tags=["admin-portal"])
@@ -411,17 +412,58 @@ async def update_product(product_id: int, data: dict, token: str):
     variant = data.get("variant")
     size = data.get("size")
     unit = data.get("unit")
+
+    # image_url: omit = leave; "" / null = clear; http(s) or data URL = set
+    image_url = data.get("image_url", "__omit__")
+    if image_url != "__omit__":
+        image_url = validate_image_url(image_url)
+        await db.execute("""
+            UPDATE products
+            SET name = COALESCE($1, name),
+                brand = COALESCE($2, brand),
+                variant = COALESCE($3, variant),
+                size = COALESCE($4, size),
+                unit = COALESCE($5, unit),
+                image_url = $6
+            WHERE id = $7
+        """, name, brand, variant, size, unit, image_url, product_id)
+    else:
+        await db.execute("""
+            UPDATE products
+            SET name = COALESCE($1, name),
+                brand = COALESCE($2, brand),
+                variant = COALESCE($3, variant),
+                size = COALESCE($4, size),
+                unit = COALESCE($5, unit)
+            WHERE id = $6
+        """, name, brand, variant, size, unit, product_id)
     
-    await db.execute("""
-        UPDATE products
-        SET name = COALESCE($1, name),
-            brand = COALESCE($2, brand),
-            variant = COALESCE($3, variant),
-            size = COALESCE($4, size),
-            unit = COALESCE($5, unit)
-        WHERE id = $6
-    """, name, brand, variant, size, unit, product_id)
-    
+    return {"status": "success"}
+
+
+@router.post("/products/{product_id}/image")
+async def upload_product_image(product_id: int, token: str, file: UploadFile = File(...)):
+    """Upload a product photo (stored as data URL in products.image_url)."""
+    await check_admin(token)
+    db = await get_db()
+    exists = await db.fetchval("SELECT id FROM products WHERE id = $1", product_id)
+    if not exists:
+        raise HTTPException(status_code=404, detail="Product not found")
+    data_url = await file_to_data_url(file)
+    await db.execute(
+        "UPDATE products SET image_url = $1 WHERE id = $2",
+        data_url,
+        product_id,
+    )
+    return {"status": "success", "image_url": data_url[:80] + "…", "has_image": True}
+
+
+@router.delete("/products/{product_id}/image")
+async def clear_product_image(product_id: int, token: str):
+    """Remove product photo (Shop falls back to placeholder)."""
+    await check_admin(token)
+    db = await get_db()
+    await db.execute("UPDATE products SET image_url = NULL WHERE id = $1", product_id)
     return {"status": "success"}
 
 

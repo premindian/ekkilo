@@ -289,6 +289,9 @@ export default function CatalogShop({ onOrder }) {
                         alt={p.name}
                         style={styles.img}
                         loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.opacity = '0.35';
+                        }}
                       />
                     </div>
                     <div style={styles.cardBody}>
