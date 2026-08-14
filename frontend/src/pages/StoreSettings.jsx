@@ -158,6 +158,47 @@ export default function StoreSettings() {
 
   return (
     <div style={styles.container}>
+      <style>{`
+        .ekkilo-store-switch {
+          position: relative;
+          display: inline-block;
+          width: 52px;
+          height: 30px;
+          flex-shrink: 0;
+        }
+        .ekkilo-store-switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+          position: absolute;
+        }
+        .ekkilo-store-switch .ekkilo-store-slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: #d1d5db;
+          border-radius: 30px;
+          transition: 0.2s;
+        }
+        .ekkilo-store-switch .ekkilo-store-slider:before {
+          content: "";
+          position: absolute;
+          height: 24px;
+          width: 24px;
+          left: 3px;
+          bottom: 3px;
+          background: #fff;
+          border-radius: 50%;
+          transition: 0.2s;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        }
+        .ekkilo-store-switch input:checked + .ekkilo-store-slider {
+          background: #22c55e;
+        }
+        .ekkilo-store-switch input:checked + .ekkilo-store-slider:before {
+          transform: translateX(22px);
+        }
+      `}</style>
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>⚙️ Settings</h1>
@@ -309,13 +350,13 @@ export default function StoreSettings() {
                   Customers can {isOpen ? '' : 'not '}place orders
                 </div>
               </div>
-              <label style={styles.switch}>
+              <label className="ekkilo-store-switch" style={styles.switch}>
                 <input
                   type="checkbox"
                   checked={isOpen}
                   onChange={(e) => setIsOpen(e.target.checked)}
                 />
-                <span style={styles.slider}></span>
+                <span className="ekkilo-store-slider" />
               </label>
             </div>
 
@@ -333,13 +374,13 @@ export default function StoreSettings() {
                   Let customers choose store delivery at checkout
                 </div>
               </div>
-              <label style={styles.switch}>
+              <label className="ekkilo-store-switch" style={styles.switch}>
                 <input
                   type="checkbox"
                   checked={deliveryEnabled}
                   onChange={(e) => setDeliveryEnabled(e.target.checked)}
                 />
-                <span style={styles.slider}></span>
+                <span className="ekkilo-store-slider" />
               </label>
             </div>
 
@@ -414,13 +455,13 @@ export default function StoreSettings() {
                   Automatically accept new orders
                 </div>
               </div>
-              <label style={styles.switch}>
+              <label className="ekkilo-store-switch" style={styles.switch}>
                 <input
                   type="checkbox"
                   checked={autoAccept}
                   onChange={(e) => setAutoAccept(e.target.checked)}
                 />
-                <span style={styles.slider}></span>
+                <span className="ekkilo-store-slider" />
               </label>
             </div>
 
@@ -466,13 +507,13 @@ export default function StoreSettings() {
                   Receive order alerts on WhatsApp
                 </div>
               </div>
-              <label style={styles.switch}>
+              <label className="ekkilo-store-switch" style={styles.switch}>
                 <input
                   type="checkbox"
                   checked={whatsappNotifications}
                   onChange={(e) => setWhatsappNotifications(e.target.checked)}
                 />
-                <span style={styles.slider}></span>
+                <span className="ekkilo-store-slider" />
               </label>
             </div>
 
@@ -485,13 +526,13 @@ export default function StoreSettings() {
                   Get notified when products are running low
                 </div>
               </div>
-              <label style={styles.switch}>
+              <label className="ekkilo-store-switch" style={styles.switch}>
                 <input
                   type="checkbox"
                   checked={lowStockAlert}
                   onChange={(e) => setLowStockAlert(e.target.checked)}
                 />
-                <span style={styles.slider}></span>
+                <span className="ekkilo-store-slider" />
               </label>
             </div>
 
@@ -634,13 +675,16 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
     padding: 16,
     background: '#f9fafb',
     borderRadius: 8,
     marginBottom: 16,
+    overflow: 'visible',
   },
   toggleInfo: {
     flex: 1,
+    minWidth: 0,
   },
   toggleLabel: {
     fontSize: 15,
@@ -655,19 +699,9 @@ const styles = {
   switch: {
     position: 'relative',
     display: 'inline-block',
-    width: 50,
-    height: 28,
-  },
-  slider: {
-    position: 'absolute',
-    cursor: 'pointer',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#ccc',
-    transition: '.4s',
-    borderRadius: 28,
+    width: 52,
+    height: 30,
+    flexShrink: 0,
   },
   saveBtn: {
     width: '100%',
