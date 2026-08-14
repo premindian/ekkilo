@@ -112,6 +112,46 @@ function ProfileTab({ user, token, updateUser }) {
       <button onClick={saveProfile} disabled={saving} style={styles.saveBtn}>
         {saving ? 'Saving...' : '💾 Save Changes'}
       </button>
+
+      <div style={styles.inviteBox}>
+        <p style={styles.inviteTitle}>Invite a kirana</p>
+        <p style={styles.inviteDesc}>
+          Share Ekkilo with your local store — they can join the store portal and get orders on WhatsApp.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            style={styles.inviteBtn}
+            onClick={() => {
+              const link = `${window.location.origin}/store`;
+              const text =
+                `Namaste! Join Ekkilo to get grocery orders from nearby customers.\n` +
+                `Store portal: ${link}\n` +
+                `Customers compare prices and pick up from you.`;
+              if (navigator.share) {
+                navigator.share({ title: 'Invite to Ekkilo', text, url: link }).catch(() => {});
+              } else if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(text);
+                alert('Invite message copied — paste it on WhatsApp');
+              } else {
+                prompt('Copy this invite:', text);
+              }
+            }}
+          >
+            Share invite
+          </button>
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(
+              `Namaste! Join Ekkilo to get grocery orders from nearby customers.\nStore portal: ${window.location.origin}/store`
+            )}`}
+            target="_blank"
+            rel="noreferrer"
+            style={styles.inviteWa}
+          >
+            WhatsApp
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
@@ -557,6 +597,35 @@ const styles = {
   input: { width: '100%', padding: '14px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, boxSizing: 'border-box', minHeight: 48 },
   inputDisabled: { width: '100%', padding: '14px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, background: '#f9fafb', color: '#999', boxSizing: 'border-box', minHeight: 48 },
   saveBtn: { width: '100%', padding: '16px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 'bold', cursor: 'pointer', minHeight: 52, touchAction: 'manipulation' },
+  inviteBox: {
+    marginTop: 24,
+    padding: 16,
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 12,
+  },
+  inviteTitle: { margin: '0 0 6px', fontWeight: 800, fontSize: 16, color: '#166534' },
+  inviteDesc: { margin: '0 0 12px', fontSize: 13, color: '#4b5563', lineHeight: 1.4 },
+  inviteBtn: {
+    padding: '12px 14px',
+    background: '#166534',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 10,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontSize: 14,
+  },
+  inviteWa: {
+    padding: '12px 14px',
+    background: '#25d366',
+    color: '#fff',
+    borderRadius: 10,
+    fontWeight: 700,
+    fontSize: 14,
+    textDecoration: 'none',
+    display: 'inline-block',
+  },
   logoutBtn: { width: '100%', padding: '16px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 'bold', cursor: 'pointer', minHeight: 52, touchAction: 'manipulation', marginTop: 12 },
   loadingText: { textAlign: 'center', padding: 40, color: '#999', fontSize: 16 },
   helpText: { fontSize: 15, color: '#666', marginBottom: 16, lineHeight: 1.5 },

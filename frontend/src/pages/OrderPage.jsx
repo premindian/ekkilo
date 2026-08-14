@@ -791,11 +791,31 @@ export default function OrderPage({ initialSearchText }) {
 
       {/* REGULAR STORE INFO */}
       {mode === "regular" && regularStore && (
-        <div style={{ marginTop: 10, padding: 10, background: '#f0f8ff', borderRadius: 8, fontSize: 14 }}>
-          🏪 Ordering from: <strong>{regularStore}</strong>
-          <span style={{ fontSize: 12, color: '#666', marginLeft: 8 }}>
-            (Change in Profile → Settings)
-          </span>
+        <div style={{
+          marginTop: 10,
+          padding: 12,
+          background: '#f0fdf4',
+          borderRadius: 10,
+          border: '1.5px solid #86efac',
+          fontSize: 14,
+        }}>
+          🏪 Your kirana: <strong>{regularStore}</strong>
+          <div style={{ fontSize: 12, color: '#166534', marginTop: 4 }}>
+            Shown first. Change in Profile → Preferences.
+          </div>
+        </div>
+      )}
+      {mode === "regular" && !regularStore && (
+        <div style={{
+          marginTop: 10,
+          padding: 12,
+          background: '#fff7ed',
+          borderRadius: 10,
+          border: '1px solid #fed7aa',
+          fontSize: 14,
+          color: '#9a3412',
+        }}>
+          No regular kirana set. Pick one in <strong>Profile → Preferences</strong> for faster ordering.
         </div>
       )}
 
@@ -918,7 +938,12 @@ export default function OrderPage({ initialSearchText }) {
           const isRegular =
             store.store?.toLowerCase().trim() === regularStore?.toLowerCase().trim();
           return (
-            <div key={i} style={card}>
+            <div key={i} style={{
+              ...card,
+              ...(isRegular
+                ? { border: '2px solid #22c55e', boxShadow: '0 0 0 3px #22c55e22' }
+                : {}),
+            }}>
               <div
                 style={{
                   display: 'flex',
@@ -932,8 +957,8 @@ export default function OrderPage({ initialSearchText }) {
               >
                 <div>
                   <b style={{ fontSize: 16 }}>🏪 {store.store}</b>
-                  <div style={{ fontSize: 12, color: isRegular ? '#166534' : '#0e7490', marginTop: 2 }}>
-                    {isRegular ? 'Your kirana' : 'Also available nearby'}
+                  <div style={{ fontSize: 12, color: isRegular ? '#166534' : '#0e7490', marginTop: 2, fontWeight: isRegular ? 700 : 400 }}>
+                    {isRegular ? 'Your kirana · preferred' : 'Also available nearby'}
                   </div>
                 </div>
                 {store.distance !== undefined ? (
@@ -1019,7 +1044,7 @@ export default function OrderPage({ initialSearchText }) {
           return (
             <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
               <p>😕 No regular store set</p>
-              <p style={{ fontSize: 14 }}>Add a favorite store first in your Profile</p>
+              <p style={{ fontSize: 14 }}>Add favorites, then set Regular store in Profile → Preferences</p>
             </div>
           );
         }
@@ -1028,13 +1053,15 @@ export default function OrderPage({ initialSearchText }) {
         const myRegularStore = stores.find(s => 
           s.store?.toLowerCase().trim() === regularStore?.toLowerCase().trim()
         );
-        console.log(`🔍 Regular mode: Looking for "${regularStore}", found:`, myRegularStore);
         
         if (!myRegularStore && stores.length > 0) {
           return (
             <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
               <p>😕 {regularStore} doesn't have these items</p>
               <p style={{ fontSize: 14 }}>Try Complete list for items also available nearby</p>
+              <button type="button" style={{ ...orderButton, marginTop: 12 }} onClick={() => pickMode("smart")}>
+                Open Complete list
+              </button>
             </div>
           );
         }
@@ -1042,14 +1069,20 @@ export default function OrderPage({ initialSearchText }) {
         if (!myRegularStore) return null;
         
         return (
-          <div style={premiumCard}>
+          <div style={{
+            ...premiumCard,
+            border: '2px solid #22c55e',
+            boxShadow: '0 0 0 3px #22c55e22',
+          }}>
             <div 
               style={{...headerRow, cursor: 'pointer'}}
               onClick={() => setSelectedStoreDetails(myRegularStore)}
             >
               <div>
                 <b>🏪 {myRegularStore.store}</b>
-                <span style={{ fontSize: 12, color: '#666', marginLeft: 8 }}>Your Regular Store</span>
+                <div style={{ fontSize: 12, color: '#166534', fontWeight: 700, marginTop: 4 }}>
+                  Your kirana · preferred
+                </div>
               </div>
               <div>
                 ₹{format(myRegularStore.total)}
@@ -1073,7 +1106,7 @@ export default function OrderPage({ initialSearchText }) {
               style={orderButton}
               onClick={() => addAllToCart(myRegularStore.store, myRegularStore.items)}
             >
-              ➕ Add all from store
+              ➕ Add all from your kirana
             </button>
           </div>
         );

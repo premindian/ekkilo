@@ -33,7 +33,7 @@ async def get_grocery_lists(token: str):
 # -----------------------------
 @router.get("/grocery-lists/{list_id}")
 async def get_grocery_list(list_id: int, token: str):
-    """Get specific grocery list with all items"""
+    """Get specific grocery list with all items (dedupes messy duplicate rows)."""
     db = await get_db()
     user = await get_current_user(token, db)
     
@@ -50,12 +50,45 @@ async def get_grocery_list(list_id: int, token: str):
     items = await db.fetch("""
         SELECT * FROM grocery_list_items
         WHERE list_id = $1
-        ORDER BY product_name
+        ORDER BY product_name, id
     """, list_id)
+
+    # Merge duplicate product names (keep lowest id, sum quantities)
+    merged = []
+    by_key = {}
+    for item in items:
+        key = (item["product_name"] or "").strip().lower()
+        if not key:
+            merged.append(dict(item))
+            continue
+        if key not in by_key:
+            row = dict(item)
+            by_key[key] = row
+            merged.append(row)
+        else:
+            keep = by_key[key]
+            try:
+                keep["quantity"] = float(keep.get("quantity") or 1) + float(item.get("quantity") or 1)
+            except (TypeError, ValueError):
+                pass
+            await db.execute(
+                "DELETE FROM grocery_list_items WHERE id = $1 AND list_id = $2",
+                item["id"],
+                list_id,
+            )
+            await db.execute(
+                """
+                UPDATE grocery_list_items
+                SET quantity = $1, updated_at = NOW()
+                WHERE id = $2
+                """,
+                keep["quantity"],
+                keep["id"],
+            )
     
     return {
         "list": dict(list_info),
-        "items": [dict(i) for i in items]
+        "items": merged,
     }
 
 
@@ -212,6 +245,29 @@ async def add_list_item(list_id: int, data: dict, token: str):
     
     if not product_name:
         raise HTTPException(status_code=400, detail="Product name required")
+
+    # If same product already on list, bump quantity instead of duplicating
+    existing = await db.fetchrow("""
+        SELECT * FROM grocery_list_items
+        WHERE list_id = $1 AND LOWER(TRIM(product_name)) = LOWER(TRIM($2))
+        ORDER BY id
+        LIMIT 1
+    """, list_id, product_name)
+    if existing:
+        try:
+            new_qty = float(existing.get("quantity") or 1) + float(quantity or 1)
+        except (TypeError, ValueError):
+            new_qty = float(existing.get("quantity") or 1) + 1
+        updated = await db.fetchrow("""
+            UPDATE grocery_list_items
+            SET quantity = $1,
+                unit = COALESCE($2, unit),
+                notes = COALESCE($3, notes),
+                updated_at = NOW()
+            WHERE id = $4
+            RETURNING *
+        """, new_qty, unit, notes, existing["id"])
+        return dict(updated)
     
     # Add item
     item = await db.fetchrow("""
