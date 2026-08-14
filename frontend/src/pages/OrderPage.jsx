@@ -41,6 +41,33 @@ function DeliveryChip({ opt, subtotal }) {
   return <span style={deliveryChip}>🚚 Delivery</span>;
 }
 
+const ORDER_MODES = [
+  {
+    id: "regular",
+    label: "My Kirana",
+    hint: "Your go-to shop first",
+    icon: "🏪",
+  },
+  {
+    id: "smart",
+    label: "Fill Gaps",
+    hint: "Add missing from nearby",
+    icon: "✨",
+  },
+  {
+    id: "favorites",
+    label: "Favorites",
+    hint: "Only saved stores",
+    icon: "★",
+  },
+  {
+    id: "manual",
+    label: "Store Pick",
+    hint: "Choose item by item",
+    icon: "✋",
+  },
+];
+
 export default function OrderPage({ initialSearchText }) {
   const { user, token } = useAuth();
   const [text, setText] = useState("");
@@ -756,313 +783,187 @@ export default function OrderPage({ initialSearchText }) {
   };
 
   const checkoutView = checkout ? buildCheckoutStores() : null;
+  const activeMode = ORDER_MODES.find((m) => m.id === mode) || ORDER_MODES[0];
 
   return (
     <div style={container}>
+      <div style={pageHero}>
+        <div style={heroEyebrow}>Compare & checkout</div>
+        <h1 style={heroTitle}>Prices</h1>
+        <p style={heroSub}>
+          Search your list, pick how to buy, then checkout — pickup or store delivery.
+        </p>
 
-      {/* GPS STATUS */}
-      <div style={{ 
-        fontSize: 13, 
-        padding: '12px 14px', 
-        background: location ? '#f0fdf4' : (showCitySelector ? '#fef2f2' : '#fff8e1'),
-        borderRadius: 10,
-        border: `2px solid ${location ? '#22c55e' : (showCitySelector ? '#ef4444' : '#fbbf24')}`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ flex: 1 }}>
+        {/* Location strip */}
+        <div
+          style={{
+            ...locStrip,
+            borderColor: location ? "#86efac" : showCitySelector ? "#fca5a5" : "#fcd34d",
+            background: location ? "rgba(240,253,244,0.95)" : showCitySelector ? "rgba(254,242,242,0.95)" : "rgba(255,251,235,0.95)",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
             {location ? (
-              selectedCity ? (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>🏙️</span>
-                    <span style={{ color: '#166534', fontWeight: 600 }}>
-                      {cities[selectedCity].name}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
-                    📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
-                  </div>
-                </>
-              ) : localStorage.getItem('lastLocation') && gpsError ? (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>📍</span>
-                    <span style={{ color: '#166534', fontWeight: 600 }}>
-                      Last Known Location
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
-                    📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>🛰️</span>
-                    <span style={{ color: '#166534', fontWeight: 600 }}>
-                      GPS Active
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: '#166534', paddingLeft: 26 }}>
-                    📍 {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
-                  </div>
-                </>
-              )
+              <>
+                <div style={locTitle}>
+                  {selectedCity ? `📍 ${cities[selectedCity].name}` : gpsError ? "📍 Last known location" : "📍 Near you"}
+                </div>
+                <div style={locMeta}>
+                  {location.lat.toFixed(4)}°N, {location.lng.toFixed(4)}°E
+                </div>
+              </>
             ) : showCitySelector ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18 }}>⚠️</span>
-                <span style={{ color: '#991b1b', fontWeight: 600 }}>
-                  Location needed • Select your city below
-                </span>
-              </div>
+              <div style={{ ...locTitle, color: "#991b1b" }}>Location needed — pick your city</div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18 }}>⏳</span>
-                <span style={{ color: '#92400e', fontWeight: 600 }}>
-                  Getting GPS location... Please wait
-                </span>
-              </div>
+              <div style={{ ...locTitle, color: "#92400e" }}>Getting your location…</div>
             )}
           </div>
-          
-          {/* Change Location Button */}
           {location && (
             <button
+              type="button"
               onClick={() => setShowCitySelector(!showCitySelector)}
-              style={{
-                background: '#667eea',
-                color: '#fff',
-                border: 'none',
-                padding: '6px 12px',
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap'
-              }}
+              style={locChangeBtn}
             >
-              📍 Change
+              Change
             </button>
+          )}
+        </div>
+
+        {(showCitySelector || gpsError) && (
+          <div style={cityPanel}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: "#111827" }}>
+              Select your city
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+              {Object.entries(cities).map(([key, city]) => (
+                <button key={key} type="button" onClick={() => selectCity(key)} style={cityBtn}>
+                  {city.name}
+                </button>
+              ))}
+            </div>
+            <div style={cityTip}>Enable GPS in your browser for tighter nearby results.</div>
+          </div>
+        )}
+
+        <div style={searchShell}>
+          <span style={{ fontSize: 16, opacity: 0.55 }}>🔍</span>
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyPress={(e) => e.key === "Enter" && search()}
+            placeholder='Try "milk, atta, oil"…'
+            style={searchInput}
+          />
+          <button type="button" style={searchBtn} onClick={() => search()}>
+            Search
+          </button>
+        </div>
+      </div>
+
+      {/* Modes — named for clarity */}
+      <div style={modeSection}>
+        <div style={modeSectionLabel}>How do you want to buy?</div>
+        <div style={modeGrid}>
+          {ORDER_MODES.map((m) => {
+            const on = mode === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => pickMode(m.id)}
+                style={{
+                  ...modeCard,
+                  ...(on ? modeCardOn : {}),
+                }}
+              >
+                <span style={modeIcon}>{m.icon}</span>
+                <span style={modeLabel}>{m.label}</span>
+                <span style={{ ...modeHint, ...(on ? { color: "#166534" } : {}) }}>{m.hint}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={modeBanner}>
+          <div style={modeBannerTitle}>
+            {activeMode.icon} {activeMode.label}
+          </div>
+          {mode === "regular" && regularStore && (
+            <div style={modeBannerBody}>
+              Ordering from <strong>{regularStore}</strong> first. Change in Profile → Settings.
+            </div>
+          )}
+          {mode === "regular" && !regularStore && (
+            <div style={modeBannerBody}>
+              Set your go-to shop in <strong>Profile → Settings</strong> for faster checkout.
+            </div>
+          )}
+          {mode === "smart" && (
+            <div style={modeBannerBody}>
+              See what’s also available nearby. Nothing is added unless you tap <strong>Add</strong>.
+            </div>
+          )}
+          {mode === "favorites" && (
+            <div style={modeBannerBody}>
+              Only your saved favorites. Add stores in Profile → Favorites.
+            </div>
+          )}
+          {mode === "manual" && (
+            <div style={modeBannerBody}>
+              Open any store and pick items yourself — full control.
+            </div>
           )}
         </div>
       </div>
 
-      {/* CITY SELECTOR - Always show if toggled OR if GPS error */}
-      {(showCitySelector || gpsError) && (
-        <div style={{
-          marginTop: 12,
-          padding: 16,
-          background: '#fff',
-          borderRadius: 12,
-          border: '2px solid #ef4444',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
-        }}>
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#1f2937' }}>
-            📍 Select Your City
-          </div>
-          <div style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
-            Choose your city to see nearby stores:
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-            {Object.entries(cities).map(([key, city]) => (
-              <button
-                key={key}
-                onClick={() => selectCity(key)}
-                style={{
-                  padding: '12px',
-                  background: '#f9fafb',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 8,
-                  fontSize: 14,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  minHeight: 44,
-                  touchAction: 'manipulation'
-                }}
-              >
-                📍 {city.name}
-              </button>
-            ))}
-          </div>
-          <div style={{ 
-            marginTop: 12, 
-            padding: 12, 
-            background: '#fffbeb', 
-            borderRadius: 8,
-            fontSize: 13,
-            color: '#92400e'
-          }}>
-            💡 Tip: Enable GPS in your browser for more accurate results
-          </div>
-        </div>
-      )}
-
-      {/* SEARCH */}
-      <div style={searchBox}>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && search()}
-          placeholder="milk, oil..."
-          style={{ flex: 1, border: "none" }}
-        />
-        <button style={btn} onClick={() => search()}>Search</button>
-      </div>
-
-      {/* MODES — Regular first; Complete list fills gaps (not store-vs-store war) */}
-      <div style={{ marginTop: 10, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-        <button onClick={() => pickMode("regular")} style={mode==="regular"?active:tab}>
-          🏪 Regular
-        </button>
-        <button onClick={() => pickMode("smart")} style={mode==="smart"?active:tab}>
-          ✅ Complete list
-        </button>
-        <button onClick={() => pickMode("favorites")} style={mode==="favorites"?active:tab}>
-          ⭐ Favorites
-        </button>
-        <button onClick={() => pickMode("manual")} style={mode==="manual"?active:tab}>
-          ✋ Manual
-        </button>
-      </div>
-
-      {/* REGULAR STORE INFO */}
-      {mode === "regular" && regularStore && (
-        <div style={{
-          marginTop: 10,
-          padding: 12,
-          background: '#f0fdf4',
-          borderRadius: 10,
-          border: '1.5px solid #86efac',
-          fontSize: 14,
-        }}>
-          🏪 Your kirana: <strong>{regularStore}</strong>
-          <div style={{ fontSize: 12, color: '#166534', marginTop: 4 }}>
-            Shown first. Change in Profile → Preferences.
-          </div>
-        </div>
-      )}
-      {mode === "regular" && !regularStore && (
-        <div style={{
-          marginTop: 10,
-          padding: 12,
-          background: '#fff7ed',
-          borderRadius: 10,
-          border: '1px solid #fed7aa',
-          fontSize: 14,
-          color: '#9a3412',
-        }}>
-          No regular kirana set. Pick one in <strong>Profile → Preferences</strong> for faster ordering.
-        </div>
-      )}
-
       {/* QC vs local estimate (sampled weekly — not live Blinkit prices) */}
       {!loading && qcEstimate && (
-        <div style={{
-          marginTop: 12,
-          padding: 12,
-          background: '#ecfdf5',
-          borderRadius: 8,
-          borderLeft: '4px solid #10b981',
-        }}>
-          <div style={{ fontWeight: 'bold', color: '#065f46', marginBottom: 4 }}>
+        <div style={qcCard}>
+          <div style={{ fontWeight: 800, color: "#065f46", marginBottom: 4 }}>
             Quick-commerce estimate ≈ ₹{format(qcEstimate.qc_total)}
           </div>
-          <div style={{ fontSize: 13, color: '#047857' }}>
-            Based on {qcEstimate.matched_count} sampled item(s) from {qcEstimate.source || 'QC'}
-            {qcEstimate.sampled_on ? ` (${qcEstimate.sampled_on})` : ''}
-            {qcEstimate.city ? ` · ${qcEstimate.city}` : ''}
+          <div style={{ fontSize: 13, color: "#047857" }}>
+            Based on {qcEstimate.matched_count} sampled item(s) from {qcEstimate.source || "QC"}
+            {qcEstimate.sampled_on ? ` (${qcEstimate.sampled_on})` : ""}
+            {qcEstimate.city ? ` · ${qcEstimate.city}` : ""}
           </div>
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
-            {qcEstimate.disclaimer || 'Sampled weekly estimate — not live prices.'}
+          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
+            {qcEstimate.disclaimer || "Sampled weekly estimate — not live prices."}
           </div>
         </div>
       )}
 
       {/* LOADING */}
       {loading && (
-        <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>
-          🔍 Finding items at local kiranas...
+        <div style={{ textAlign: "center", padding: 48, color: "#6b7280" }}>
+          Finding items at local kiranas…
         </div>
       )}
 
       {/* NO RESULTS */}
       {!loading && result && stores.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-          <p>😕 No stores found</p>
-          <p style={{ fontSize: 14 }}>Try adjusting your search or location</p>
+        <div style={{ textAlign: "center", padding: 48, color: "#9ca3af" }}>
+          <p style={{ fontWeight: 700, color: "#6b7280" }}>No stores found</p>
+          <p style={{ fontSize: 14 }}>Try a shorter search or change location</p>
         </div>
       )}
 
-      {/* MODE INDICATOR */}
-      {!loading && result && stores.length > 0 && (
-        <div style={{ 
-          marginTop: 20, 
-          padding: 12, 
-          background: '#f0f8ff', 
-          borderRadius: 8, 
-          borderLeft: '4px solid #4CAF50' 
-        }}>
-          {mode === "smart" && (
-            <>
-              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>✅ Complete list</div>
-              <div style={{ fontSize: 14, color: '#666' }}>
-                See what’s also available nearby. Nothing is added unless you tap <strong>Add</strong> — then Place Order + UPI
-              </div>
-            </>
-          )}
-          {mode === "favorites" && (
-            <>
-              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>⭐ Favorites Mode</div>
-              <div style={{ fontSize: 14, color: '#666' }}>
-                Your favorite stores — tap <strong>Add</strong> to choose items
-              </div>
-            </>
-          )}
-          {mode === "regular" && (
-            <>
-              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>🏪 Regular Store Mode</div>
-              <div style={{ fontSize: 14, color: '#666' }}>
-                {regularStore || "Not set"} — tap <strong>Add</strong> on the items you want
-              </div>
-            </>
-          )}
-          {mode === "manual" && (
-            <>
-              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>✋ Manual Mode</div>
-              <div style={{ fontSize: 14, color: '#666' }}>
-                Pick items yourself from any store, then Place Order
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Fill gaps tip (not store-vs-store price war) */}
+      {/* Fill gaps tip */}
       {!loading && result && stores.length > 0 && mode === "regular" && (
         <div
           onClick={() => pickMode("smart")}
-          style={{
-            marginTop: 10,
-            padding: 12,
-            background: '#ecfeff',
-            borderRadius: 8,
-            borderLeft: '4px solid #06b6d4',
-            cursor: 'pointer',
-          }}
+          style={fillGapsTip}
         >
-          <div style={{ fontWeight: 'bold', color: '#0e7490', marginBottom: 4 }}>
-            Want to check nearby?
+          <div style={{ fontWeight: 800, color: "#0f766e", marginBottom: 4 }}>
+            Missing something?
           </div>
-          <div style={{ fontSize: 14, color: '#666' }}>
-            Open <strong>Complete list</strong> for items also available nearby — you choose what to add (we don’t auto-fill).
+          <div style={{ fontSize: 14, color: "#4b5563", lineHeight: 1.4 }}>
+            Open <strong>Fill Gaps</strong> to see nearby options — you choose what to add.
           </div>
         </div>
       )}
 
-      {/* ✅ COMPLETE LIST (was Smart Buy) */}
+      {/* ✅ FILL GAPS */}
       {!loading && mode==="smart" && (() => {
         const optimizedStores = stores.filter(s => s.is_optimized !== false);
         const sorted = [...optimizedStores].sort((a, b) => {
@@ -1139,7 +1040,7 @@ export default function OrderPage({ initialSearchText }) {
           return (
             <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
               <p>😕 None of your favorite stores have these items</p>
-              <p style={{ fontSize: 14 }}>Try Complete list or add more favorites</p>
+              <p style={{ fontSize: 14 }}>Try Fill Gaps or add more favorites</p>
             </div>
           );
         }
@@ -1188,8 +1089,8 @@ export default function OrderPage({ initialSearchText }) {
         if (!regularStore) {
           return (
             <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-              <p>😕 No regular store set</p>
-              <p style={{ fontSize: 14 }}>Add favorites, then set Regular store in Profile → Preferences</p>
+              <p>😕 No My Kirana set</p>
+              <p style={{ fontSize: 14 }}>Set your go-to shop in Profile → Settings</p>
             </div>
           );
         }
@@ -1203,9 +1104,9 @@ export default function OrderPage({ initialSearchText }) {
           return (
             <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
               <p>😕 {regularStore} doesn't have these items</p>
-              <p style={{ fontSize: 14 }}>Try Complete list for items also available nearby</p>
+              <p style={{ fontSize: 14 }}>Try Fill Gaps for items also available nearby</p>
               <button type="button" style={{ ...orderButton, marginTop: 12 }} onClick={() => pickMode("smart")}>
-                Open Complete list
+                Open Fill Gaps
               </button>
             </div>
           );
@@ -1316,14 +1217,17 @@ export default function OrderPage({ initialSearchText }) {
       {cartItems.length > 0 && (
         <div style={bottom}>
           <div>
-            {cartItems.length} item(s) · ₹{format(cartTotal)}
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 2 }}>Ready to order</div>
+            <div style={{ fontWeight: 700 }}>
+              {cartItems.length} item{cartItems.length === 1 ? "" : "s"} · ₹{format(cartTotal)}
+            </div>
           </div>
 
           <button
-            style={btn}
+            style={{ ...btn, background: "#22c55e", boxShadow: "0 4px 12px rgba(34,197,94,0.35)" }}
             onClick={() => placeOrder(buildPayloadFromCart())}
           >
-            Checkout
+            Checkout →
           </button>
         </div>
       )}
@@ -1727,94 +1631,290 @@ export default function OrderPage({ initialSearchText }) {
   );
 }
 
-// 🎨 Mobile-First Responsive Styles
-const container={
-  maxWidth:520,
-  margin:"auto",
-  padding:"12px",
-  paddingBottom:100,
-  fontSize:"16px", // Prevents iOS zoom on input focus
+// 🎨 Mobile-First — Prices screen
+const container = {
+  maxWidth: 560,
+  margin: "auto",
+  padding: "0 0 110px",
+  fontSize: 16,
+  fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+  background: "linear-gradient(180deg, #ecfdf5 0%, #f8fafc 28%, #f8fafc 100%)",
+  minHeight: "100vh",
+  boxSizing: "border-box",
 };
 
-const searchBox={
-  display:"flex",
-  gap:8,
-  background:"#fff",
-  padding:"12px",
-  borderRadius:12,
-  marginTop:10,
-  boxShadow:"0 2px 8px rgba(0,0,0,0.06)"
+const pageHero = {
+  padding: "18px 16px 16px",
+  background: "linear-gradient(145deg, #0f766e 0%, #15803d 55%, #16a34a 100%)",
+  color: "#fff",
+  borderRadius: "0 0 22px 22px",
+  boxShadow: "0 10px 28px rgba(15,118,110,0.22)",
 };
 
-const card={
-  background:"#fff",
-  padding:"14px",
-  marginTop:10,
-  borderRadius:12,
-  boxShadow:"0 2px 6px rgba(0,0,0,0.04)"
+const heroEyebrow = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  opacity: 0.85,
+  marginBottom: 4,
 };
 
-const row={
-  display:"flex",
-  justifyContent:"space-between",
-  alignItems:"center",
-  padding:"8px 0"
+const heroTitle = {
+  margin: 0,
+  fontSize: 28,
+  fontWeight: 800,
+  letterSpacing: "-0.02em",
 };
 
-const btn={
-  background:"#22c55e",
-  color:"#fff",
-  border:"none",
-  padding:"12px 20px",
-  borderRadius:10,
-  fontSize:16,
-  fontWeight:600,
-  cursor:"pointer",
-  minHeight:44, // Touch-friendly
-  touchAction:"manipulation" // Prevents double-tap zoom
+const heroSub = {
+  margin: "6px 0 14px",
+  fontSize: 13,
+  lineHeight: 1.45,
+  opacity: 0.92,
+  maxWidth: 420,
 };
 
-const tab={
-  padding:"10px 16px",
-  marginRight:6,
-  marginBottom:6,
-  border:"1px solid #ddd",
-  borderRadius:8,
-  background:"#fff",
-  fontSize:14,
-  cursor:"pointer",
-  minHeight:44, // Touch-friendly
-  touchAction:"manipulation"
+const locStrip = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1.5px solid",
+  marginBottom: 12,
+  color: "#14532d",
 };
 
-const active={
-  padding:"10px 16px",
-  marginRight:6,
-  marginBottom:6,
-  border:"2px solid #22c55e",
-  borderRadius:8,
-  background:"#f0fdf4",
-  fontSize:14,
-  fontWeight:"bold",
-  cursor:"pointer",
-  minHeight:44,
-  touchAction:"manipulation"
+const locTitle = { fontSize: 13, fontWeight: 700 };
+const locMeta = { fontSize: 11, opacity: 0.8, marginTop: 2 };
+
+const locChangeBtn = {
+  border: "none",
+  background: "#0f766e",
+  color: "#fff",
+  fontWeight: 700,
+  fontSize: 12,
+  padding: "8px 12px",
+  borderRadius: 8,
+  cursor: "pointer",
+  flexShrink: 0,
 };
 
-const bottom={
-  position:"fixed",
-  bottom:0,
-  left:0,
-  right:0,
-  background:"#000",
-  color:"#fff",
-  display:"flex",
-  justifyContent:"space-between",
-  alignItems:"center",
-  padding:"14px 16px",
-  boxShadow:"0 -4px 12px rgba(0,0,0,0.15)",
-  zIndex:1000,
-  minHeight:70 // Comfortable for thumbs
+const cityPanel = {
+  marginBottom: 12,
+  padding: 12,
+  background: "rgba(255,255,255,0.96)",
+  borderRadius: 12,
+  color: "#111",
+};
+
+const cityBtn = {
+  padding: "12px 10px",
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: 10,
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer",
+  textAlign: "left",
+  minHeight: 44,
+  color: "#0f172a",
+};
+
+const cityTip = {
+  marginTop: 10,
+  fontSize: 12,
+  color: "#92400e",
+  background: "#fffbeb",
+  padding: "8px 10px",
+  borderRadius: 8,
+};
+
+const searchShell = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  background: "#fff",
+  borderRadius: 14,
+  padding: "4px 4px 4px 12px",
+  boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+};
+
+const searchInput = {
+  flex: 1,
+  minWidth: 0,
+  border: "none",
+  outline: "none",
+  fontSize: 15,
+  padding: "11px 0",
+  background: "transparent",
+  color: "#111",
+};
+
+const searchBtn = {
+  border: "none",
+  background: "#14532d",
+  color: "#fff",
+  fontWeight: 700,
+  borderRadius: 10,
+  padding: "10px 14px",
+  cursor: "pointer",
+  minHeight: 44,
+};
+
+const modeSection = { padding: "14px 14px 0" };
+
+const modeSectionLabel = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#64748b",
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  marginBottom: 8,
+};
+
+const modeGrid = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 8,
+};
+
+const modeCard = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: 2,
+  textAlign: "left",
+  padding: "12px 12px 10px",
+  borderRadius: 14,
+  border: "1.5px solid #e2e8f0",
+  background: "#fff",
+  cursor: "pointer",
+  minHeight: 78,
+  boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+  touchAction: "manipulation",
+};
+
+const modeCardOn = {
+  border: "2px solid #22c55e",
+  background: "#f0fdf4",
+  boxShadow: "0 0 0 3px rgba(34,197,94,0.12)",
+};
+
+const modeIcon = { fontSize: 18, lineHeight: 1 };
+const modeLabel = { fontSize: 14, fontWeight: 800, color: "#0f172a", marginTop: 2 };
+const modeHint = { fontSize: 11, color: "#64748b", lineHeight: 1.3 };
+
+const modeBanner = {
+  marginTop: 10,
+  padding: "12px 14px",
+  background: "#fff",
+  borderRadius: 14,
+  border: "1px solid #e2e8f0",
+  boxShadow: "0 2px 8px rgba(15,23,42,0.04)",
+};
+
+const modeBannerTitle = { fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 4 };
+const modeBannerBody = { fontSize: 13, color: "#4b5563", lineHeight: 1.4 };
+
+const fillGapsTip = {
+  margin: "10px 14px 0",
+  padding: 14,
+  background: "#f0fdfa",
+  borderRadius: 14,
+  border: "1px solid #99f6e4",
+  cursor: "pointer",
+};
+
+const qcCard = {
+  margin: "12px 14px 0",
+  padding: 14,
+  background: "#ecfdf5",
+  borderRadius: 14,
+  border: "1px solid #a7f3d0",
+};
+
+const searchBox = {
+  display: "flex",
+  gap: 8,
+  background: "#fff",
+  padding: "12px",
+  borderRadius: 12,
+  marginTop: 10,
+  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+};
+
+const card = {
+  background: "#fff",
+  padding: "16px",
+  margin: "10px 14px 0",
+  borderRadius: 16,
+  boxShadow: "0 2px 10px rgba(15,23,42,0.05)",
+  border: "1px solid #eef2f7",
+};
+
+const row = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "8px 0",
+};
+
+const btn = {
+  background: "#16a34a",
+  color: "#fff",
+  border: "none",
+  padding: "12px 20px",
+  borderRadius: 12,
+  fontSize: 16,
+  fontWeight: 700,
+  cursor: "pointer",
+  minHeight: 44,
+  touchAction: "manipulation",
+};
+
+const tab = {
+  padding: "10px 16px",
+  marginRight: 6,
+  marginBottom: 6,
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  background: "#fff",
+  fontSize: 14,
+  cursor: "pointer",
+  minHeight: 44,
+  touchAction: "manipulation",
+};
+
+const active = {
+  padding: "10px 16px",
+  marginRight: 6,
+  marginBottom: 6,
+  border: "2px solid #22c55e",
+  borderRadius: 8,
+  background: "#f0fdf4",
+  fontSize: 14,
+  fontWeight: "bold",
+  cursor: "pointer",
+  minHeight: 44,
+  touchAction: "manipulation",
+};
+
+const bottom = {
+  position: "fixed",
+  bottom: 0,
+  left: 0,
+  right: 0,
+  background: "linear-gradient(180deg, #0f172a 0%, #020617 100%)",
+  color: "#fff",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "14px 16px",
+  boxShadow: "0 -8px 24px rgba(0,0,0,0.2)",
+  zIndex: 1000,
+  minHeight: 70,
 };
 
 const popup={
@@ -1847,9 +1947,10 @@ const input={
 const premiumCard={
   background:"#fff",
   padding:"16px",
-  borderRadius:12,
-  marginTop:12,
-  boxShadow:"0 2px 8px rgba(0,0,0,0.06)"
+  borderRadius:16,
+  margin:"10px 14px 0",
+  boxShadow:"0 2px 10px rgba(15,23,42,0.05)",
+  border:"1px solid #eef2f7"
 };
 
 const headerRow={

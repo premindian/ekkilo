@@ -498,10 +498,10 @@ function PreferencesTab({ token }) {
           onChange={(e) => updatePref('default_view_mode', e.target.value)}
           style={styles.select}
         >
-          <option value="regular">Regular (My kirana)</option>
-          <option value="smart">Complete list</option>
-          <option value="favorites">My Favorites</option>
-          <option value="manual">Manual Selection</option>
+          <option value="regular">My Kirana</option>
+          <option value="smart">Fill Gaps</option>
+          <option value="favorites">Favorites</option>
+          <option value="manual">Store Pick</option>
         </select>
       </div>
 
@@ -525,8 +525,8 @@ function PreferencesTab({ token }) {
       {/* Regular Store Selection */}
       <div style={styles.prefItem}>
         <div>
-          <p style={styles.prefTitle}>🏪 My Regular Store</p>
-          <p style={styles.prefDesc}>Your go-to trusted kirana</p>
+          <p style={styles.prefTitle}>🏪 My Kirana</p>
+          <p style={styles.prefDesc}>Your go-to trusted shop for My Kirana mode</p>
         </div>
         {favorites.length === 0 ? (
           <p style={{ fontSize: 14, color: '#999', fontStyle: 'italic' }}>

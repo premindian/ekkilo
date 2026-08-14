@@ -220,35 +220,35 @@ export default function Onboarding({ onComplete, onSkip, token }) {
             <div style={styles.emoji}>🎯</div>
             <h2 style={styles.stepTitle}>Prices modes</h2>
             <p style={styles.stepDesc}>
-              On the Prices tab, pick how you want to buy:
+              On Prices, pick how you want to buy:
             </p>
             <div style={styles.modes}>
               <div style={styles.mode}>
                 <span style={styles.modeIcon}>🏪</span>
                 <div>
-                  <div style={styles.modeTitle}>Regular</div>
-                  <div style={styles.modeDesc}>Your go-to kirana first</div>
+                  <div style={styles.modeTitle}>My Kirana</div>
+                  <div style={styles.modeDesc}>Your go-to shop first</div>
                 </div>
               </div>
               <div style={styles.mode}>
-                <span style={styles.modeIcon}>⭐</span>
+                <span style={styles.modeIcon}>✨</span>
+                <div>
+                  <div style={styles.modeTitle}>Fill Gaps</div>
+                  <div style={styles.modeDesc}>Add missing from nearby</div>
+                </div>
+              </div>
+              <div style={styles.mode}>
+                <span style={styles.modeIcon}>★</span>
                 <div>
                   <div style={styles.modeTitle}>Favorites</div>
-                  <div style={styles.modeDesc}>Compare your preferred stores</div>
-                </div>
-              </div>
-              <div style={styles.mode}>
-                <span style={styles.modeIcon}>✅</span>
-                <div>
-                  <div style={styles.modeTitle}>Complete list</div>
-                  <div style={styles.modeDesc}>Fill gaps from nearby — you choose</div>
+                  <div style={styles.modeDesc}>Saved stores only</div>
                 </div>
               </div>
               <div style={styles.mode}>
                 <span style={styles.modeIcon}>✋</span>
                 <div>
-                  <div style={styles.modeTitle}>Manual</div>
-                  <div style={styles.modeDesc}>Pick items store by store</div>
+                  <div style={styles.modeTitle}>Store Pick</div>
+                  <div style={styles.modeDesc}>Choose item by item</div>
                 </div>
               </div>
             </div>
