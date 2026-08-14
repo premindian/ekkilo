@@ -13,6 +13,15 @@ from app.utils.phone import normalize_phone, phone_tail
 router = APIRouter(tags=["payments"])
 
 
+@router.get("/payments/config")
+async def payment_config():
+    """Public: whether UPI/Razorpay is configured on this environment."""
+    return {
+        "upi_enabled": payments_enabled(),
+        "methods": ["upi", "pay_at_store"] if payments_enabled() else ["pay_at_store"],
+    }
+
+
 async def queue_order_notifications(final_order_id: int, background_tasks: BackgroundTasks, db=None):
     """Send store + customer WhatsApp after payment (or legacy confirm)."""
     from app.services.whatsapp import send_message

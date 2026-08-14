@@ -36,6 +36,25 @@ export default function OrderPage({ initialSearchText }) {
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedStoreDetails, setSelectedStoreDetails] = useState(null);
   const [qcEstimate, setQcEstimate] = useState(null);
+  const [checkout, setCheckout] = useState(null); // { normalized, grandTotal, lines }
+  const [paymentMethod, setPaymentMethod] = useState("upi");
+  const [upiEnabled, setUpiEnabled] = useState(true);
+  const [placing, setPlacing] = useState(false);
+  const [payStatus, setPayStatus] = useState(""); // '', verifying, …
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/payments/config`)
+      .then((r) => r.json())
+      .then((d) => {
+        const on = !!d?.upi_enabled;
+        setUpiEnabled(on);
+        setPaymentMethod(on ? "upi" : "pay_at_store");
+      })
+      .catch(() => {
+        setUpiEnabled(false);
+        setPaymentMethod("pay_at_store");
+      });
+  }, []);
   
   // Auto-search when initialSearchText is provided
   useEffect(() => {
@@ -344,8 +363,8 @@ export default function OrderPage({ initialSearchText }) {
       };
     }).filter((s) => s.items.length > 0);
 
-  // 📦 ORDER
-  const placeOrder = async (storesPayload) => {
+  // 📦 CHECKOUT — sheet with UPI / Pay at store (no prompt typing)
+  const openCheckout = (storesPayload) => {
     if (!user?.phone) {
       alert("Please login to place order");
       return;
@@ -363,68 +382,59 @@ export default function OrderPage({ initialSearchText }) {
       return;
     }
 
-    const orderSummary = normalized.map((store) => {
-      const itemsList = store.items
-        .map(
-          (item) =>
-            `  • ${itemLabel(item)} (${item.packs || 1} × ${item.size}${item.unit})`
-        )
-        .join("\n");
-      return `📍 ${store.store}\n${itemsList}\n💰 Subtotal: ₹${Number(store.total).toFixed(2)}`;
-    }).join("\n\n");
-
+    const lines = normalized.map((store) => ({
+      store: store.store,
+      total: Number(store.total || 0),
+      items: store.items.map(
+        (item) =>
+          `${itemLabel(item)} (${item.packs || 1} × ${item.size}${item.unit})`
+      ),
+    }));
     const grandTotal = normalized.reduce((sum, store) => sum + Number(store.total || 0), 0);
 
-    // 1 = UPI online, 2 = pay at store
-    const payChoice = window.prompt(
-      `Order total: ₹${grandTotal.toFixed(2)}\n\n` +
-        `How do you want to pay?\n\n` +
-        `1 = UPI online (stores notified after payment)\n` +
-        `2 = Pay at store (stores notified now)\n\n` +
-        `Type 1 or 2:`,
-      "2"
-    );
-    if (payChoice === null) return;
-    const paymentMethod =
-      String(payChoice).trim() === "1" || String(payChoice).toLowerCase() === "upi"
-        ? "upi"
-        : String(payChoice).trim() === "2" ||
-          String(payChoice).toLowerCase().includes("store")
-        ? "pay_at_store"
-        : null;
-    if (!paymentMethod) {
-      alert("Please enter 1 (UPI) or 2 (Pay at store).");
+    setPaymentMethod(upiEnabled ? "upi" : "pay_at_store");
+    setPayStatus("");
+    setCheckout({ normalized, grandTotal, lines });
+  };
+
+  const closeCheckout = () => {
+    if (placing) return;
+    setCheckout(null);
+    setPayStatus("");
+  };
+
+  const confirmCheckout = async () => {
+    if (!checkout?.normalized?.length || placing) return;
+    if (!token) {
+      alert("Please log in to place an order.");
       return;
     }
 
-    const payLabel =
-      paymentMethod === "upi"
-        ? "Pay with UPI online — stores notified after payment."
-        : "Pay at store when you pick up — stores notified now.";
-
-    const confirmMessage = `Confirm Your Order?\n\n${orderSummary}\n\nGrand Total: ₹${grandTotal.toFixed(2)}\n\n${payLabel}`;
-
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
-
+    const method = paymentMethod === "upi" && upiEnabled ? "upi" : "pay_at_store";
+    const normalized = checkout.normalized;
     const formatted = user.phone.startsWith("91") ? user.phone : "91" + user.phone;
 
-    const finishPlaced = (orderId, trackToken) => {
+    const goTrack = (orderId, trackToken, message) => {
       setCart({});
-      const track = window.confirm(
-        `✅ Order #${orderId} placed!\n\nYou'll get a WhatsApp confirmation.\n\nOpen tracking page now?`
-      );
+      setCheckout(null);
+      setPayStatus("");
+      const track = window.confirm(`${message}\n\nOpen tracking page now?`);
       if (track) {
-        navigate(trackToken ? `/track?t=${encodeURIComponent(trackToken)}` : `/track?order_id=${orderId}`);
+        navigate(
+          trackToken
+            ? `/track?t=${encodeURIComponent(trackToken)}`
+            : `/track?order_id=${orderId}`
+        );
       }
     };
 
     const openRazorpay = (orderId, trackToken, payment) => {
       if (!window.Razorpay) {
         alert("Payment checkout failed to load. Refresh and try again.");
+        setPlacing(false);
         return;
       }
+      setPayStatus("Waiting for UPI payment…");
       const rzp = new window.Razorpay({
         key: payment.key_id,
         amount: payment.amount,
@@ -438,6 +448,7 @@ export default function OrderPage({ initialSearchText }) {
         },
         theme: { color: "#22c55e" },
         handler: async (response) => {
+          setPayStatus("Verifying payment…");
           try {
             const verifyRes = await fetch(
               `${API_BASE}/api/payments/verify?token=${encodeURIComponent(token)}`,
@@ -455,18 +466,29 @@ export default function OrderPage({ initialSearchText }) {
             const verifyData = await verifyRes.json().catch(() => ({}));
             if (!verifyRes.ok) {
               alert(`❌ Payment verify failed: ${verifyData.detail || verifyRes.statusText}`);
+              setPayStatus("");
+              setPlacing(false);
               return;
             }
-            finishPlaced(orderId, verifyData.track_token || trackToken);
+            setPlacing(false);
+            goTrack(
+              orderId,
+              verifyData.track_token || trackToken,
+              `✅ Paid · Order #${orderId}\nStores have been notified.\nYou'll get a WhatsApp confirmation.`
+            );
           } catch (err) {
             alert("❌ Payment verify failed. Contact support with your Order ID.");
+            setPayStatus("");
+            setPlacing(false);
           }
         },
         modal: {
           ondismiss: () => {
+            setPlacing(false);
+            setPayStatus("");
             alert(
               `Payment not completed. Order #${orderId} is unpaid — stores were NOT notified.\n` +
-              `You can track it, but please place again and complete UPI to confirm.`
+                `You can track it, or place again and complete UPI.`
             );
           },
         },
@@ -474,18 +496,16 @@ export default function OrderPage({ initialSearchText }) {
       rzp.open();
     };
 
+    setPlacing(true);
+    setPayStatus(method === "upi" ? "Starting UPI…" : "Placing order…");
     try {
-      if (!token) {
-        alert("Please log in to place an order.");
-        return;
-      }
       const res = await fetch(`${API_BASE}/order?token=${encodeURIComponent(token)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone: formatted,
           stores: normalized,
-          payment_method: paymentMethod,
+          payment_method: method,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -498,6 +518,8 @@ export default function OrderPage({ initialSearchText }) {
             ? data.detail
             : data.error || "Failed to place order";
         alert(`❌ ${msg}`);
+        setPlacing(false);
+        setPayStatus("");
         return;
       }
 
@@ -507,28 +529,31 @@ export default function OrderPage({ initialSearchText }) {
       }
 
       if (orderId) {
-        if (data.payment_method === "pay_at_store") {
-          setCart({});
-          const track = window.confirm(
-            `✅ Order #${orderId} placed!\n\nPay at the store when you pick up.\nStores have been notified.\n\nOpen tracking page now?`
-          );
-          if (track) {
-            navigate(
-              trackToken
-                ? `/track?t=${encodeURIComponent(trackToken)}`
-                : `/track?order_id=${orderId}`
-            );
-          }
-        } else {
-          finishPlaced(orderId, trackToken);
-        }
+        const fellBack =
+          method === "upi" && data.payment_method === "pay_at_store";
+        setPlacing(false);
+        goTrack(
+          orderId,
+          trackToken,
+          fellBack
+            ? `✅ Order #${orderId} placed as Pay at store\n(UPI was unavailable)\nStores have been notified.`
+            : `✅ Order #${orderId} placed!\nPay at the store when you pick up.\nStores have been notified.`
+        );
       } else {
         alert(data.error || data.detail || "✅ Order placed!");
+        setPlacing(false);
+        setPayStatus("");
+        setCheckout(null);
       }
     } catch (err) {
       alert("❌ Failed to place order. Please try again.");
+      setPlacing(false);
+      setPayStatus("");
     }
   };
+
+  // legacy name used by sticky bar
+  const placeOrder = (storesPayload) => openCheckout(storesPayload);
 
   const renderSelectableItem = (storeName, it, layout = "block") => {
     const selected = isInCart(storeName, it);
@@ -1104,7 +1129,7 @@ export default function OrderPage({ initialSearchText }) {
             style={btn}
             onClick={() => placeOrder(buildPayloadFromCart())}
           >
-            🚀 Place Order
+            Checkout
           </button>
         </div>
       )}
@@ -1254,6 +1279,102 @@ export default function OrderPage({ initialSearchText }) {
               }}
             >
               Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CHECKOUT — pay method sheet */}
+      {checkout && (
+        <div style={checkoutOverlay} onClick={closeCheckout}>
+          <div style={checkoutSheet} onClick={(e) => e.stopPropagation()}>
+            <div style={checkoutHead}>
+              <h3 style={{ margin: 0, fontSize: 18 }}>Checkout</h3>
+              <button type="button" onClick={closeCheckout} style={checkoutClose} disabled={placing}>
+                ×
+              </button>
+            </div>
+
+            <div style={checkoutTotal}>
+              <span>Total</span>
+              <strong>₹{format(checkout.grandTotal)}</strong>
+            </div>
+
+            <div style={{ maxHeight: 140, overflowY: "auto", marginBottom: 14 }}>
+              {checkout.lines.map((line) => (
+                <div key={line.store} style={{ marginBottom: 10, fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>🏪 {line.store}</div>
+                  {line.items.map((it, idx) => (
+                    <div key={idx} style={{ color: "#4b5563", paddingLeft: 4 }}>
+                      · {it}
+                    </div>
+                  ))}
+                  <div style={{ color: "#166534", fontWeight: 600, marginTop: 2 }}>
+                    ₹{format(line.total)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 8 }}>
+              How do you want to pay?
+            </div>
+
+            <button
+              type="button"
+              disabled={placing || !upiEnabled}
+              onClick={() => upiEnabled && setPaymentMethod("upi")}
+              style={{
+                ...payOption,
+                ...(paymentMethod === "upi" && upiEnabled ? payOptionOn : {}),
+                ...(upiEnabled ? {} : payOptionDisabled),
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 15 }}>UPI online</div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4, lineHeight: 1.35 }}>
+                {upiEnabled
+                  ? "Pay now with Razorpay. Stores are notified only after payment."
+                  : "UPI not configured on server yet — use Pay at store."}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              disabled={placing}
+              onClick={() => setPaymentMethod("pay_at_store")}
+              style={{
+                ...payOption,
+                ...(paymentMethod === "pay_at_store" ? payOptionOn : {}),
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 15 }}>Pay at store</div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4, lineHeight: 1.35 }}>
+                Stores notified now. Pay when you pick up.
+              </div>
+            </button>
+
+            {payStatus ? (
+              <div style={{ fontSize: 13, color: "#166534", margin: "10px 0 4px", fontWeight: 600 }}>
+                {payStatus}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              style={{
+                ...btn,
+                width: "100%",
+                marginTop: 12,
+                opacity: placing ? 0.7 : 1,
+              }}
+              disabled={placing}
+              onClick={confirmCheckout}
+            >
+              {placing
+                ? "Please wait…"
+                : paymentMethod === "upi" && upiEnabled
+                  ? `Pay ₹${format(checkout.grandTotal)} with UPI`
+                  : `Place order · Pay at store`}
             </button>
           </div>
         </div>
@@ -1446,4 +1567,79 @@ const orderButton={
   cursor:"pointer",
   minHeight:48,
   touchAction:"manipulation"
+};
+
+const checkoutOverlay = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15,23,42,0.5)",
+  display: "flex",
+  alignItems: "flex-end",
+  justifyContent: "center",
+  zIndex: 10000,
+  padding: 0,
+};
+
+const checkoutSheet = {
+  background: "#fff",
+  borderTopLeftRadius: 20,
+  borderTopRightRadius: 20,
+  width: "100%",
+  maxWidth: 520,
+  padding: "16px 16px 24px",
+  boxSizing: "border-box",
+  maxHeight: "88vh",
+  overflowY: "auto",
+  boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
+};
+
+const checkoutHead = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 12,
+};
+
+const checkoutClose = {
+  border: "none",
+  background: "#f3f4f6",
+  width: 36,
+  height: 36,
+  borderRadius: 18,
+  fontSize: 22,
+  cursor: "pointer",
+  lineHeight: 1,
+};
+
+const checkoutTotal = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  background: "#f0fdf4",
+  borderRadius: 12,
+  padding: "12px 14px",
+  marginBottom: 14,
+  fontSize: 16,
+};
+
+const payOption = {
+  width: "100%",
+  textAlign: "left",
+  border: "1.5px solid #e5e7eb",
+  background: "#fff",
+  borderRadius: 12,
+  padding: "12px 14px",
+  marginBottom: 8,
+  cursor: "pointer",
+  boxSizing: "border-box",
+};
+
+const payOptionOn = {
+  border: "2px solid #22c55e",
+  background: "#f0fdf4",
+};
+
+const payOptionDisabled = {
+  opacity: 0.55,
+  cursor: "not-allowed",
 };
