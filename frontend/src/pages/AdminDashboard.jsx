@@ -101,6 +101,12 @@ export default function AdminDashboard() {
         >
           💬 WhatsApp
         </button>
+        <button
+          onClick={() => navigate('/admin/audit')}
+          style={styles.navBtn}
+        >
+          🧾 Audit
+        </button>
       </div>
 
       {/* Stats Cards */}

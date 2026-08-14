@@ -4,6 +4,7 @@ from app.db.database import get_db
 from app.api.auth import get_current_user
 from app.services.product_images import file_to_data_url, validate_image_url
 from app.services.product_import import build_template_csv, parse_csv_text, import_products
+from app.services.staff_audit import log_staff_action, list_staff_audit_events
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/admin", tags=["admin-portal"])
@@ -29,6 +30,25 @@ async def check_admin(token: str):
         raise HTTPException(status_code=403, detail="Not authorized as admin")
     
     return dict(user_data)
+
+
+@router.get("/audit")
+async def get_staff_audit(
+    token: str,
+    action: str = None,
+    phone: str = None,
+    limit: int = 100,
+    offset: int = 0,
+):
+    """Recent staff actions (admin + store portal)."""
+    await check_admin(token)
+    events = await list_staff_audit_events(
+        limit=limit,
+        offset=offset,
+        action=action,
+        actor_phone=phone,
+    )
+    return {"events": events, "count": len(events)}
 
 
 # ============================================
@@ -132,7 +152,7 @@ async def create_store(data: dict, token: str):
     """Create a new store"""
     from app.utils.phone import normalize_phone
 
-    await check_admin(token)
+    admin = await check_admin(token)
     
     db = await get_db()
     
@@ -162,6 +182,16 @@ async def create_store(data: dict, token: str):
         VALUES ($1, $2, $3, $4, $5)
         RETURNING *
     """, name, phone, address, lat, lng)
+
+    await log_staff_action(
+        actor=admin,
+        action="store.create",
+        entity_type="store",
+        entity_id=store["id"],
+        details={"name": name, "phone": phone},
+        store_id=store["id"],
+        db=db,
+    )
     
     return dict(store)
 
@@ -190,6 +220,16 @@ async def update_store(store_id: int, data: dict, token: str):
             is_active = COALESCE($6, is_active)
         WHERE id = $7
     """, name, phone, address, lat, lng, is_active, store_id)
+
+    await log_staff_action(
+        actor=admin,
+        action="store.update",
+        entity_type="store",
+        entity_id=store_id,
+        details={k: data.get(k) for k in ("name", "phone", "address", "lat", "lng", "is_active") if k in data},
+        store_id=store_id,
+        db=db,
+    )
     
     return {"status": "success"}
 
@@ -261,13 +301,21 @@ async def block_user(user_id: int, token: str, data: dict = None):
     from app.services.abuse import block_phone
     reason = (data or {}).get("reason") or "Blocked by admin"
     phone = await block_phone(user["phone"], reason=reason, blocked_by=admin["id"], db=db)
+    await log_staff_action(
+        actor=admin,
+        action="user.block",
+        entity_type="user",
+        entity_id=user_id,
+        details={"phone": phone, "reason": reason},
+        db=db,
+    )
     return {"status": "blocked", "phone": phone, "user_id": user_id}
 
 
 @router.post("/users/{user_id}/unblock")
 async def unblock_user(user_id: int, token: str):
     """Unblock a user's phone"""
-    await check_admin(token)
+    admin = await check_admin(token)
     db = await get_db()
     user = await db.fetchrow("SELECT id, phone FROM users WHERE id = $1", user_id)
     if not user:
@@ -275,6 +323,14 @@ async def unblock_user(user_id: int, token: str):
 
     from app.services.abuse import unblock_phone
     await unblock_phone(user["phone"], db=db)
+    await log_staff_action(
+        actor=admin,
+        action="user.unblock",
+        entity_type="user",
+        entity_id=user_id,
+        details={"phone": user["phone"]},
+        db=db,
+    )
     return {"status": "unblocked", "user_id": user_id}
 
 
@@ -322,6 +378,16 @@ async def update_user(user_id: int, data: dict, token: str):
             VALUES ($1, true, true)
             ON CONFLICT (user_id) DO NOTHING
         """, user_id)
+
+    await log_staff_action(
+        actor=admin,
+        action="user.update",
+        entity_type="user",
+        entity_id=user_id,
+        details={k: data.get(k) for k in ("is_store_owner", "store_id", "is_admin") if k in data},
+        store_id=data.get("store_id") if "store_id" in data else None,
+        db=db,
+    )
     
     return {"status": "success"}
 
@@ -329,7 +395,7 @@ async def update_user(user_id: int, data: dict, token: str):
 @router.post("/users/{user_id}/password")
 async def set_user_password(user_id: int, data: dict, token: str):
     """Admin sets password for a staff user"""
-    await check_admin(token)
+    admin = await check_admin(token)
     from app.api.auth import hash_password
 
     password = data.get("password")
@@ -346,6 +412,15 @@ async def set_user_password(user_id: int, data: dict, token: str):
     await db.execute("""
         UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2
     """, hash_password(password), user_id)
+
+    await log_staff_action(
+        actor=admin,
+        action="user.password_set",
+        entity_type="user",
+        entity_id=user_id,
+        details={"note": "password changed (value not logged)"},
+        db=db,
+    )
 
     return {"status": "password_set"}
 
@@ -393,7 +468,7 @@ async def download_product_import_template(token: str, samples: bool = True):
 @router.post("/products/import")
 async def import_products_csv(token: str, file: UploadFile = File(...)):
     """Bulk-load master catalog from CSV (skips near-duplicates)."""
-    await check_admin(token)
+    admin = await check_admin(token)
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="Empty file")
@@ -412,6 +487,19 @@ async def import_products_csv(token: str, file: UploadFile = File(...)):
     result = await import_products(db, rows)
     result["parse_errors"] = parse_errors[:50]
     result["parse_error_count"] = len(parse_errors)
+    await log_staff_action(
+        actor=admin,
+        action="product.import_csv",
+        entity_type="catalog",
+        details={
+            "filename": file.filename,
+            "created": result.get("created"),
+            "skipped": result.get("skipped"),
+            "failed_count": result.get("failed_count"),
+            "total_rows": result.get("total_rows"),
+        },
+        db=db,
+    )
     return result
 
 
@@ -436,6 +524,15 @@ async def create_product(data: dict, token: str):
         VALUES ($1, $2, $3, $4, $5)
         RETURNING *
     """, name, brand, variant, size, unit)
+
+    await log_staff_action(
+        actor=admin,
+        action="product.create",
+        entity_type="product",
+        entity_id=product["id"],
+        details={"name": name, "brand": brand, "size": size, "unit": unit},
+        db=db,
+    )
     
     return dict(product)
 
@@ -477,6 +574,18 @@ async def update_product(product_id: int, data: dict, token: str):
                 unit = COALESCE($5, unit)
             WHERE id = $6
         """, name, brand, variant, size, unit, product_id)
+
+    detail = {k: data.get(k) for k in ("name", "brand", "variant", "size", "unit") if k in data}
+    if image_url != "__omit__":
+        detail["image_url"] = "set" if image_url else "cleared"
+    await log_staff_action(
+        actor=admin,
+        action="product.update",
+        entity_type="product",
+        entity_id=product_id,
+        details=detail,
+        db=db,
+    )
     
     return {"status": "success"}
 
@@ -484,7 +593,7 @@ async def update_product(product_id: int, data: dict, token: str):
 @router.post("/products/{product_id}/image")
 async def upload_product_image(product_id: int, token: str, file: UploadFile = File(...)):
     """Upload a product photo (stored as data URL in products.image_url)."""
-    await check_admin(token)
+    admin = await check_admin(token)
     db = await get_db()
     exists = await db.fetchval("SELECT id FROM products WHERE id = $1", product_id)
     if not exists:
@@ -495,15 +604,30 @@ async def upload_product_image(product_id: int, token: str, file: UploadFile = F
         data_url,
         product_id,
     )
+    await log_staff_action(
+        actor=admin,
+        action="product.image_upload",
+        entity_type="product",
+        entity_id=product_id,
+        details={"filename": file.filename, "bytes": len(data_url)},
+        db=db,
+    )
     return {"status": "success", "image_url": data_url[:80] + "…", "has_image": True}
 
 
 @router.delete("/products/{product_id}/image")
 async def clear_product_image(product_id: int, token: str):
     """Remove product photo (Shop falls back to placeholder)."""
-    await check_admin(token)
+    admin = await check_admin(token)
     db = await get_db()
     await db.execute("UPDATE products SET image_url = NULL WHERE id = $1", product_id)
+    await log_staff_action(
+        actor=admin,
+        action="product.image_clear",
+        entity_type="product",
+        entity_id=product_id,
+        db=db,
+    )
     return {"status": "success"}
 
 
@@ -515,6 +639,13 @@ async def delete_product(product_id: int, token: str):
     db = await get_db()
     
     await db.execute("DELETE FROM products WHERE id = $1", product_id)
+    await log_staff_action(
+        actor=admin,
+        action="product.delete",
+        entity_type="product",
+        entity_id=product_id,
+        db=db,
+    )
     
     return {"status": "success"}
 

@@ -38,11 +38,13 @@ async def lifespan(app: FastAPI):
         from app.services.order_status import ensure_order_schema
         from app.api.admin_portal import ensure_whatsapp_messages_schema
         from app.services.catalog import ensure_catalog_schema
+        from app.services.staff_audit import ensure_staff_audit_schema
         db = await get_db()
         await ensure_order_schema(db)
         await ensure_whatsapp_messages_schema(db)
         await ensure_catalog_schema(db)
-        print("✅ Order + WhatsApp + Catalog schema verified")
+        await ensure_staff_audit_schema(db)
+        print("✅ Order + WhatsApp + Catalog + Audit schema verified")
     except Exception as e:
         print(f"⚠️ Schema ensure failed: {e}")
 

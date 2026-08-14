@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from app.db.database import get_db
 from app.api.auth import get_current_user
 from app.services.product_images import file_to_data_url, validate_image_url
+from app.services.staff_audit import log_staff_action
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/store", tags=["store-portal"])
@@ -299,7 +300,25 @@ async def update_store_order(order_id: int, data: dict, token: str):
                     f"New estimate: about {format_eta_label(extra)} from now.\n\n"
                     f"Track: {track_url}",
                 )
+            await log_staff_action(
+                actor=store_owner,
+                action="order.delay",
+                entity_type="store_order",
+                entity_id=order_id,
+                details={"final_order_id": final_order_id, "reason": reason},
+                store_id=store_id,
+                db=db,
+            )
             return {"status": "delayed", "message": f"Customer notified (+{format_eta_label(extra)})"}
+        await log_staff_action(
+            actor=store_owner,
+            action="order.delay",
+            entity_type="store_order",
+            entity_id=order_id,
+            details={"final_order_id": final_order_id},
+            store_id=store_id,
+            db=db,
+        )
         return {"status": "delayed", "message": result.get("message")}
 
     eta_minutes = data.get("eta_minutes")
@@ -354,6 +373,15 @@ async def update_store_order(order_id: int, data: dict, token: str):
                 )
                 if trust.get("customer_message"):
                     await send_message(cust_phone, trust["customer_message"])
+            await log_staff_action(
+                actor=store_owner,
+                action="order.no_show",
+                entity_type="store_order",
+                entity_id=order_id,
+                details={"final_order_id": final_order_id, "strikes": trust.get("strikes")},
+                store_id=store_id,
+                db=db,
+            )
             return {
                 "status": "success",
                 "new_status": new_status,
@@ -372,6 +400,15 @@ async def update_store_order(order_id: int, data: dict, token: str):
             db=db,
         )
 
+    await log_staff_action(
+        actor=store_owner,
+        action=f"order.{new_status.lower()}",
+        entity_type="store_order",
+        entity_id=order_id,
+        details={"final_order_id": final_order_id, "final_status": final_status},
+        store_id=store_id,
+        db=db,
+    )
     return {"status": "success", "new_status": new_status, "final_status": final_status}
 
 
@@ -450,6 +487,16 @@ async def update_store_product(product_id: int, data: dict, token: str):
             SET stock = $1, updated_at = NOW()
             WHERE id = $2
         """, stock, product_id)
+
+    await log_staff_action(
+        actor=store_owner,
+        action="store_product.update",
+        entity_type="store_product",
+        entity_id=product_id,
+        details={"price": price, "stock": stock, "master_product_id": product.get("product_id")},
+        store_id=store_id,
+        db=db,
+    )
     
     return {"status": "success"}
 
@@ -473,6 +520,15 @@ async def upload_store_product_image(product_id: int, token: str, file: UploadFi
         "UPDATE products SET image_url = $1 WHERE id = $2",
         data_url,
         row["master_id"],
+    )
+    await log_staff_action(
+        actor=store_owner,
+        action="product.image_upload",
+        entity_type="product",
+        entity_id=row["master_id"],
+        details={"store_product_id": product_id, "filename": file.filename},
+        store_id=store_id,
+        db=db,
     )
     return {"status": "success", "has_image": True}
 
@@ -538,6 +594,16 @@ async def add_store_product(data: dict, token: str):
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
     """, store_id, product_id, product.get("brand", ""), product.get("variant", ""), 
         product.get("size", 1), product.get("unit", "unit"), price, stock)
+
+    await log_staff_action(
+        actor=store_owner,
+        action="store_product.add",
+        entity_type="product",
+        entity_id=product_id,
+        details={"price": price, "stock": stock, "name": product.get("name")},
+        store_id=store_id,
+        db=db,
+    )
     
     return {"status": "success"}
 
@@ -563,6 +629,16 @@ async def remove_store_product(product_id: int, token: str):
     await db.execute("""
         DELETE FROM store_products WHERE id = $1
     """, product_id)
+
+    await log_staff_action(
+        actor=store_owner,
+        action="store_product.remove",
+        entity_type="store_product",
+        entity_id=product_id,
+        details={"master_product_id": product.get("product_id")},
+        store_id=store_id,
+        db=db,
+    )
     
     return {"status": "success"}
 
@@ -630,6 +706,16 @@ async def update_store_profile(data: dict, token: str):
             close_time = COALESCE($8, close_time)
         WHERE id = $9
     """, name, phone, address, lat, lng, description, open_time, close_time, store_id)
+
+    await log_staff_action(
+        actor=store_owner,
+        action="store.profile_update",
+        entity_type="store",
+        entity_id=store_id,
+        details={k: data.get(k) for k in ("name", "phone", "address", "lat", "lng", "description", "open_time", "close_time") if k in data},
+        store_id=store_id,
+        db=db,
+    )
     
     return {"status": "success"}
 
@@ -672,6 +758,23 @@ async def update_store_settings(data: dict, token: str):
             updated_at = NOW()
     """, store_id, delivery_radius, min_order, is_open, auto_accept,
         delivery_enabled, free_delivery_min, delivery_fee, delivery_notes)
+
+    await log_staff_action(
+        actor=store_owner,
+        action="store.settings_update",
+        entity_type="store",
+        entity_id=store_id,
+        details={
+            k: data.get(k)
+            for k in (
+                "delivery_radius", "min_order", "is_open", "auto_accept_orders",
+                "delivery_enabled", "free_delivery_min", "delivery_fee", "delivery_notes",
+            )
+            if k in data
+        },
+        store_id=store_id,
+        db=db,
+    )
     
     return {"status": "success"}
 
