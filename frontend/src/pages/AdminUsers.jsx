@@ -126,10 +126,14 @@ export default function AdminUsers() {
 
   const toggleAdmin = (user) => {
     if (user.is_admin) {
-      const adminCount = users.filter((u) => u.is_admin).length;
-      if (adminCount <= 1) {
+      const count = users.filter((u) => u.is_admin).length;
+      if (count <= 1) {
         alert(
-          'Cannot remove the last admin.\n\nPromote another trusted phone to admin first,\nor use break-glass recovery (BREAK_GLASS_SECRET).'
+          'Cannot remove the last admin.\n\n' +
+            'That would lock everyone out of /admin.\n\n' +
+            '1) Make another trusted phone an admin first\n' +
+            '2) Then remove this one\n\n' +
+            'Emergency recovery: database or BREAK_GLASS_SECRET (see ADMIN_RECOVERY.md).'
         );
         return;
       }
@@ -234,17 +238,29 @@ export default function AdminUsers() {
     }
   };
 
+  const adminCount = users.filter((u) => u.is_admin).length;
+  const isSoleAdmin = (user) => Boolean(user?.is_admin) && adminCount <= 1;
+
   return (
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>👥 User Management</h1>
-          <p style={styles.subtitle}>{users.length} users</p>
+          <p style={styles.subtitle}>
+            {users.length} users · {adminCount} admin{adminCount === 1 ? '' : 's'}
+          </p>
         </div>
         <button onClick={() => navigate('/admin')} style={styles.backBtn}>
           ← Back
         </button>
+      </div>
+
+      <div style={styles.policyBox}>
+        <strong>Last-admin protection:</strong> you cannot remove or block the only remaining
+        admin in the app — that would lock everyone out of /admin. Promote a second trusted
+        admin first, then demote. Emergency recovery still works via database or{' '}
+        <code>BREAK_GLASS_SECRET</code>.
       </div>
 
       {/* Search */}
@@ -276,9 +292,19 @@ export default function AdminUsers() {
                 <div style={styles.badges}>
                   {user.is_blocked && <span style={styles.badgeBlocked}>🚫 Blocked</span>}
                   {user.is_admin && <span style={styles.badgeAdmin}>👑 Admin</span>}
+                  {isSoleAdmin(user) && (
+                    <span style={styles.badgeSole}>Only admin — protected</span>
+                  )}
                   {user.is_store_owner && <span style={styles.badgeOwner}>🏪 Owner</span>}
                 </div>
               </div>
+
+              {isSoleAdmin(user) && (
+                <div style={styles.soleNote}>
+                  This is the last admin. Remove Admin and Block are disabled until another
+                  admin exists. You can still recover via DB / break-glass if needed.
+                </div>
+              )}
 
               <div style={styles.userStats}>
                 <div style={styles.stat}>
@@ -295,8 +321,25 @@ export default function AdminUsers() {
 
               <div style={styles.userActions}>
                 <button
-                  onClick={() => toggleBlock(user)}
-                  style={user.is_blocked ? styles.unblockBtn : styles.blockBtn}
+                  onClick={() => {
+                    if (isSoleAdmin(user) && !user.is_blocked) {
+                      alert(
+                        'Cannot block the last admin.\n\nPromote another trusted admin first, then block if needed.\n\nEmergency: DB access or BREAK_GLASS_SECRET.'
+                      );
+                      return;
+                    }
+                    toggleBlock(user);
+                  }}
+                  disabled={isSoleAdmin(user) && !user.is_blocked}
+                  style={{
+                    ...(user.is_blocked ? styles.unblockBtn : styles.blockBtn),
+                    ...((isSoleAdmin(user) && !user.is_blocked) ? styles.btnDisabled : {}),
+                  }}
+                  title={
+                    isSoleAdmin(user) && !user.is_blocked
+                      ? 'Cannot block the last admin'
+                      : undefined
+                  }
                 >
                   {user.is_blocked ? '✅ Unblock' : '🚫 Block'}
                 </button>
@@ -308,9 +351,18 @@ export default function AdminUsers() {
                 </button>
                 <button 
                   onClick={() => toggleAdmin(user)} 
-                  style={user.is_admin ? styles.removeAdminBtn : styles.makeAdminBtn}
+                  disabled={isSoleAdmin(user)}
+                  style={{
+                    ...(user.is_admin ? styles.removeAdminBtn : styles.makeAdminBtn),
+                    ...(isSoleAdmin(user) ? styles.btnDisabled : {}),
+                  }}
+                  title={isSoleAdmin(user) ? 'Cannot remove the last admin' : undefined}
                 >
-                  {user.is_admin ? '❌ Remove Admin' : '👑 Make Admin'}
+                  {user.is_admin
+                    ? isSoleAdmin(user)
+                      ? '🔒 Last admin'
+                      : '❌ Remove Admin'
+                    : '👑 Make Admin'}
                 </button>
               </div>
               {(user.is_admin || user.is_store_owner) && (
@@ -479,6 +531,39 @@ const styles = {
     fontSize: 14,
     fontWeight: 600,
     cursor: 'pointer',
+  },
+  policyBox: {
+    background: '#fff7ed',
+    border: '1px solid #fed7aa',
+    borderRadius: 12,
+    padding: '12px 14px',
+    marginBottom: 16,
+    fontSize: 13,
+    color: '#9a3412',
+    lineHeight: 1.45,
+  },
+  soleNote: {
+    background: '#fef3c7',
+    border: '1px solid #fde68a',
+    borderRadius: 8,
+    padding: '10px 12px',
+    marginBottom: 12,
+    fontSize: 12,
+    color: '#92400e',
+    lineHeight: 1.4,
+  },
+  badgeSole: {
+    display: 'inline-block',
+    background: '#fef3c7',
+    color: '#92400e',
+    padding: '4px 8px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  btnDisabled: {
+    opacity: 0.45,
+    cursor: 'not-allowed',
   },
   searchBox: {
     marginBottom: 20,
