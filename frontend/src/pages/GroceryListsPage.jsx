@@ -12,8 +12,10 @@ export default function GroceryListsPage({ onSelectList }) {
   const [listId, setListId] = useState(null);
   const [listName, setListName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [showNewList, setShowNewList] = useState(false);
+  const [confirm, setConfirm] = useState(null); // { title, body, actionLabel, onConfirm }
 
   useEffect(() => {
     loadLists();
@@ -29,12 +31,13 @@ export default function GroceryListsPage({ onSelectList }) {
       if (all.length === 0) {
         const created = await createList('My Monthly List', true);
         if (created) {
-          setLists([created]);
+          setLists([{ ...created, item_count: 0 }]);
           await loadItems(created.id, created.name);
         }
       } else {
         const selected =
           all.find((l) => l.id === preferId) ||
+          all.find((l) => l.id === listId) ||
           all.find((l) => l.is_default) ||
           all[0];
         await loadItems(selected.id, selected.name);
@@ -62,17 +65,13 @@ export default function GroceryListsPage({ onSelectList }) {
       const data = await res.json();
       setListId(id);
       setListName(name || data.list?.name || 'List');
-
-      const uniqueItems = [];
-      const seen = new Set();
-      for (const item of data.items || []) {
-        const key = item.product_name.toLowerCase().trim();
-        if (!seen.has(key)) {
-          seen.add(key);
-          uniqueItems.push(item);
-        }
-      }
-      setItems(uniqueItems);
+      // Show every row — hiding duplicates made Clear All / Delete feel broken
+      // when the chip said "(8)" but only 3 unique names were visible.
+      const rows = Array.isArray(data.items) ? data.items : [];
+      setItems(rows);
+      setLists((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, item_count: rows.length } : l))
+      );
     } catch (err) {
       console.error('Load failed:', err);
     }
@@ -88,21 +87,47 @@ export default function GroceryListsPage({ onSelectList }) {
     }
   };
 
-  const handleDeleteList = async () => {
+  const askDeleteList = () => {
     if (!listId) return;
     if (lists.length <= 1) {
-      alert('Keep at least one list');
+      setConfirm({
+        title: 'Cannot delete',
+        body: 'Keep at least one list. You can Clear All items instead.',
+        actionLabel: 'OK',
+        onConfirm: () => setConfirm(null),
+      });
       return;
     }
-    if (!window.confirm(`Delete list "${listName}"?`)) return;
-    await fetch(`${API_BASE}/api/grocery-lists/${listId}?token=${token}`, {
-      method: 'DELETE'
+    setConfirm({
+      title: `Delete “${listName}”?`,
+      body: 'This permanently removes the list and every item in it.',
+      actionLabel: 'Delete list',
+      danger: true,
+      onConfirm: runDeleteList,
     });
-    await loadLists();
+  };
+
+  const runDeleteList = async () => {
+    if (!listId || busy) return;
+    setBusy(true);
+    setConfirm(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/grocery-lists/${listId}?token=${token}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('delete failed');
+      setListId(null);
+      setItems([]);
+      await loadLists();
+    } catch (err) {
+      alert('Could not delete list. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const addItem = async () => {
-    if (!input.trim() || !listId) return;
+    if (!input.trim() || !listId || busy) return;
     const product_name = input.trim();
     const isDuplicate = items.some(
       (i) => i.product_name.toLowerCase().trim() === product_name.toLowerCase()
@@ -120,7 +145,11 @@ export default function GroceryListsPage({ onSelectList }) {
       });
       if (res.ok) {
         const newItem = await res.json();
-        setItems([...items, newItem]);
+        const next = [...items, newItem];
+        setItems(next);
+        setLists((prev) =>
+          prev.map((l) => (l.id === listId ? { ...l, item_count: next.length } : l))
+        );
         setInput('');
       }
     } catch (err) {
@@ -129,27 +158,58 @@ export default function GroceryListsPage({ onSelectList }) {
   };
 
   const deleteItem = async (itemId) => {
-    if (!listId) return;
+    if (!listId || busy) return;
     try {
       const res = await fetch(
         `${API_BASE}/api/grocery-lists/${listId}/items/${itemId}?token=${token}`,
         { method: 'DELETE' }
       );
-      if (res.ok) setItems(items.filter((i) => i.id !== itemId));
+      if (res.ok) {
+        const next = items.filter((i) => i.id !== itemId);
+        setItems(next);
+        setLists((prev) =>
+          prev.map((l) => (l.id === listId ? { ...l, item_count: next.length } : l))
+        );
+      }
     } catch (err) {
       alert('Failed to delete');
     }
   };
 
-  const clearAll = async () => {
-    if (!window.confirm('Remove all items from list?')) return;
-    for (const item of items) {
-      await deleteItem(item.id);
+  const askClearAll = () => {
+    if (!items.length) return;
+    setConfirm({
+      title: 'Clear all items?',
+      body: `Remove all ${items.length} items from “${listName}”? The list itself will stay.`,
+      actionLabel: 'Clear all',
+      danger: true,
+      onConfirm: runClearAll,
+    });
+  };
+
+  const runClearAll = async () => {
+    if (!listId || busy) return;
+    setBusy(true);
+    setConfirm(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/grocery-lists/${listId}/items?token=${token}`,
+        { method: 'DELETE' }
+      );
+      if (!res.ok) throw new Error('clear failed');
+      setItems([]);
+      setLists((prev) =>
+        prev.map((l) => (l.id === listId ? { ...l, item_count: 0 } : l))
+      );
+    } catch (err) {
+      alert('Could not clear list. Please try again.');
+    } finally {
+      setBusy(false);
     }
   };
 
   const quickOrder = async () => {
-    if (!listId || items.length === 0) return;
+    if (!listId || items.length === 0 || busy) return;
     try {
       const res = await fetch(
         `${API_BASE}/api/grocery-lists/${listId}/quick-order?token=${token}`,
@@ -169,7 +229,9 @@ export default function GroceryListsPage({ onSelectList }) {
       <div style={s.container}>
         <div style={s.titleRow}>
           <h2 style={s.title}>📋 Grocery Lists</h2>
-          <button onClick={() => setShowNewList(true)} style={s.newBtn}>+ New List</button>
+          <button onClick={() => setShowNewList(true)} style={s.newBtn} disabled={busy}>
+            + New List
+          </button>
         </div>
 
         <div style={s.listPicker}>
@@ -178,6 +240,7 @@ export default function GroceryListsPage({ onSelectList }) {
               key={l.id}
               onClick={() => loadItems(l.id, l.name)}
               style={l.id === listId ? s.chipActive : s.chip}
+              disabled={busy}
             >
               {l.name} ({l.item_count || 0})
             </button>
@@ -185,10 +248,19 @@ export default function GroceryListsPage({ onSelectList }) {
         </div>
 
         <div style={s.currentListBar}>
-          <strong>{listName}</strong>
-          {lists.length > 1 && (
-            <button onClick={handleDeleteList} style={s.deleteListBtn}>Delete list</button>
-          )}
+          <strong style={{ fontSize: 18 }}>{listName}</strong>
+          <div style={s.listActions}>
+            {items.length > 0 && (
+              <button onClick={askClearAll} style={s.clearBtn} disabled={busy}>
+                Clear items
+              </button>
+            )}
+            {lists.length > 1 && (
+              <button onClick={askDeleteList} style={s.deleteListBtn} disabled={busy}>
+                {busy ? 'Working…' : 'Delete list'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={s.addBox}>
@@ -199,14 +271,14 @@ export default function GroceryListsPage({ onSelectList }) {
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && addItem()}
             style={s.input}
+            disabled={busy}
           />
-          <button onClick={addItem} style={s.addBtn}>+ Add</button>
+          <button onClick={addItem} style={s.addBtn} disabled={busy}>+ Add</button>
         </div>
 
         {items.length > 0 && (
           <div style={s.header}>
             <span style={s.count}>{items.length} items</span>
-            <button onClick={clearAll} style={s.clearBtn}>Clear All</button>
           </div>
         )}
 
@@ -220,14 +292,21 @@ export default function GroceryListsPage({ onSelectList }) {
             items.map((item) => (
               <div key={item.id} style={s.item}>
                 <div style={s.itemName}>{item.product_name}</div>
-                <button onClick={() => deleteItem(item.id)} style={s.deleteBtn}>×</button>
+                <button
+                  onClick={() => deleteItem(item.id)}
+                  style={s.deleteBtn}
+                  disabled={busy}
+                  aria-label={`Remove ${item.product_name}`}
+                >
+                  ×
+                </button>
               </div>
             ))
           )}
         </div>
 
         {items.length > 0 && (
-          <button onClick={quickOrder} style={s.orderBtn}>
+          <button onClick={quickOrder} style={s.orderBtn} disabled={busy}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <BrandLogo variant="icon" height={18} alt="" />
               Order All ({items.length} items)
@@ -247,9 +326,36 @@ export default function GroceryListsPage({ onSelectList }) {
               style={s.input}
               autoFocus
             />
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button onClick={handleCreateList} style={s.addBtn}>Create</button>
               <button onClick={() => setShowNewList(false)} style={s.clearBtn}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirm && (
+        <div style={s.modal} onClick={() => !busy && setConfirm(null)}>
+          <div style={s.modalBox} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: 8 }}>{confirm.title}</h3>
+            <p style={{ margin: '0 0 16px', color: '#4b5563', fontSize: 14, lineHeight: 1.45 }}>
+              {confirm.body}
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => confirm.onConfirm?.()}
+                style={confirm.danger ? s.dangerBtn : s.addBtn}
+                disabled={busy}
+              >
+                {confirm.actionLabel}
+              </button>
+              <button
+                onClick={() => setConfirm(null)}
+                style={s.secondaryBtn}
+                disabled={busy}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -259,23 +365,82 @@ export default function GroceryListsPage({ onSelectList }) {
 }
 
 const s = {
-  page: { background: '#f9fafb', minHeight: '100vh', padding: '20px 0' },
-  container: { maxWidth: 600, margin: 'auto', padding: 20 },
+  page: {
+    background: '#f9fafb',
+    minHeight: '100vh',
+    padding: '20px 0',
+    width: '100%',
+    maxWidth: '100%',
+    overflowX: 'hidden',
+    boxSizing: 'border-box',
+  },
+  container: {
+    maxWidth: 600,
+    margin: 'auto',
+    padding: 20,
+    width: '100%',
+    boxSizing: 'border-box',
+  },
   loading: { textAlign: 'center', padding: 60, color: '#999' },
-  titleRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  titleRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 },
   title: { fontSize: 28, fontWeight: 'bold', margin: 0, color: '#111' },
   newBtn: { padding: '8px 14px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 },
   listPicker: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   chip: { padding: '8px 12px', borderRadius: 20, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 13 },
   chipActive: { padding: '8px 12px', borderRadius: 20, border: 'none', background: '#667eea', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-  currentListBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  deleteListBtn: { background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 13 },
+  currentListBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  listActions: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  deleteListBtn: {
+    padding: '8px 12px',
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    color: '#dc2626',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 700,
+  },
   addBox: { display: 'flex', gap: 10, marginBottom: 20 },
   input: { flex: 1, width: '100%', padding: 16, border: '2px solid #e5e7eb', borderRadius: 12, fontSize: 15, background: '#fff', boxSizing: 'border-box' },
   addBtn: { padding: '16px 28px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 15, fontWeight: 'bold' },
   header: { display: 'flex', justifyContent: 'space-between', marginBottom: 12 },
   count: { color: '#666', fontSize: 14 },
-  clearBtn: { background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 13 },
+  clearBtn: {
+    padding: '8px 12px',
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    color: '#b91c1c',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  secondaryBtn: {
+    padding: '12px 16px',
+    background: '#f3f4f6',
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+    cursor: 'pointer',
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  dangerBtn: {
+    padding: '12px 16px',
+    background: '#dc2626',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 12,
+    cursor: 'pointer',
+    fontSize: 14,
+    fontWeight: 700,
+  },
   list: { display: 'flex', flexDirection: 'column', gap: 8 },
   empty: { textAlign: 'center', padding: 40, color: '#999' },
   emptyIcon: { fontSize: 40, marginBottom: 8 },
@@ -283,6 +448,6 @@ const s = {
   itemName: { fontSize: 15, fontWeight: 500 },
   deleteBtn: { background: 'none', border: 'none', fontSize: 22, color: '#999', cursor: 'pointer' },
   orderBtn: { width: '100%', marginTop: 20, padding: 16, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: 'pointer' },
-  modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
-  modalBox: { background: '#fff', borderRadius: 16, padding: 24, width: '90%', maxWidth: 400 },
+  modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
+  modalBox: { background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, boxSizing: 'border-box' },
 };

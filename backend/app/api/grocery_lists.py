@@ -133,7 +133,7 @@ async def update_grocery_list(list_id: int, data: dict, token: str):
 # -----------------------------
 @router.delete("/grocery-lists/{list_id}")
 async def delete_grocery_list(list_id: int, token: str):
-    """Delete grocery list"""
+    """Delete grocery list and all its items"""
     db = await get_db()
     user = await get_current_user(token, db)
     
@@ -144,13 +144,48 @@ async def delete_grocery_list(list_id: int, token: str):
     
     if not list_info:
         raise HTTPException(status_code=404, detail="List not found")
-    
-    # Delete list (items will cascade delete)
-    await db.execute("""
-        DELETE FROM grocery_lists WHERE id = $1
-    """, list_id)
+
+    # Explicit item delete first (works even if CASCADE is missing on older DBs)
+    await db.execute(
+        "DELETE FROM grocery_list_items WHERE list_id = $1",
+        list_id,
+    )
+    await db.execute(
+        "DELETE FROM grocery_lists WHERE id = $1 AND user_id = $2",
+        list_id,
+        user["id"],
+    )
     
     return {"status": "deleted"}
+
+
+# -----------------------------
+# 🧹 CLEAR ALL ITEMS IN LIST
+# -----------------------------
+@router.delete("/grocery-lists/{list_id}/items")
+async def clear_grocery_list_items(list_id: int, token: str):
+    """Remove every item from a list (keeps the list itself)."""
+    db = await get_db()
+    user = await get_current_user(token, db)
+
+    list_info = await db.fetchrow("""
+        SELECT * FROM grocery_lists WHERE id = $1 AND user_id = $2
+    """, list_id, user["id"])
+
+    if not list_info:
+        raise HTTPException(status_code=404, detail="List not found")
+
+    result = await db.execute(
+        "DELETE FROM grocery_list_items WHERE list_id = $1",
+        list_id,
+    )
+    # asyncpg returns e.g. "DELETE 8"
+    deleted = 0
+    try:
+        deleted = int(str(result).split()[-1])
+    except Exception:
+        pass
+    return {"status": "cleared", "deleted": deleted}
 
 
 # -----------------------------
