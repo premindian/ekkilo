@@ -18,7 +18,10 @@ export default function AdminProducts() {
   const [unit, setUnit] = useState('unit');
   const [imageUrl, setImageUrl] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const fileRef = useRef(null);
+  const csvRef = useRef(null);
 
   useEffect(() => {
     if (token) loadProducts();
@@ -28,8 +31,8 @@ export default function AdminProducts() {
     setLoading(true);
     try {
       const url = search
-        ? `${API_BASE}/api/admin/products?token=${token}&search=${encodeURIComponent(search)}`
-        : `${API_BASE}/api/admin/products?token=${token}`;
+        ? `${API_BASE}/api/admin/products?token=${token}&search=${encodeURIComponent(search)}&limit=500`
+        : `${API_BASE}/api/admin/products?token=${token}&limit=500`;
       const res = await fetch(url);
       const data = await res.json();
       setProducts(Array.isArray(data) ? data : []);
@@ -158,6 +161,35 @@ export default function AdminProducts() {
     }
   };
 
+  const downloadTemplate = (withSamples = true) => {
+    window.location.href = `${API_BASE}/api/admin/products/import-template?token=${encodeURIComponent(token)}&samples=${withSamples ? 'true' : 'false'}`;
+  };
+
+  const importCsv = async (file) => {
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_BASE}/api/admin/products/import?token=${token}`, {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.detail || 'Import failed');
+      }
+      setImportResult(data);
+      loadProducts();
+    } catch (e) {
+      alert(e.message || 'Import failed');
+    } finally {
+      setImporting(false);
+      if (csvRef.current) csvRef.current.value = '';
+    }
+  };
+
   const thumb = (url) => {
     if (!url) return null;
     return (
@@ -182,6 +214,45 @@ export default function AdminProducts() {
         <div style={styles.headerActions}>
           <button onClick={openAdd} style={styles.addBtn}>+ Add Product</button>
           <button onClick={() => navigate('/admin')} style={styles.backBtn}>← Back</button>
+        </div>
+      </div>
+
+      <div style={styles.importBox}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={styles.importTitle}>Bulk import (CSV)</div>
+          <p style={styles.importHint}>
+            Download starter list (~50 SKUs), edit in Excel, upload. Duplicates are skipped.
+            Categories: vegetables-fruits, dairy, staples, oils, spices, snacks, bakery, beverages, personal-care, household.
+          </p>
+          {importResult && (
+            <p style={styles.importStats}>
+              Added {importResult.created} · skipped {importResult.skipped}
+              {importResult.failed_count ? ` · failed ${importResult.failed_count}` : ''}
+              {importResult.parse_error_count ? ` · warnings ${importResult.parse_error_count}` : ''}
+            </p>
+          )}
+        </div>
+        <div style={styles.importActions}>
+          <button type="button" onClick={() => downloadTemplate(true)} style={styles.templateBtn}>
+            Download starter CSV
+          </button>
+          <button type="button" onClick={() => downloadTemplate(false)} style={styles.backBtn}>
+            Empty template
+          </button>
+          <label style={{ ...styles.uploadBtn, opacity: importing ? 0.7 : 1 }}>
+            {importing ? 'Importing…' : 'Upload CSV'}
+            <input
+              ref={csvRef}
+              type="file"
+              accept=".csv,text/csv"
+              style={{ display: 'none' }}
+              disabled={importing}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) importCsv(f);
+              }}
+            />
+          </label>
         </div>
       </div>
 
@@ -307,6 +378,31 @@ const styles = {
   title: { margin: 0, fontSize: 28, fontWeight: 'bold' },
   subtitle: { margin: '4px 0 0', color: '#6b7280' },
   headerActions: { display: 'flex', gap: 8 },
+  importBox: {
+    display: 'flex',
+    gap: 16,
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: 16,
+    marginBottom: 16,
+    background: '#f0fdfa',
+    border: '1px solid #99f6e4',
+    borderRadius: 12,
+  },
+  importTitle: { fontWeight: 700, fontSize: 15, marginBottom: 4 },
+  importHint: { margin: 0, fontSize: 13, color: '#475569', lineHeight: 1.45 },
+  importStats: { margin: '8px 0 0', fontSize: 13, fontWeight: 600, color: '#0f766e' },
+  importActions: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  templateBtn: {
+    padding: '10px 16px',
+    background: '#0f766e',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
   addBtn: { padding: '10px 16px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 },
   backBtn: { padding: '10px 16px', background: '#f3f4f6', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 },
   searchBox: { marginBottom: 16 },

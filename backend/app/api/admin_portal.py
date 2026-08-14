@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import PlainTextResponse
 from app.db.database import get_db
 from app.api.auth import get_current_user
 from app.services.product_images import file_to_data_url, validate_image_url
+from app.services.product_import import build_template_csv, parse_csv_text, import_products
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/admin", tags=["admin-portal"])
@@ -373,6 +375,44 @@ async def get_all_products(token: str, search: str = None, limit: int = 100, off
         """, limit, offset)
     
     return [dict(p) for p in products]
+
+
+@router.get("/products/import-template")
+async def download_product_import_template(token: str, samples: bool = True):
+    """Download CSV template (optionally with starter kirana SKUs)."""
+    await check_admin(token)
+    csv_text = build_template_csv(include_samples=samples)
+    filename = "ekkilo-products-starter.csv" if samples else "ekkilo-products-template.csv"
+    return PlainTextResponse(
+        content=csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/products/import")
+async def import_products_csv(token: str, file: UploadFile = File(...)):
+    """Bulk-load master catalog from CSV (skips near-duplicates)."""
+    await check_admin(token)
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(raw) > 2_000_000:
+        raise HTTPException(status_code=400, detail="CSV too large (max 2MB)")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    rows, parse_errors = parse_csv_text(text)
+    if not rows and parse_errors:
+        raise HTTPException(status_code=400, detail="; ".join(parse_errors[:5]))
+
+    db = await get_db()
+    result = await import_products(db, rows)
+    result["parse_errors"] = parse_errors[:50]
+    result["parse_error_count"] = len(parse_errors)
+    return result
 
 
 @router.post("/products")
