@@ -67,13 +67,13 @@ export default function AdminOrders() {
 
       {/* Filters */}
       <div style={styles.filters}>
-        {['ALL', 'UNPAID', 'CREATED', 'CONFIRMED', 'ACCEPTED', 'READY', 'PARTIAL_READY', 'PARTIAL', 'COMPLETED', 'REJECTED', 'CANCELLED', 'PENDING_PAYMENT'].map(f => (
+        {['ALL', 'UNPAID', 'EXPIRED', 'CREATED', 'CONFIRMED', 'ACCEPTED', 'READY', 'PARTIAL_READY', 'PARTIAL', 'COMPLETED', 'REJECTED', 'CANCELLED', 'PENDING_PAYMENT'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             style={filter === f ? styles.filterActive : styles.filterBtn}
           >
-            {f === 'UNPAID' ? 'UNPAID UPI' : f}
+            {f === 'UNPAID' ? 'UNPAID UPI' : f === 'EXPIRED' ? 'EXPIRED UPI' : f}
           </button>
         ))}
       </div>

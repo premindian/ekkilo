@@ -480,7 +480,12 @@ async def get_all_orders(token: str, status: str = None, limit: int = 50, offset
         if status_key in ("UNPAID", "PENDING_PAYMENT", "PENDING"):
             where.append(
                 "(UPPER(COALESCE(fo.status, '')) = 'PENDING_PAYMENT' "
-                "OR UPPER(COALESCE(fo.payment_status, '')) IN ('PENDING', 'UNPAID'))"
+                "OR UPPER(COALESCE(fo.payment_status, '')) IN ('PENDING', 'UNPAID')) "
+                "AND UPPER(COALESCE(fo.payment_status, '')) <> 'EXPIRED'"
+            )
+        elif status_key == "EXPIRED":
+            where.append(
+                "UPPER(COALESCE(fo.payment_status, '')) = 'EXPIRED'"
             )
         else:
             params.append(status_key)

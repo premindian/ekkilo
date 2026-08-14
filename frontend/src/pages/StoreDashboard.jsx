@@ -10,6 +10,7 @@ export default function StoreDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [showGuide, setShowGuide] = useState(true);
 
   useEffect(() => {
     loadDashboard();
@@ -97,6 +98,58 @@ export default function StoreDashboard() {
             🚪 Logout
           </button>
         </div>
+      </div>
+
+      {/* Onboarding kit — WhatsApp + Track */}
+      <div style={styles.guideCard}>
+        <button
+          type="button"
+          onClick={() => setShowGuide((v) => !v)}
+          style={styles.guideToggle}
+        >
+          <span>📘 Store cheat-sheet (WhatsApp + Track)</span>
+          <span>{showGuide ? '▾' : '▸'}</span>
+        </button>
+        {showGuide && (
+          <div style={styles.guideBody}>
+            <p style={styles.guideLead}>
+              When a customer pays (or chooses pay-at-store), you get a WhatsApp with the Order ID.
+              Updating status here <strong>or</strong> by WhatsApp keeps their Track page in sync.
+            </p>
+            <div style={styles.guideGrid}>
+              <div>
+                <div style={styles.guideLabel}>WhatsApp replies</div>
+                <code style={styles.cmd}>ACCEPT#12 2h</code>
+                <div style={styles.cmdHint}>Accept order 12, ETA 2 hours</div>
+                <code style={styles.cmd}>ACCEPT#12 1h</code>
+                <div style={styles.cmdHint}>Accept with 1 hour ETA</div>
+                <code style={styles.cmd}>DELAY#12 30m busy</code>
+                <div style={styles.cmdHint}>Running late — customer gets WhatsApp</div>
+                <code style={styles.cmd}>READY#12</code>
+                <div style={styles.cmdHint}>Packed — customer can pick up</div>
+                <code style={styles.cmd}>REJECT#12</code>
+                <div style={styles.cmdHint}>Cannot fulfill</div>
+                <code style={styles.cmd}>NOSHOW#12</code>
+                <div style={styles.cmdHint}>Only after READY if they never came</div>
+              </div>
+              <div>
+                <div style={styles.guideLabel}>This portal</div>
+                <div style={styles.cmdHint}>Pending → Accept / Reject</div>
+                <div style={styles.cmdHint}>Accepted → Mark Ready</div>
+                <div style={styles.cmdHint}>Same updates show on customer Track</div>
+                <div style={{ ...styles.guideLabel, marginTop: 14 }}>Customer side</div>
+                <code style={styles.cmd}>STATUS#12</code>
+                <div style={styles.cmdHint}>They check status on WhatsApp</div>
+                <code style={styles.cmd}>CANCEL#12</code>
+                <div style={styles.cmdHint}>They can cancel early</div>
+              </div>
+            </div>
+            <p style={styles.guideFoot}>
+              Tip: replace <strong>12</strong> with the real Order ID from the WhatsApp message.
+              UPI unpaid checkouts never reach you until payment succeeds.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -303,6 +356,72 @@ const styles = {
   headerActions: {
     display: 'flex',
     gap: 8,
+  },
+  guideCard: {
+    marginBottom: 16,
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  guideToggle: {
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 14px',
+    border: 'none',
+    background: 'transparent',
+    fontWeight: 800,
+    fontSize: 14,
+    color: '#166534',
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  guideBody: {
+    padding: '0 14px 14px',
+  },
+  guideLead: {
+    margin: '0 0 12px',
+    fontSize: 13,
+    color: '#374151',
+    lineHeight: 1.45,
+  },
+  guideGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr',
+    gap: 12,
+  },
+  guideLabel: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: '#166534',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  cmd: {
+    display: 'block',
+    background: '#fff',
+    border: '1px solid #d1fae5',
+    borderRadius: 8,
+    padding: '6px 8px',
+    fontSize: 12,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    marginBottom: 2,
+    color: '#111',
+  },
+  cmdHint: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginBottom: 8,
+    lineHeight: 1.3,
+  },
+  guideFoot: {
+    margin: '8px 0 0',
+    fontSize: 12,
+    color: '#4b5563',
+    lineHeight: 1.4,
   },
   settingsBtn: {
     padding: '8px 12px',

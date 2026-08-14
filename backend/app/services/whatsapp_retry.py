@@ -2,10 +2,11 @@ import asyncio
 from app.db.database import get_db
 from app.services.whatsapp import send_message
 from app.services.order_status import send_overdue_order_pings
+from app.services.payment_cleanup import expire_abandoned_upi_orders
 
 
 async def retry_failed_messages():
-    print("🚀 Retry + delay-watch worker started")
+    print("🚀 Retry + delay-watch + payment-cleanup worker started")
 
     while True:
         try:
@@ -39,6 +40,14 @@ async def retry_failed_messages():
                     print(f"⏳ Sent {pinged} late-order WhatsApp ping(s)")
             except Exception as ping_err:
                 print(f"⚠️ Late-order ping worker error: {ping_err}")
+
+            # Expire abandoned UPI checkouts (stores were never notified)
+            try:
+                expired = await expire_abandoned_upi_orders(db=db)
+                if expired:
+                    print(f"💳 Expired {expired} abandoned UPI order(s)")
+            except Exception as pay_err:
+                print(f"⚠️ Payment cleanup worker error: {pay_err}")
 
         except Exception as e:
             print("❌ Retry worker error:", str(e))
