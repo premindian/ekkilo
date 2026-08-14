@@ -238,6 +238,40 @@ export default function TrackOrder() {
             </div>
           )}
 
+          {orderDetails.payment_status === 'PAID' &&
+            !['CANCELLED', 'REJECTED'].includes((orderDetails.order_status || '').toUpperCase()) && (
+            <div style={{
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 20,
+              color: '#065f46',
+              fontSize: 14,
+              lineHeight: 1.45,
+            }}>
+              <strong>Paid online.</strong> Don’t pay the kirana again — Ekkilo settles with stores.
+              Cancel before Ready and contact Ekkilo for a UPI refund.
+            </div>
+          )}
+
+          {['CANCELLED', 'REJECTED'].includes((orderDetails.order_status || '').toUpperCase()) &&
+            orderDetails.payment_status === 'PAID' && (
+            <div style={{
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 20,
+              color: '#1e3a8a',
+              fontSize: 14,
+              lineHeight: 1.45,
+            }}>
+              <strong>Order cancelled after UPI.</strong> Message Ekkilo with this order number for your refund.
+              Refunds are manual today (not instant auto-refund).
+            </div>
+          )}
+
           {/* Progress Bar */}
           <div style={styles.progressSection}>
             <h3 style={styles.sectionTitle}>Order Progress</h3>

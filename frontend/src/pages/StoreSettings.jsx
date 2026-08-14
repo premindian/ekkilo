@@ -424,6 +424,26 @@ export default function StoreSettings() {
               </label>
             </div>
 
+            <div style={{
+              marginTop: 8,
+              marginBottom: 16,
+              padding: 14,
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              borderRadius: 12,
+            }}>
+              <h3 style={{ ...styles.sectionTitle, fontSize: 16, marginTop: 0 }}>Payments & settlement</h3>
+              <p style={{ margin: '0 0 8px', fontSize: 13, color: '#78350f', lineHeight: 1.45 }}>
+                <strong>UPI online:</strong> Customer already paid Ekkilo. Don’t collect again — Ekkilo settles with your store.
+              </p>
+              <p style={{ margin: '0 0 8px', fontSize: 13, color: '#78350f', lineHeight: 1.45 }}>
+                <strong>Pay at store:</strong> Collect cash/UPI from the customer yourself.
+              </p>
+              <p style={{ margin: 0, fontSize: 13, color: '#78350f', lineHeight: 1.45 }}>
+                Early cancel on a paid UPI order → customer refund is handled by Ekkilo, not deducted from your till.
+              </p>
+            </div>
+
             <button 
               onClick={saveSettings} 
               disabled={saving}

@@ -1680,6 +1680,22 @@ export default function OrderPage({ initialSearchText }) {
               </div>
             </button>
 
+            <div style={moneyNote}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Money & cancels</div>
+              {paymentMethod === "upi" && upiEnabled ? (
+                <>
+                  You pay Ekkilo online; kiranas see the order only after UPI succeeds.
+                  Ekkilo settles with stores — don’t pay the shop again.
+                  Cancel early (before Ready) and message us for a UPI refund.
+                </>
+              ) : (
+                <>
+                  You pay the kirana directly at pickup/delivery.
+                  Cancel early for free if the order isn’t Ready yet — no online payment to refund.
+                </>
+              )}
+            </div>
+
             {payStatus ? (
               <div style={{ fontSize: 13, color: "#166534", margin: "10px 0 4px", fontWeight: 600 }}>
                 {payStatus}
@@ -1971,6 +1987,17 @@ const checkoutTotal = {
   padding: "12px 14px",
   marginBottom: 14,
   fontSize: 16,
+};
+
+const moneyNote = {
+  marginTop: 10,
+  padding: "10px 12px",
+  background: "#fffbeb",
+  border: "1px solid #fde68a",
+  borderRadius: 10,
+  fontSize: 12,
+  color: "#78350f",
+  lineHeight: 1.45,
 };
 
 const payOption = {

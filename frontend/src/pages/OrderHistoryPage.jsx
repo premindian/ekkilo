@@ -110,7 +110,13 @@ export default function OrderHistoryPage({ onReorder }) {
   };
 
   const handleCancel = async (orderId) => {
-    if (!window.confirm(`Cancel order #${orderId}?`)) return;
+    const paid =
+      (selectedOrder?.order?.payment_status || '').toUpperCase() === 'PAID' ||
+      (orders.find((o) => o.id === orderId)?.payment_status || '').toUpperCase() === 'PAID';
+    const msg = paid
+      ? `Cancel order #${orderId}?\n\nThis was paid online. After cancel, message Ekkilo with the order number for a UPI refund (manual today).`
+      : `Cancel order #${orderId}?`;
+    if (!window.confirm(msg)) return;
     try {
       const res = await fetch(`${API_BASE}/api/orders/${orderId}/cancel?token=${token}`, {
         method: 'POST'
@@ -120,7 +126,11 @@ export default function OrderHistoryPage({ onReorder }) {
         alert(data.detail || 'Failed to cancel');
         return;
       }
-      alert('✅ Order cancelled');
+      alert(
+        paid
+          ? '✅ Order cancelled. Message Ekkilo with this order number for your UPI refund.'
+          : '✅ Order cancelled'
+      );
       setSelectedOrder(null);
       loadOrders();
     } catch (err) {
@@ -165,6 +175,26 @@ export default function OrderHistoryPage({ onReorder }) {
                 <span style={styles.totalAmount}>₹{selectedOrder.total.toFixed(2)}</span>
               </div>
             </div>
+
+            {(selectedOrder.order.payment_status || selectedOrder.order.payment_method) && (
+              <div style={{
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 16,
+                fontSize: 13,
+                color: '#78350f',
+                lineHeight: 1.45,
+              }}>
+                {(selectedOrder.order.payment_method || '').toLowerCase() === 'pay_at_store' ||
+                (selectedOrder.order.payment_status || '').toUpperCase() === 'PAY_AT_STORE'
+                  ? '💵 Pay at store — settle with the kirana at pickup/delivery.'
+                  : (selectedOrder.order.payment_status || '').toUpperCase() === 'PAID'
+                  ? '✅ Paid online — don’t pay the shop again. Cancel early → message Ekkilo for UPI refund.'
+                  : 'Payment status will update after UPI completes.'}
+              </div>
+            )}
 
             {selectedOrder.stores.map((store, idx) => (
               <div key={idx} style={styles.storeCard}>

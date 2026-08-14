@@ -148,6 +148,18 @@ export default function StoreDashboard() {
               Tip: replace <strong>12</strong> with the real Order ID from the WhatsApp message.
               UPI unpaid checkouts never reach you until payment succeeds.
             </p>
+            <div style={styles.moneyBox}>
+              <div style={styles.guideLabel}>Money</div>
+              <div style={styles.cmdHint}>
+                <strong>Paid online</strong> — customer already paid Ekkilo. Don’t collect again; Ekkilo settles with you.
+              </div>
+              <div style={styles.cmdHint}>
+                <strong>Pay at store</strong> — collect cash/UPI from the customer yourself.
+              </div>
+              <div style={styles.cmdHint}>
+                If a paid order is cancelled early, Ekkilo handles the customer refund — not your till.
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -422,6 +434,13 @@ const styles = {
     fontSize: 12,
     color: '#4b5563',
     lineHeight: 1.4,
+  },
+  moneyBox: {
+    marginTop: 12,
+    padding: 12,
+    background: '#fffbeb',
+    border: '1px solid #fde68a',
+    borderRadius: 10,
   },
   settingsBtn: {
     padding: '8px 12px',
