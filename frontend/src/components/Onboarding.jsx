@@ -227,28 +227,28 @@ export default function Onboarding({ onComplete, onSkip, token }) {
                 <span style={styles.modeIcon}>🏪</span>
                 <div>
                   <div style={styles.modeTitle}>My Kirana</div>
-                  <div style={styles.modeDesc}>Your go-to shop first</div>
+                  <div style={styles.modeDesc}>Your go-to shop</div>
                 </div>
               </div>
               <div style={styles.mode}>
-                <span style={styles.modeIcon}>✨</span>
+                <span style={styles.modeIcon}>📍</span>
                 <div>
-                  <div style={styles.modeTitle}>Fill Gaps</div>
-                  <div style={styles.modeDesc}>Add missing from nearby</div>
+                  <div style={styles.modeTitle}>Nearby</div>
+                  <div style={styles.modeDesc}>Complete from around you</div>
                 </div>
               </div>
               <div style={styles.mode}>
                 <span style={styles.modeIcon}>★</span>
                 <div>
                   <div style={styles.modeTitle}>Favorites</div>
-                  <div style={styles.modeDesc}>Saved stores only</div>
+                  <div style={styles.modeDesc}>Saved shops only</div>
                 </div>
               </div>
               <div style={styles.mode}>
-                <span style={styles.modeIcon}>✋</span>
+                <span style={styles.modeIcon}>🗺️</span>
                 <div>
-                  <div style={styles.modeTitle}>Store Pick</div>
-                  <div style={styles.modeDesc}>Choose item by item</div>
+                  <div style={styles.modeTitle}>All Stores</div>
+                  <div style={styles.modeDesc}>Pick any shop</div>
                 </div>
               </div>
             </div>

@@ -499,9 +499,9 @@ function PreferencesTab({ token }) {
           style={styles.select}
         >
           <option value="regular">My Kirana</option>
-          <option value="smart">Fill Gaps</option>
+          <option value="smart">Nearby</option>
           <option value="favorites">Favorites</option>
-          <option value="manual">Store Pick</option>
+          <option value="manual">All Stores</option>
         </select>
       </div>
 

@@ -45,26 +45,26 @@ const ORDER_MODES = [
   {
     id: "regular",
     label: "My Kirana",
-    hint: "Your go-to shop first",
+    hint: "Your go-to shop",
     icon: "🏪",
   },
   {
     id: "smart",
-    label: "Fill Gaps",
-    hint: "Add missing from nearby",
-    icon: "✨",
+    label: "Nearby",
+    hint: "Complete from around you",
+    icon: "📍",
   },
   {
     id: "favorites",
     label: "Favorites",
-    hint: "Only saved stores",
+    hint: "Saved shops only",
     icon: "★",
   },
   {
     id: "manual",
-    label: "Store Pick",
-    hint: "Choose item by item",
-    icon: "✋",
+    label: "All Stores",
+    hint: "Pick any shop",
+    icon: "🗺️",
   },
 ];
 
@@ -900,17 +900,17 @@ export default function OrderPage({ initialSearchText }) {
           )}
           {mode === "smart" && (
             <div style={modeBannerBody}>
-              See what’s also available nearby. Nothing is added unless you tap <strong>Add</strong>.
+              See what’s available nearby too. Nothing is added unless you tap <strong>Add</strong>.
             </div>
           )}
           {mode === "favorites" && (
             <div style={modeBannerBody}>
-              Only your saved favorites. Add stores in Profile → Favorites.
+              Only your saved favorites. Manage them in Profile → Favorites.
             </div>
           )}
           {mode === "manual" && (
             <div style={modeBannerBody}>
-              Open any store and pick items yourself — full control.
+              Browse every matching shop and pick items yourself.
             </div>
           )}
         </div>
@@ -958,7 +958,7 @@ export default function OrderPage({ initialSearchText }) {
             Missing something?
           </div>
           <div style={{ fontSize: 14, color: "#4b5563", lineHeight: 1.4 }}>
-            Open <strong>Fill Gaps</strong> to see nearby options — you choose what to add.
+            Switch to <strong>Nearby</strong> to see other shops — you choose what to add.
           </div>
         </div>
       )}
@@ -1040,7 +1040,7 @@ export default function OrderPage({ initialSearchText }) {
           return (
             <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
               <p>😕 None of your favorite stores have these items</p>
-              <p style={{ fontSize: 14 }}>Try Fill Gaps or add more favorites</p>
+              <p style={{ fontSize: 14 }}>Try Nearby or add more favorites</p>
             </div>
           );
         }
@@ -1104,9 +1104,9 @@ export default function OrderPage({ initialSearchText }) {
           return (
             <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
               <p>😕 {regularStore} doesn't have these items</p>
-              <p style={{ fontSize: 14 }}>Try Fill Gaps for items also available nearby</p>
+              <p style={{ fontSize: 14 }}>Try Nearby for items also available around you</p>
               <button type="button" style={{ ...orderButton, marginTop: 12 }} onClick={() => pickMode("smart")}>
-                Open Fill Gaps
+                Open Nearby
               </button>
             </div>
           );
