@@ -36,11 +36,13 @@ export default function OrderPage({ initialSearchText }) {
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedStoreDetails, setSelectedStoreDetails] = useState(null);
   const [qcEstimate, setQcEstimate] = useState(null);
-  const [checkout, setCheckout] = useState(null); // { normalized, grandTotal, lines }
+  const [checkout, setCheckout] = useState(null); // sheet state
   const [paymentMethod, setPaymentMethod] = useState("upi");
   const [upiEnabled, setUpiEnabled] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [payStatus, setPayStatus] = useState(""); // '', verifying, …
+
+  const phoneTail = (p) => String(p || "").replace(/\D/g, "").slice(-10);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/payments/config`)
@@ -363,8 +365,8 @@ export default function OrderPage({ initialSearchText }) {
       };
     }).filter((s) => s.items.length > 0);
 
-  // 📦 CHECKOUT — sheet with UPI / Pay at store (no prompt typing)
-  const openCheckout = (storesPayload) => {
+  // 📦 CHECKOUT — sheet with pickup/delivery + UPI / Pay at store
+  const openCheckout = async (storesPayload) => {
     if (!user?.phone) {
       alert("Please login to place order");
       return;
@@ -382,25 +384,95 @@ export default function OrderPage({ initialSearchText }) {
       return;
     }
 
-    const lines = normalized.map((store) => ({
-      store: store.store,
-      total: Number(store.total || 0),
-      items: store.items.map(
-        (item) =>
-          `${itemLabel(item)} (${item.packs || 1} × ${item.size}${item.unit})`
-      ),
-    }));
-    const grandTotal = normalized.reduce((sum, store) => sum + Number(store.total || 0), 0);
+    const phones = normalized.map((s) => s.store_phone);
+    const subtotals = {};
+    normalized.forEach((s) => {
+      subtotals[phoneTail(s.store_phone)] = Number(s.total || 0);
+    });
+
+    let deliveryMap = {};
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/stores/fulfillment-options${token ? `?token=${encodeURIComponent(token)}` : ""}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phones, subtotals }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      deliveryMap = data.stores || {};
+    } catch (e) {
+      console.error(e);
+    }
+
+    const fulfillByStore = {};
+    const deliveryNotes = {};
+    normalized.forEach((s) => {
+      const t = phoneTail(s.store_phone);
+      fulfillByStore[t] = "pickup";
+      deliveryNotes[t] = "";
+    });
 
     setPaymentMethod(upiEnabled ? "upi" : "pay_at_store");
     setPayStatus("");
-    setCheckout({ normalized, grandTotal, lines });
+    setCheckout({ normalized, deliveryMap, fulfillByStore, deliveryNotes });
   };
 
   const closeCheckout = () => {
     if (placing) return;
     setCheckout(null);
     setPayStatus("");
+  };
+
+  const buildCheckoutStores = () => {
+    if (!checkout?.normalized) return { stores: [], grandTotal: 0, lines: [] };
+    const lines = [];
+    let grandTotal = 0;
+    const stores = checkout.normalized.map((store) => {
+      const t = phoneTail(store.store_phone);
+      const opt = checkout.deliveryMap?.[t] || {};
+      const itemsSub = Number(store.total || 0);
+      const fulfillment =
+        opt.delivery_enabled && checkout.fulfillByStore?.[t] === "delivery"
+          ? "delivery"
+          : "pickup";
+      let delivery_fee = 0;
+      if (fulfillment === "delivery") {
+        const freeMin = Number(opt.free_delivery_min || 0);
+        const fee = Number(opt.delivery_fee || 0);
+        delivery_fee =
+          freeMin > 0 && itemsSub >= freeMin
+            ? 0
+            : Math.max(0, fee);
+      }
+      const total = itemsSub + delivery_fee;
+      grandTotal += total;
+      lines.push({
+        store: store.store,
+        phoneTail: t,
+        itemsSub,
+        delivery_fee,
+        fulfillment,
+        total,
+        items: store.items.map(
+          (item) =>
+            `${itemLabel(item)} (${item.packs || 1} × ${item.size}${item.unit})`
+        ),
+        delivery_enabled: !!opt.delivery_enabled,
+        free_delivery_min: Number(opt.free_delivery_min || 0),
+        listed_fee: Number(opt.delivery_fee || 0),
+        delivery_notes: opt.delivery_notes || "",
+      });
+      return {
+        ...store,
+        total,
+        fulfillment,
+        delivery_fee,
+        delivery_note: (checkout.deliveryNotes?.[t] || "").trim() || undefined,
+      };
+    });
+    return { stores, grandTotal, lines };
   };
 
   const confirmCheckout = async () => {
@@ -411,7 +483,8 @@ export default function OrderPage({ initialSearchText }) {
     }
 
     const method = paymentMethod === "upi" && upiEnabled ? "upi" : "pay_at_store";
-    const normalized = checkout.normalized;
+    const { stores: normalized, grandTotal } = buildCheckoutStores();
+    if (!normalized.length) return;
     const formatted = user.phone.startsWith("91") ? user.phone : "91" + user.phone;
 
     const goTrack = (orderId, trackToken, message) => {
@@ -617,6 +690,8 @@ export default function OrderPage({ initialSearchText }) {
       </div>
     );
   };
+
+  const checkoutView = checkout ? buildCheckoutStores() : null;
 
   return (
     <div style={container}>
@@ -1317,8 +1392,8 @@ export default function OrderPage({ initialSearchText }) {
         </div>
       )}
 
-      {/* CHECKOUT — pay method sheet */}
-      {checkout && (
+      {/* CHECKOUT — fulfillment + pay method sheet */}
+      {checkout && checkoutView && (
         <div style={checkoutOverlay} onClick={closeCheckout}>
           <div style={checkoutSheet} onClick={(e) => e.stopPropagation()}>
             <div style={checkoutHead}>
@@ -1330,21 +1405,130 @@ export default function OrderPage({ initialSearchText }) {
 
             <div style={checkoutTotal}>
               <span>Total</span>
-              <strong>₹{format(checkout.grandTotal)}</strong>
+              <strong>₹{format(checkoutView.grandTotal)}</strong>
             </div>
 
-            <div style={{ maxHeight: 140, overflowY: "auto", marginBottom: 14 }}>
-              {checkout.lines.map((line) => (
-                <div key={line.store} style={{ marginBottom: 10, fontSize: 13 }}>
+            <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 14 }}>
+              {checkoutView.lines.map((line) => (
+                <div
+                  key={line.phoneTail || line.store}
+                  style={{
+                    marginBottom: 12,
+                    fontSize: 13,
+                    padding: 10,
+                    background: "#f9fafb",
+                    borderRadius: 10,
+                  }}
+                >
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>🏪 {line.store}</div>
                   {line.items.map((it, idx) => (
                     <div key={idx} style={{ color: "#4b5563", paddingLeft: 4 }}>
                       · {it}
                     </div>
                   ))}
-                  <div style={{ color: "#166534", fontWeight: 600, marginTop: 2 }}>
-                    ₹{format(line.total)}
+                  <div style={{ color: "#374151", marginTop: 4 }}>
+                    Items ₹{format(line.itemsSub)}
+                    {line.fulfillment === "delivery" && (
+                      <span>
+                        {" · "}
+                        {line.delivery_fee > 0
+                          ? `Delivery ₹${format(line.delivery_fee)}`
+                          : "Free delivery"}
+                      </span>
+                    )}
                   </div>
+
+                  {line.delivery_enabled ? (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: "#374151" }}>
+                        Pickup or store delivery?
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          disabled={placing}
+                          onClick={() =>
+                            setCheckout((c) => ({
+                              ...c,
+                              fulfillByStore: { ...c.fulfillByStore, [line.phoneTail]: "pickup" },
+                            }))
+                          }
+                          style={{
+                            ...payOption,
+                            marginBottom: 0,
+                            flex: 1,
+                            minWidth: 120,
+                            ...(line.fulfillment === "pickup" ? payOptionOn : {}),
+                            padding: "8px 10px",
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, fontSize: 13 }}>Pickup</div>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={placing}
+                          onClick={() =>
+                            setCheckout((c) => ({
+                              ...c,
+                              fulfillByStore: { ...c.fulfillByStore, [line.phoneTail]: "delivery" },
+                            }))
+                          }
+                          style={{
+                            ...payOption,
+                            marginBottom: 0,
+                            flex: 1,
+                            minWidth: 120,
+                            ...(line.fulfillment === "delivery" ? payOptionOn : {}),
+                            padding: "8px 10px",
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, fontSize: 13 }}>Store delivery</div>
+                          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+                            {line.free_delivery_min > 0 && line.itemsSub >= line.free_delivery_min
+                              ? `Free (over ₹${line.free_delivery_min})`
+                              : line.listed_fee > 0
+                                ? `₹${line.listed_fee} if under ₹${line.free_delivery_min || "—"}`
+                                : "Store handles drop"}
+                          </div>
+                        </button>
+                      </div>
+                      {line.delivery_notes ? (
+                        <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6 }}>
+                          {line.delivery_notes}
+                        </div>
+                      ) : null}
+                      {line.fulfillment === "delivery" && (
+                        <input
+                          type="text"
+                          placeholder="Landmark / area for the store"
+                          value={checkout.deliveryNotes?.[line.phoneTail] || ""}
+                          disabled={placing}
+                          onChange={(e) =>
+                            setCheckout((c) => ({
+                              ...c,
+                              deliveryNotes: {
+                                ...c.deliveryNotes,
+                                [line.phoneTail]: e.target.value,
+                              },
+                            }))
+                          }
+                          style={{
+                            width: "100%",
+                            marginTop: 8,
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #e5e7eb",
+                            fontSize: 14,
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6 }}>
+                      Pickup only (this store has not enabled delivery)
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1382,7 +1566,7 @@ export default function OrderPage({ initialSearchText }) {
             >
               <div style={{ fontWeight: 800, fontSize: 15 }}>Pay at store</div>
               <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4, lineHeight: 1.35 }}>
-                Stores notified now. Pay when you pick up.
+                Stores notified now. Pay when you pick up or on delivery.
               </div>
             </button>
 
@@ -1406,8 +1590,8 @@ export default function OrderPage({ initialSearchText }) {
               {placing
                 ? "Please wait…"
                 : paymentMethod === "upi" && upiEnabled
-                  ? `Pay ₹${format(checkout.grandTotal)} with UPI`
-                  : `Place order · Pay at store`}
+                  ? `Pay ₹${format(checkoutView.grandTotal)} with UPI`
+                  : `Place order · ₹${format(checkoutView.grandTotal)}`}
             </button>
           </div>
         </div>

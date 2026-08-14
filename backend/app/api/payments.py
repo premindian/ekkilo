@@ -27,8 +27,10 @@ async def queue_order_notifications(final_order_id: int, background_tasks: Backg
     from app.services.whatsapp import send_message
     from app.services.order_status import get_track_url
     from app.core.ws_manager import manager
+    from app.services.delivery import ensure_delivery_schema
 
     db = db or await get_db()
+    await ensure_delivery_schema(db)
     order = await db.fetchrow("""
         SELECT id, customer_phone, track_token, status, payment_status, payment_method
         FROM final_orders WHERE id = $1
@@ -43,7 +45,9 @@ async def queue_order_notifications(final_order_id: int, background_tasks: Backg
     pay_label = "PAY AT STORE" if pay_at_store else "PAID ONLINE"
 
     stores = await db.fetch("""
-        SELECT id, store_name, store_phone, status
+        SELECT id, store_name, store_phone, status,
+               total_amount, created_at, updated_at,
+               fulfillment, delivery_fee, delivery_note
         FROM store_orders WHERE final_order_id = $1
         ORDER BY id
     """, final_order_id)
@@ -62,9 +66,26 @@ async def queue_order_notifications(final_order_id: int, background_tasks: Backg
         item_text = "\n".join(
             f"{i['product_name']} x{i['quantity'] or 1}" for i in items
         )
+        fulfillment = (so.get("fulfillment") or "pickup").lower()
+        try:
+            dfee = float(so.get("delivery_fee") or 0)
+        except (TypeError, ValueError):
+            dfee = 0.0
+        if fulfillment == "delivery":
+            if dfee > 0:
+                fulfill_line = f"🚚 STORE DELIVERY · fee ₹{dfee:.0f} (you handle drop)"
+            else:
+                fulfill_line = "🚚 STORE DELIVERY · FREE (you handle drop)"
+            if so.get("delivery_note"):
+                fulfill_line += f"\nNote: {so['delivery_note']}"
+        else:
+            fulfill_line = "🏪 PICKUP at store"
+
         message = f"""🆕 New Order ({pay_label})
 
 Order ID: {final_order_id}
+
+{fulfill_line}
 
 {item_text}
 

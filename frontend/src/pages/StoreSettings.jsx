@@ -25,6 +25,10 @@ export default function StoreSettings() {
   const [minOrder, setMinOrder] = useState('0');
   const [isOpen, setIsOpen] = useState(true);
   const [autoAccept, setAutoAccept] = useState(false);
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [freeDeliveryMin, setFreeDeliveryMin] = useState('1500');
+  const [deliveryFee, setDeliveryFee] = useState('40');
+  const [deliveryNotes, setDeliveryNotes] = useState('');
   
   // Notifications
   const [whatsappNotifications, setWhatsappNotifications] = useState(true);
@@ -57,6 +61,14 @@ export default function StoreSettings() {
       setMinOrder(data.settings?.min_order || '0');
       setIsOpen(data.settings?.is_open !== false);
       setAutoAccept(data.settings?.auto_accept_orders || false);
+      setDeliveryEnabled(!!data.settings?.delivery_enabled);
+      setFreeDeliveryMin(
+        data.settings?.free_delivery_min != null ? String(data.settings.free_delivery_min) : '1500'
+      );
+      setDeliveryFee(
+        data.settings?.delivery_fee != null ? String(data.settings.delivery_fee) : '40'
+      );
+      setDeliveryNotes(data.settings?.delivery_notes || '');
       
       // Notifications
       setWhatsappNotifications(data.notifications?.whatsapp_enabled !== false);
@@ -105,7 +117,11 @@ export default function StoreSettings() {
           delivery_radius: parseFloat(deliveryRadius),
           min_order: parseFloat(minOrder),
           is_open: isOpen,
-          auto_accept_orders: autoAccept
+          auto_accept_orders: autoAccept,
+          delivery_enabled: deliveryEnabled,
+          free_delivery_min: parseFloat(freeDeliveryMin) || 0,
+          delivery_fee: parseFloat(deliveryFee) || 0,
+          delivery_notes: deliveryNotes.trim() || null,
         })
       });
       alert('✅ Settings updated!');
@@ -303,19 +319,79 @@ export default function StoreSettings() {
               </label>
             </div>
 
-            <h2 style={styles.sectionTitle}>Delivery Settings</h2>
+            <h2 style={styles.sectionTitle}>Delivery (you handle drop)</h2>
+            <p style={styles.hint}>
+              Ekkilo only shows your rule to customers. You manage delivery yourself — we do not assign riders.
+            </p>
 
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Delivery Radius (km)</label>
-              <input
-                type="number"
-                value={deliveryRadius}
-                onChange={(e) => setDeliveryRadius(e.target.value)}
-                style={styles.input}
-                placeholder="5"
-              />
-              <div style={styles.hint}>Maximum distance for delivery</div>
+            <div style={styles.toggleGroup}>
+              <div style={styles.toggleInfo}>
+                <div style={styles.toggleLabel}>
+                  {deliveryEnabled ? '🚚 Offer delivery' : '🏪 Pickup only'}
+                </div>
+                <div style={styles.toggleDesc}>
+                  Let customers choose store delivery at checkout
+                </div>
+              </div>
+              <label style={styles.switch}>
+                <input
+                  type="checkbox"
+                  checked={deliveryEnabled}
+                  onChange={(e) => setDeliveryEnabled(e.target.checked)}
+                />
+                <span style={styles.slider}></span>
+              </label>
             </div>
+
+            {deliveryEnabled && (
+              <>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Free delivery above (₹)</label>
+                  <input
+                    type="number"
+                    value={freeDeliveryMin}
+                    onChange={(e) => setFreeDeliveryMin(e.target.value)}
+                    style={styles.input}
+                    placeholder="1500"
+                  />
+                  <div style={styles.hint}>e.g. ₹1500+ = free delivery</div>
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Delivery fee below that (₹)</label>
+                  <input
+                    type="number"
+                    value={deliveryFee}
+                    onChange={(e) => setDeliveryFee(e.target.value)}
+                    style={styles.input}
+                    placeholder="40"
+                  />
+                  <div style={styles.hint}>Charged when order is under the free threshold</div>
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Delivery radius (km)</label>
+                  <input
+                    type="number"
+                    value={deliveryRadius}
+                    onChange={(e) => setDeliveryRadius(e.target.value)}
+                    style={styles.input}
+                    placeholder="5"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Area note (shown to customers)</label>
+                  <input
+                    type="text"
+                    value={deliveryNotes}
+                    onChange={(e) => setDeliveryNotes(e.target.value)}
+                    style={styles.input}
+                    placeholder="e.g. Within 2 km / MVP Colony only"
+                  />
+                </div>
+              </>
+            )}
 
             <div style={styles.formGroup}>
               <label style={styles.label}>Minimum Order (₹)</label>

@@ -529,16 +529,17 @@ async def get_store_settings(token: str):
     store_id = store_owner["store_id"]
     
     db = await get_db()
+    from app.services.delivery import ensure_delivery_schema
+    await ensure_delivery_schema(db)
     
     # Get store info
     store = await db.fetchrow("""
         SELECT * FROM stores WHERE id = $1
     """, store_id)
     
-    # Get store settings (if table exists)
     settings = await db.fetchrow("""
         SELECT * FROM store_settings WHERE store_id = $1
-    """, store_id) if await db.fetchval("SELECT EXISTS(SELECT FROM information_schema.tables WHERE table_name = 'store_settings')") else None
+    """, store_id)
     
     # Get notification settings
     notifications = await db.fetchrow("""
@@ -592,37 +593,37 @@ async def update_store_settings(data: dict, token: str):
     store_id = store_owner["store_id"]
     
     db = await get_db()
-    
-    # Create store_settings table if doesn't exist
-    await db.execute("""
-        CREATE TABLE IF NOT EXISTS store_settings (
-            id SERIAL PRIMARY KEY,
-            store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
-            delivery_radius DECIMAL(10,2) DEFAULT 5.0,
-            min_order DECIMAL(10,2) DEFAULT 0,
-            is_open BOOLEAN DEFAULT TRUE,
-            auto_accept_orders BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-    """)
+    from app.services.delivery import ensure_delivery_schema
+    await ensure_delivery_schema(db)
     
     delivery_radius = data.get("delivery_radius")
     min_order = data.get("min_order")
     is_open = data.get("is_open")
     auto_accept = data.get("auto_accept_orders")
+    delivery_enabled = data.get("delivery_enabled")
+    free_delivery_min = data.get("free_delivery_min")
+    delivery_fee = data.get("delivery_fee")
+    delivery_notes = data.get("delivery_notes")
     
     # Upsert settings
     await db.execute("""
-        INSERT INTO store_settings (store_id, delivery_radius, min_order, is_open, auto_accept_orders)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO store_settings (
+            store_id, delivery_radius, min_order, is_open, auto_accept_orders,
+            delivery_enabled, free_delivery_min, delivery_fee, delivery_notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (store_id) DO UPDATE SET
             delivery_radius = COALESCE($2, store_settings.delivery_radius),
             min_order = COALESCE($3, store_settings.min_order),
             is_open = COALESCE($4, store_settings.is_open),
             auto_accept_orders = COALESCE($5, store_settings.auto_accept_orders),
+            delivery_enabled = COALESCE($6, store_settings.delivery_enabled),
+            free_delivery_min = COALESCE($7, store_settings.free_delivery_min),
+            delivery_fee = COALESCE($8, store_settings.delivery_fee),
+            delivery_notes = COALESCE($9, store_settings.delivery_notes),
             updated_at = NOW()
-    """, store_id, delivery_radius, min_order, is_open, auto_accept)
+    """, store_id, delivery_radius, min_order, is_open, auto_accept,
+        delivery_enabled, free_delivery_min, delivery_fee, delivery_notes)
     
     return {"status": "success"}
 

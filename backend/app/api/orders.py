@@ -17,8 +17,10 @@ def _normalize_phone(phone: str) -> str:
 
 async def _build_track_payload(db, order_id: int):
     from datetime import datetime, timezone
+    from app.services.delivery import ensure_delivery_schema
 
     await ensure_order_schema(db)
+    await ensure_delivery_schema(db)
 
     try:
         await db.execute("""
@@ -51,7 +53,8 @@ async def _build_track_payload(db, order_id: int):
         SELECT so.id, so.store_name, so.store_phone, so.status,
                so.total_amount, so.created_at, so.updated_at,
                so.accepted_at, so.eta_minutes, so.ready_by,
-               so.delay_note, so.delay_notified_at, so.late_ping_sent_at
+               so.delay_note, so.delay_notified_at, so.late_ping_sent_at,
+               so.fulfillment, so.delivery_fee, so.delivery_note
         FROM store_orders so
         WHERE so.final_order_id = $1
         ORDER BY so.id
@@ -91,6 +94,9 @@ async def _build_track_payload(db, order_id: int):
             "delay_note": store.get("delay_note"),
             "preparing_minutes": preparing_minutes,
             "is_delayed": is_delayed,
+            "fulfillment": store.get("fulfillment") or "pickup",
+            "delivery_fee": float(store["delivery_fee"] or 0) if store.get("delivery_fee") is not None else 0,
+            "delivery_note": store.get("delivery_note"),
             "items": [
                 {
                     "product_name": item["product_name"],

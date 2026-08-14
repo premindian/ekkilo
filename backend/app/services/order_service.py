@@ -13,9 +13,12 @@ async def create_full_order(stores, customer_phone, awaiting_payment: bool = Fal
     Persist order + build WhatsApp jobs.
     If awaiting_payment=True: store lines are AWAITING_PAYMENT and admin WS is deferred
     until payment succeeds (see activate_paid_order).
+    Each store may include fulfillment=pickup|delivery, delivery_fee, delivery_note.
     """
     db = await get_db()
     await ensure_order_schema(db)
+    from app.services.delivery import ensure_delivery_schema
+    await ensure_delivery_schema(db)
 
     whatsapp_jobs = []
     customer_phone = normalize_phone(customer_phone)
@@ -78,12 +81,27 @@ async def create_full_order(stores, customer_phone, awaiting_payment: bool = Fal
         if store_record and store_record.get("phone"):
             # Prefer canonical store phone from DB
             store_phone = normalize_phone(store_record["phone"])
+
+        fulfillment = (store.get("fulfillment") or "pickup").strip().lower()
+        if fulfillment not in ("pickup", "delivery"):
+            fulfillment = "pickup"
+        try:
+            delivery_fee = float(store.get("delivery_fee") or 0)
+        except (TypeError, ValueError):
+            delivery_fee = 0.0
+        if fulfillment != "delivery":
+            delivery_fee = 0.0
+        delivery_note = (store.get("delivery_note") or "").strip() or None
         
         so = await db.fetchrow("""
-            INSERT INTO store_orders (final_order_id, store_name, store_phone, store_id, status)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO store_orders (
+                final_order_id, store_name, store_phone, store_id, status,
+                fulfillment, delivery_fee, delivery_note
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING id
-        """, final_order_id, store.get("store"), store_phone, store_id, initial_store_status)
+        """, final_order_id, store.get("store"), store_phone, store_id, initial_store_status,
+            fulfillment, delivery_fee, delivery_note)
 
         store_order_id = so["id"]
 
@@ -114,12 +132,14 @@ async def create_full_order(stores, customer_phone, awaiting_payment: bool = Fal
                 price
             )
 
-        # Prefer frontend-provided total when present
+        # Prefer frontend-provided total when present (should include delivery_fee)
         if store.get("total") is not None:
             try:
                 store_total = float(store.get("total"))
             except (TypeError, ValueError):
-                pass
+                store_total = store_total + delivery_fee
+        else:
+            store_total = store_total + delivery_fee
 
         await db.execute("""
             UPDATE store_orders
@@ -147,9 +167,21 @@ async def create_full_order(stores, customer_phone, awaiting_payment: bool = Fal
             for i in store.get("items", [])
         )
 
+        if fulfillment == "delivery":
+            if delivery_fee > 0:
+                fulfill_line = f"🚚 STORE DELIVERY · fee ₹{delivery_fee:.0f} (store handles drop)"
+            else:
+                fulfill_line = "🚚 STORE DELIVERY · FREE (store handles drop)"
+            if delivery_note:
+                fulfill_line += f"\nNote: {delivery_note}"
+        else:
+            fulfill_line = "🏪 PICKUP at store"
+
         message = f"""🆕 New Order
 
 Order ID: {final_order_id}
+
+{fulfill_line}
 
 {item_text}
 

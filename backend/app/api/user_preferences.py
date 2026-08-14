@@ -6,6 +6,39 @@ router = APIRouter()
 
 
 # -----------------------------
+# 🚚 STORE FULFILLMENT / DELIVERY OPTIONS
+# -----------------------------
+@router.post("/stores/fulfillment-options")
+async def store_fulfillment_options(data: dict, token: str = None):
+    """
+    Body: { "phones": ["91...", ...] }
+    Returns delivery rules per store (store-managed delivery, not Ekkilo logistics).
+    """
+    from app.services.delivery import delivery_options_for_phones, calc_delivery_fee
+
+    phones = (data or {}).get("phones") or []
+    options = await delivery_options_for_phones(phones)
+    # Also accept optional subtotals to preview fees: { "subtotals": { "98765...": 1200 } }
+    subtotals = (data or {}).get("subtotals") or {}
+    for tail, opt in options.items():
+        sub = subtotals.get(tail)
+        if sub is None:
+            # try full phone keys
+            for k, v in subtotals.items():
+                from app.utils.phone import phone_tail, normalize_phone
+                if phone_tail(normalize_phone(str(k))) == tail:
+                    sub = v
+                    break
+        if sub is not None:
+            opt["fee_if_delivery"] = calc_delivery_fee(float(sub), opt)
+            free_min = float(opt.get("free_delivery_min") or 0)
+            opt["qualifies_free_delivery"] = bool(
+                opt.get("delivery_enabled") and free_min > 0 and float(sub) >= free_min
+            )
+    return {"stores": options}
+
+
+# -----------------------------
 # 🔍 FIND STORE BY PHONE
 # -----------------------------
 @router.get("/stores/by-phone/{phone}")

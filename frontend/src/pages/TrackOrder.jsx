@@ -279,6 +279,19 @@ export default function TrackOrder() {
                   <div>
                     <div style={styles.storeName}>🏪 {store.store_name}</div>
                     <div style={styles.storeMeta}>📞 {store.store_phone}</div>
+                    {(store.fulfillment === 'delivery' || store.delivery_fee > 0) && (
+                      <div style={{ ...styles.storeMeta, marginTop: 4, color: '#166534', fontWeight: 600 }}>
+                        {store.fulfillment === 'delivery'
+                          ? (Number(store.delivery_fee) > 0
+                              ? `🚚 Store delivery · ₹${money(store.delivery_fee)}`
+                              : '🚚 Store delivery · Free')
+                          : '🏪 Pickup'}
+                        {store.delivery_note ? ` · ${store.delivery_note}` : ''}
+                      </div>
+                    )}
+                    {store.fulfillment === 'pickup' && !store.delivery_fee && (
+                      <div style={{ ...styles.storeMeta, marginTop: 4 }}>🏪 Pickup</div>
+                    )}
                     {store.status === 'ACCEPTED' && (
                       <div style={{ ...styles.storeMeta, marginTop: 6, color: store.is_delayed ? '#c2410c' : '#4b5563' }}>
                         {store.is_delayed
