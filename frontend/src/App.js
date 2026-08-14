@@ -264,7 +264,11 @@ function App() {
 const styles = {
   app: {
     minHeight: '100vh',
-    background: '#f3f4f6'
+    background: '#f3f4f6',
+    width: '100%',
+    maxWidth: '100%',
+    overflowX: 'hidden',
+    boxSizing: 'border-box',
   },
   loadingContainer: {
     display: 'flex',
@@ -274,58 +278,81 @@ const styles = {
   },
   header: {
     background: '#fff',
-    padding: '16px 20px',
+    padding: '12px 16px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottom: '1px solid #e5e7eb'
+    borderBottom: '1px solid #e5e7eb',
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
   },
   logo: {
     margin: 0,
-    lineHeight: 0
+    lineHeight: 0,
+    minWidth: 0,
   },
   navLabel: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 6
+    gap: 4
   },
   userInfo: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12
+    gap: 12,
+    minWidth: 0,
+    flexShrink: 1,
   },
   userName: {
     fontSize: 14,
-    color: '#666'
+    color: '#666',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    maxWidth: 140,
   },
   nav: {
     background: '#fff',
     display: 'flex',
-    padding: '0 20px',
+    padding: '0 8px',
     borderBottom: '1px solid #e5e7eb',
-    gap: 4
+    gap: 0,
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
   },
   navBtn: {
-    padding: '12px 20px',
+    padding: '12px 12px',
     background: 'none',
     border: 'none',
     borderBottom: '3px solid transparent',
     cursor: 'pointer',
-    fontSize: 14,
-    color: '#666'
+    fontSize: 13,
+    color: '#666',
+    flex: '1 0 auto',
+    whiteSpace: 'nowrap',
   },
   navBtnActive: {
-    padding: '12px 20px',
+    padding: '12px 12px',
     background: 'none',
     border: 'none',
     borderBottom: '3px solid #667eea',
     cursor: 'pointer',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
-    color: '#667eea'
+    color: '#667eea',
+    flex: '1 0 auto',
+    whiteSpace: 'nowrap',
   },
   content: {
-    paddingBottom: 80
+    paddingBottom: 80,
+    width: '100%',
+    maxWidth: '100%',
+    overflowX: 'hidden',
+    boxSizing: 'border-box',
   }
 };
 

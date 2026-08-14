@@ -495,8 +495,10 @@ const styles = {
     padding: '14px 12px 6px',
     width: '100%',
     maxWidth: '100%',
+    minWidth: 0,
     boxSizing: 'border-box',
     WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorX: 'contain',
   },
   catChip: {
     flex: '0 0 auto',
