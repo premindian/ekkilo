@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { navigate } from '../utils/navigate';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,6 +25,9 @@ export default function StoreProducts() {
   const [selectedNewProduct, setSelectedNewProduct] = useState(null);
   const [newPrice, setNewPrice] = useState('');
   const [newStock, setNewStock] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const csvRef = useRef(null);
   
   // Filters
   const [filterLowStock, setFilterLowStock] = useState(false);
@@ -258,6 +261,43 @@ export default function StoreProducts() {
     return filtered;
   };
 
+  const downloadInventoryTemplate = (sample = 'a') => {
+    window.location.href =
+      `${API_BASE}/api/store/products/import-template?token=${encodeURIComponent(token)}&sample=${sample}`;
+  };
+
+  const importInventoryCsv = async (file) => {
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_BASE}/api/store/products/import?token=${token}`, {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.detail || 'Import failed');
+      }
+      setImportResult(data);
+      loadProducts();
+      if (data.failed_count) {
+        alert(
+          `Imported with ${data.failed_count} unmatched row(s). ` +
+            `Added ${data.created}, updated ${data.updated}. ` +
+            'Names must match the master catalog.'
+        );
+      }
+    } catch (e) {
+      alert(e.message || 'Import failed');
+    } finally {
+      setImporting(false);
+      if (csvRef.current) csvRef.current.value = '';
+    }
+  };
+
   const filteredProducts = getFilteredProducts();
 
   return (
@@ -268,6 +308,44 @@ export default function StoreProducts() {
         <button onClick={() => navigate('/store')} style={styles.backBtn}>
           ← Back
         </button>
+      </div>
+
+      <div style={styles.importBox}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={styles.importTitle}>Upload inventory (Excel / CSV)</div>
+          <p style={styles.importHint}>
+            Columns: name, brand, size, unit, price, stock. Names must match Admin catalog.
+            Edit in Excel → Save as CSV UTF-8 → upload.
+          </p>
+          {importResult && (
+            <p style={styles.importStats}>
+              Added {importResult.created} · updated {importResult.updated}
+              {importResult.failed_count ? ` · unmatched ${importResult.failed_count}` : ''}
+            </p>
+          )}
+        </div>
+        <div style={styles.importActions}>
+          <button type="button" onClick={() => downloadInventoryTemplate('a')} style={styles.templateBtn}>
+            Sample A CSV
+          </button>
+          <button type="button" onClick={() => downloadInventoryTemplate('b')} style={styles.templateBtn}>
+            Sample B CSV
+          </button>
+          <label style={{ ...styles.uploadBtn, opacity: importing ? 0.7 : 1 }}>
+            {importing ? 'Importing…' : 'Upload CSV'}
+            <input
+              ref={csvRef}
+              type="file"
+              accept=".csv,text/csv"
+              style={{ display: 'none' }}
+              disabled={importing}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) importInventoryCsv(f);
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       {/* Action Bar */}
@@ -550,6 +628,40 @@ const styles = {
     borderRadius: 8,
     fontSize: 14,
     fontWeight: 600,
+    cursor: 'pointer',
+  },
+  importBox: {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  importTitle: { fontWeight: 700, fontSize: 15, marginBottom: 4, color: '#14532d' },
+  importHint: { margin: 0, fontSize: 13, color: '#166534', lineHeight: 1.45 },
+  importStats: { margin: '8px 0 0', fontSize: 13, fontWeight: 600, color: '#0f766e' },
+  importActions: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  templateBtn: {
+    padding: '10px 12px',
+    background: '#fff',
+    border: '1px solid #86efac',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    color: '#166534',
+  },
+  uploadBtn: {
+    padding: '10px 14px',
+    background: '#16a34a',
+    color: '#fff',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 700,
     cursor: 'pointer',
   },
   actionBar: {

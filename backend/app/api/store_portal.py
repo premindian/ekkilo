@@ -1,8 +1,14 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import PlainTextResponse
 from app.db.database import get_db
 from app.api.auth import get_current_user
 from app.services.product_images import file_to_data_url, validate_image_url
 from app.services.staff_audit import log_staff_action
+from app.services.store_inventory_import import (
+    build_store_inventory_template,
+    parse_store_inventory_csv,
+    import_store_inventory,
+)
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/store", tags=["store-portal"])
@@ -415,6 +421,62 @@ async def update_store_order(order_id: int, data: dict, token: str):
 # ============================================
 # PRODUCTS - View & Manage
 # ============================================
+@router.get("/products/import-template")
+async def download_store_inventory_template(token: str, sample: str = "a"):
+    """CSV template for store prices/stock (Excel-friendly)."""
+    await get_store_from_token(token)
+    which = "b" if str(sample).lower() in ("b", "2", "store_b") else "a"
+    csv_text = build_store_inventory_template(which)
+    return PlainTextResponse(
+        content=csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="store-inventory-sample-{which}.csv"'
+        },
+    )
+
+
+@router.post("/products/import")
+async def import_store_products_csv(token: str, file: UploadFile = File(...)):
+    """Bulk upsert store inventory from CSV (matches master catalog by name)."""
+    store_owner = await get_store_from_token(token)
+    store_id = store_owner["store_id"]
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(raw) > 2_000_000:
+        raise HTTPException(status_code=400, detail="CSV too large (max 2MB)")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    rows, parse_errors = parse_store_inventory_csv(text)
+    if not rows and parse_errors:
+        raise HTTPException(status_code=400, detail="; ".join(parse_errors[:5]))
+
+    db = await get_db()
+    result = await import_store_inventory(db, store_id, rows)
+    result["parse_errors"] = parse_errors[:50]
+    result["parse_error_count"] = len(parse_errors)
+    await log_staff_action(
+        actor=store_owner,
+        action="store_product.import_csv",
+        entity_type="store",
+        entity_id=store_id,
+        details={
+            "filename": file.filename,
+            "created": result.get("created"),
+            "updated": result.get("updated"),
+            "failed_count": result.get("failed_count"),
+            "total_rows": result.get("total_rows"),
+        },
+        store_id=store_id,
+        db=db,
+    )
+    return result
+
+
 @router.get("/products")
 async def get_store_products(token: str, search: str = None):
     """Get all products for this store"""
