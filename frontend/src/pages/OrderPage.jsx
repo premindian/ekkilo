@@ -809,10 +809,10 @@ export default function OrderPage({ initialSearchText }) {
         .ekkilo-store-card { animation: ekkiloFadeUp 0.28s ease both; }
       `}</style>
       <div style={pageHero}>
-        <div style={heroEyebrow}>Compare & checkout</div>
+        <div style={heroEyebrow}>Local kirana vs big stores</div>
         <h1 style={heroTitle}>Prices</h1>
         <p style={heroSub}>
-          Search your list, pick how to buy, then checkout — pickup or store delivery.
+          See what Blinkit, Zepto & Instamart would cost — then order from your local kirana.
         </p>
 
         {/* Location strip */}
@@ -938,28 +938,54 @@ export default function OrderPage({ initialSearchText }) {
         </div>
       </div>
 
-      {/* QC vs local estimate (sampled weekly — not live Blinkit prices) */}
-      {!loading && qcEstimate && (
-        <div style={qcCard}>
-          <div style={{ fontWeight: 800, color: "#065f46", marginBottom: 4 }}>
-            Quick-commerce estimate ≈ ₹{format(qcEstimate.qc_total)}
+      {/* QC vs local — big-store estimate from admin samples */}
+      {!loading && qcEstimate && (() => {
+        const sourceKey = String(qcEstimate.source || "").toLowerCase();
+        const sourceLabel =
+          sourceKey === "blinkit"
+            ? "Blinkit"
+            : sourceKey === "zepto"
+            ? "Zepto"
+            : sourceKey === "instamart"
+            ? "Instamart"
+            : "Blinkit / Zepto / Instamart";
+        const localTotals = (stores || [])
+          .map((s) => Number(s.total))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        const bestLocal = localTotals.length ? Math.min(...localTotals) : null;
+        const qcTotal = Number(qcEstimate.qc_total) || 0;
+        const saveAmt =
+          bestLocal != null && qcTotal > bestLocal ? qcTotal - bestLocal : null;
+        return (
+          <div style={qcCard}>
+            <div style={{ fontWeight: 800, color: "#065f46", marginBottom: 4 }}>
+              Big-store estimate ≈ ₹{format(qcTotal)}
+              {bestLocal != null ? ` · Your kirana ≈ ₹${format(bestLocal)}` : ""}
+            </div>
+            {saveAmt != null && saveAmt > 0 && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#047857", marginBottom: 4 }}>
+                Roughly ₹{format(saveAmt)} less than {sourceLabel} on matched items
+              </div>
+            )}
+            <div style={{ fontSize: 13, color: "#047857" }}>
+              Sampled {sourceLabel} prices
+              {qcEstimate.matched_count ? ` · ${qcEstimate.matched_count} item(s) matched` : ""}
+              {qcEstimate.sampled_on ? ` · ${qcEstimate.sampled_on}` : ""}
+              {qcEstimate.city ? ` · ${qcEstimate.city}` : ""}
+            </div>
+            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
+              {qcEstimate.disclaimer ||
+                "Manual weekly samples from big stores — not live app prices."}
+            </div>
           </div>
-          <div style={{ fontSize: 13, color: "#047857" }}>
-            Based on {qcEstimate.matched_count} sampled item(s) from {qcEstimate.source || "QC"}
-            {qcEstimate.sampled_on ? ` (${qcEstimate.sampled_on})` : ""}
-            {qcEstimate.city ? ` · ${qcEstimate.city}` : ""}
-          </div>
-          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
-            {qcEstimate.disclaimer || "Sampled weekly estimate — not live prices."}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* LOADING — skeleton cards */}
       {loading && (
         <div style={{ padding: `8px ${GUTTER}px 0` }} aria-busy="true" aria-label="Searching stores">
           <div style={{ textAlign: "center", padding: "12px 0 8px", color: "#6b7280", fontSize: 14 }}>
-            Finding items at local kiranas…
+            Checking your kirana and big-store estimates…
           </div>
           {[0, 1, 2].map((i) => (
             <div
@@ -986,10 +1012,10 @@ export default function OrderPage({ initialSearchText }) {
         <div style={emptyState}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🛒</div>
           <p style={{ fontWeight: 800, color: "#334155", margin: "0 0 6px", fontSize: 17 }}>
-            Search to compare prices
+            Search to see kirana vs big-store prices
           </p>
           <p style={{ fontSize: 14, margin: 0, lineHeight: 1.45, maxWidth: 320 }}>
-            Type items like <strong>milk, atta, oil</strong> — then pick My Kirana, Nearby, Favorites, or All Stores.
+            Type items like <strong>milk, atta, oil</strong> — we show your local shop and a Blinkit / Zepto / Instamart estimate.
           </p>
         </div>
       )}

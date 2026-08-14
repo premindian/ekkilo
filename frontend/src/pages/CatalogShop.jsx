@@ -191,7 +191,7 @@ export default function CatalogShop({ onOrder }) {
       `}</style>
       {/* Hero — Ekkilo, not Blinkit yellow */}
       <div style={styles.hero}>
-        <div style={styles.heroTag}>Shop local kiranas</div>
+        <div style={styles.heroTag}>Local kirana · fair vs big stores</div>
         <div style={styles.searchWrap}>
           <span style={styles.searchIcon}>🔍</span>
           <input
@@ -210,7 +210,7 @@ export default function CatalogShop({ onOrder }) {
           </button>
         </div>
         <p style={styles.heroSub}>
-          Pick for Daily or Monthly — then compare prices across your kiranas. Nothing is auto-added.
+          Build your list, then open Prices to see Blinkit / Zepto / Instamart estimates vs your kirana.
           {' '}
           <button
             type="button"

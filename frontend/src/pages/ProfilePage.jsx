@@ -127,7 +127,7 @@ function ProfileTab({ user, token, updateUser }) {
               const text =
                 `Namaste! Join Ekkilo to get grocery orders from nearby customers.\n` +
                 `Store portal: ${link}\n` +
-                `Customers compare prices and pick up from you.`;
+                `Customers see fair prices vs big apps and pick up from you.`;
               if (navigator.share) {
                 navigator.share({ title: 'Invite to Ekkilo', text, url: link }).catch(() => {});
               } else if (navigator.clipboard?.writeText) {
@@ -443,7 +443,7 @@ function PreferencesTab({ token }) {
       <div style={styles.prefItem}>
         <div style={{ flex: 1 }}>
           <p style={styles.prefTitle}>How Ekkilo works</p>
-          <p style={styles.prefDesc}>Shop → list → compare → pay → track</p>
+          <p style={styles.prefDesc}>Shop → list → vs big stores → pay → track</p>
           <button
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent('app:show-onboarding'))}

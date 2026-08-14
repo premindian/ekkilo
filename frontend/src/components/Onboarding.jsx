@@ -79,7 +79,7 @@ export default function Onboarding({ onComplete, onSkip, token }) {
             </div>
             <h2 style={styles.stepTitle}>Welcome to Ekkilo</h2>
             <p style={styles.stepDesc}>
-              Order from your local kiranas — browse, compare prices, pay, and track. We don’t replace your store; we help you shop smarter.
+              Order from your local kirana — and see how prices stack up against Blinkit, Zepto & Instamart.
             </p>
             <div style={styles.features}>
               <div style={styles.feature}>
@@ -88,7 +88,7 @@ export default function Onboarding({ onComplete, onSkip, token }) {
               </div>
               <div style={styles.feature}>
                 <span style={styles.featureIcon}>💰</span>
-                <span>Compare kirana prices</span>
+                <span>Compare vs big stores</span>
               </div>
               <div style={styles.feature}>
                 <span style={styles.featureIcon}>📦</span>
@@ -200,7 +200,7 @@ export default function Onboarding({ onComplete, onSkip, token }) {
               </div>
               <div style={styles.step}>
                 <div style={styles.stepNum}>3</div>
-                <div><strong>Prices</strong> — compare across your kiranas</div>
+                <div><strong>Prices</strong> — kirana total vs Blinkit / Zepto / Instamart estimate</div>
               </div>
               <div style={styles.step}>
                 <div style={styles.stepNum}>4</div>
@@ -273,7 +273,7 @@ export default function Onboarding({ onComplete, onSkip, token }) {
               <div style={styles.nextStep}>
                 <div style={styles.nextStepNum}>2</div>
                 <div style={styles.nextStepText}>
-                  <strong>Prices</strong> to compare & place order
+                  <strong>Prices</strong> to check big-store estimate & order
                 </div>
               </div>
               <div style={styles.nextStep}>
