@@ -312,15 +312,24 @@ async def block_user(user_id: int, token: str, data: dict = None):
     """Block a user's phone from ordering / OTP login"""
     admin = await check_admin(token)
     db = await get_db()
-    user = await db.fetchrow("SELECT id, phone, name FROM users WHERE id = $1", user_id)
+    user = await db.fetchrow(
+        "SELECT id, phone, name, is_admin FROM users WHERE id = $1", user_id
+    )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user["id"] == admin["id"]:
         raise HTTPException(status_code=400, detail="Cannot block yourself")
+    if user.get("is_admin"):
+        admin_count = await db.fetchval(
+            "SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = TRUE"
+        )
+        if int(admin_count or 0) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot block the last admin")
 
     from app.services.abuse import block_phone
     reason = (data or {}).get("reason") or "Blocked by admin"
     phone = await block_phone(user["phone"], reason=reason, blocked_by=admin["id"], db=db)
+    await db.execute("DELETE FROM user_sessions WHERE user_id = $1", user_id)
     await log_staff_action(
         actor=admin,
         action="user.block",
@@ -360,12 +369,27 @@ async def update_user(user_id: int, data: dict, token: str):
     admin = await check_admin(token)
     
     db = await get_db()
+
+    target = await db.fetchrow("SELECT id, phone, is_admin FROM users WHERE id = $1", user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
     
     is_store_owner = data.get("is_store_owner")
     # Allow explicit null to clear store_id when removing owner
     store_id = data["store_id"] if "store_id" in data else None
     clear_store = "store_id" in data and data["store_id"] is None
     is_admin = data.get("is_admin")
+
+    # Never remove the last remaining admin
+    if is_admin is False and target["is_admin"]:
+        admin_count = await db.fetchval(
+            "SELECT COUNT(*) FROM users WHERE COALESCE(is_admin, FALSE) = TRUE"
+        )
+        if int(admin_count or 0) <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot remove the last admin. Promote another admin first, or use break-glass recovery.",
+            )
 
     if is_store_owner is True and not data.get("store_id") and not clear_store:
         # If becoming owner without existing store, require store_id
@@ -399,6 +423,10 @@ async def update_user(user_id: int, data: dict, token: str):
             ON CONFLICT (user_id) DO NOTHING
         """, user_id)
 
+    # If demoted from admin, kill their sessions
+    if is_admin is False and target["is_admin"]:
+        await db.execute("DELETE FROM user_sessions WHERE user_id = $1", user_id)
+
     await log_staff_action(
         actor=admin,
         action="user.update",
@@ -410,6 +438,50 @@ async def update_user(user_id: int, data: dict, token: str):
     )
     
     return {"status": "success"}
+
+
+@router.post("/sessions/revoke-all")
+async def revoke_all_sessions(token: str, keep_mine: bool = True):
+    """Force everyone to log in again (except optionally the calling admin)."""
+    admin = await check_admin(token)
+    db = await get_db()
+    if keep_mine:
+        deleted = await db.fetchval(
+            """
+            WITH d AS (
+              DELETE FROM user_sessions WHERE token IS DISTINCT FROM $1
+              RETURNING 1
+            )
+            SELECT COUNT(*) FROM d
+            """,
+            token,
+        )
+    else:
+        deleted = await db.fetchval(
+            """
+            WITH d AS (
+              DELETE FROM user_sessions RETURNING 1
+            )
+            SELECT COUNT(*) FROM d
+            """
+        )
+    await log_staff_action(
+        actor=admin,
+        action="sessions.revoke_all",
+        entity_type="session",
+        details={"deleted": int(deleted or 0), "keep_mine": keep_mine},
+        db=db,
+    )
+    return {
+        "status": "revoked",
+        "deleted": int(deleted or 0),
+        "keep_mine": keep_mine,
+        "message": (
+            "All other sessions cleared. You stay logged in."
+            if keep_mine
+            else "All sessions cleared. Log in again."
+        ),
+    }
 
 
 @router.post("/users/{user_id}/password")

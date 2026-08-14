@@ -10,6 +10,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [revoking, setRevoking] = useState(false);
 
   useEffect(() => {
     if (token) {
@@ -33,6 +34,33 @@ export default function AdminDashboard() {
       console.error('Failed to load dashboard:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const revokeAllSessions = async () => {
+    if (
+      !window.confirm(
+        'Log everyone else out now?\n\nYour session stays active. Stolen tokens/sessions will stop working.'
+      )
+    ) {
+      return;
+    }
+    setRevoking(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/sessions/revoke-all?token=${encodeURIComponent(token)}&keep_mine=true`,
+        { method: 'POST' }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || 'Failed to revoke sessions');
+        return;
+      }
+      alert(`✅ ${data.message || 'Sessions revoked'} (${data.deleted || 0} cleared)`);
+    } catch (e) {
+      alert('Failed to revoke sessions');
+    } finally {
+      setRevoking(false);
     }
   };
 
@@ -153,6 +181,22 @@ export default function AdminDashboard() {
             <span style={styles.todayValue}>₹{Number(stats.today_revenue || 0).toFixed(0)}</span>
           </div>
         </div>
+      </div>
+
+      <div style={styles.securityBox}>
+        <h2 style={styles.sectionTitle}>🔐 Security</h2>
+        <p style={styles.securityHint}>
+          Keep at least two trusted admins. If an account is compromised, revoke sessions here
+          or use break-glass recovery with <code>BREAK_GLASS_SECRET</code> in Render.
+        </p>
+        <button
+          type="button"
+          onClick={revokeAllSessions}
+          disabled={revoking}
+          style={styles.revokeBtn}
+        >
+          {revoking ? 'Revoking…' : 'Revoke all other sessions'}
+        </button>
       </div>
 
       {/* Charts */}
@@ -316,6 +360,29 @@ const styles = {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1f2937',
+  },
+  securityBox: {
+    background: '#fff7ed',
+    border: '1px solid #fed7aa',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+  },
+  securityHint: {
+    margin: '0 0 12px',
+    fontSize: 13,
+    color: '#9a3412',
+    lineHeight: 1.45,
+  },
+  revokeBtn: {
+    padding: '12px 16px',
+    background: '#ea580c',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: 'pointer',
   },
   todayStats: {
     display: 'grid',

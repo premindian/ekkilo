@@ -120,16 +120,32 @@ export default function AdminUsers() {
   };
 
   const toggleAdmin = async (user) => {
-    if (!window.confirm(`Make ${user.name || user.phone} an admin?`)) return;
-    
+    if (user.is_admin) {
+      const adminCount = users.filter((u) => u.is_admin).length;
+      if (adminCount <= 1) {
+        alert(
+          'Cannot remove the last admin.\n\nPromote another trusted phone to admin first,\nor use break-glass recovery (BREAK_GLASS_SECRET).'
+        );
+        return;
+      }
+      if (!window.confirm(`Remove admin access for ${user.name || user.phone}?`)) return;
+    } else {
+      if (!window.confirm(`Make ${user.name || user.phone} an admin?`)) return;
+    }
+
     try {
-      await fetch(`${API_BASE}/api/admin/users/${user.id}?token=${token}`, {
+      const res = await fetch(`${API_BASE}/api/admin/users/${user.id}?token=${token}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           is_admin: !user.is_admin
         })
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || 'Failed to update user');
+        return;
+      }
       alert('✅ User updated!');
       loadUsers();
     } catch (err) {

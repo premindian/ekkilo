@@ -283,6 +283,124 @@ async def set_password(data: dict, token: str):
 
 
 # -----------------------------
+# 🆘 BREAK-GLASS ADMIN RECOVERY
+# -----------------------------
+@router.post("/auth/break-glass")
+async def break_glass_admin(data: dict):
+    """
+    Emergency: promote a trusted phone to admin using BREAK_GLASS_SECRET.
+    Set a long random secret in Render env. Does not require an existing admin session.
+    Body: { secret, phone, password?, demote_others? }
+    """
+    expected = (os.getenv("BREAK_GLASS_SECRET") or "").strip()
+    if not expected or len(expected) < 16:
+        raise HTTPException(
+            status_code=503,
+            detail="Break-glass is not configured (set BREAK_GLASS_SECRET, min 16 chars)",
+        )
+
+    provided = str((data or {}).get("secret") or "")
+    try:
+        secret_ok = bool(provided) and secrets.compare_digest(provided, expected)
+    except (TypeError, ValueError):
+        secret_ok = False
+    if not secret_ok:
+        raise HTTPException(status_code=403, detail="Invalid break-glass secret")
+
+    from app.utils.phone import normalize_phone
+
+    phone = normalize_phone((data or {}).get("phone"))
+    if not phone or len(phone) < 10:
+        raise HTTPException(status_code=400, detail="Valid phone required")
+
+    password = (data or {}).get("password") or None
+    if password is not None and (not isinstance(password, str) or len(password) < 6):
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    demote_others = bool((data or {}).get("demote_others"))
+
+    db = await get_db()
+    user = await db.fetchrow("SELECT * FROM users WHERE phone = $1", phone)
+    if not user:
+        user = await db.fetchrow(
+            """
+            INSERT INTO users (phone, is_admin)
+            VALUES ($1, TRUE)
+            RETURNING *
+            """,
+            phone,
+        )
+        try:
+            await db.execute(
+                "INSERT INTO user_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
+                user["id"],
+            )
+        except Exception:
+            pass
+    else:
+        await db.execute(
+            "UPDATE users SET is_admin = TRUE, updated_at = NOW() WHERE id = $1",
+            user["id"],
+        )
+        user = await db.fetchrow("SELECT * FROM users WHERE id = $1", user["id"])
+
+    if password:
+        await db.execute(
+            "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+            hash_password(password),
+            user["id"],
+        )
+
+    demoted = 0
+    if demote_others:
+        demoted = await db.fetchval(
+            """
+            WITH u AS (
+              UPDATE users SET is_admin = FALSE, updated_at = NOW()
+              WHERE COALESCE(is_admin, FALSE) = TRUE AND id <> $1
+              RETURNING 1
+            )
+            SELECT COUNT(*) FROM u
+            """,
+            user["id"],
+        )
+
+    # Kill all sessions so stolen tokens die immediately
+    deleted_sessions = await db.fetchval(
+        "WITH d AS (DELETE FROM user_sessions RETURNING 1) SELECT COUNT(*) FROM d"
+    )
+
+    try:
+        from app.services.staff_audit import log_staff_action
+
+        await log_staff_action(
+            actor={"id": user["id"], "phone": phone, "is_admin": True},
+            action="admin.break_glass",
+            entity_type="user",
+            entity_id=user["id"],
+            details={
+                "demote_others": demote_others,
+                "demoted": int(demoted or 0),
+                "sessions_cleared": int(deleted_sessions or 0),
+                "password_set": bool(password),
+            },
+            db=db,
+        )
+    except Exception:
+        pass
+
+    return {
+        "status": "ok",
+        "user_id": user["id"],
+        "phone": phone,
+        "is_admin": True,
+        "demoted_others": int(demoted or 0),
+        "sessions_cleared": int(deleted_sessions or 0),
+        "message": "Admin restored. Log in with Staff Login (if password set) or OTP.",
+    }
+
+
+# -----------------------------
 # 👤 GET CURRENT USER
 # -----------------------------
 async def get_current_user(token: str, db=None):
