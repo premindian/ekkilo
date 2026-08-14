@@ -292,12 +292,8 @@ export default function CatalogShop({ onOrder }) {
                       />
                     </div>
                     <div style={styles.cardBody}>
-                      {p.unit_note && (
-                        <div style={styles.unit}>{p.unit_note}</div>
-                      )}
-                      <div style={styles.name}>{p.name}</div>
-                      {p.brand && <div style={styles.brand}>{p.brand}</div>}
-                      <div style={styles.cardActions}>
+                      <div style={styles.metaRow}>
+                        <span style={styles.unit}>{p.unit_note || ' '}</span>
                         {inCart ? (
                           <div style={styles.qtyCtrl}>
                             <button
@@ -326,6 +322,8 @@ export default function CatalogShop({ onOrder }) {
                           </button>
                         )}
                       </div>
+                      <div style={styles.name}>{p.name}</div>
+                      {p.brand ? <div style={styles.brand}>{p.brand}</div> : null}
                     </div>
                   </article>
                 );
@@ -575,7 +573,7 @@ const styles = {
   main: {
     flex: '1 1 0%',
     minWidth: 0,
-    padding: '8px 10px 20px',
+    padding: '6px 8px 16px',
     boxSizing: 'border-box',
     width: '100%',
     maxWidth: '100%',
@@ -584,24 +582,26 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    marginBottom: 10,
+    marginBottom: 8,
     padding: '0 2px',
     minWidth: 0,
   },
-  mainTitle: { margin: 0, fontSize: 18, fontWeight: 800, color: '#111' },
-  mainMeta: { fontSize: 12, color: '#6b7280' },
+  mainTitle: { margin: 0, fontSize: 16, fontWeight: 800, color: '#111' },
+  mainMeta: { fontSize: 11, color: '#6b7280' },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-    gap: 10,
+    gap: 8,
+    columnGap: 8,
+    rowGap: 10,
     width: '100%',
     maxWidth: '100%',
     boxSizing: 'border-box',
   },
   card: {
     background: '#fff',
-    borderRadius: 14,
-    border: '1px solid #e5e7eb',
+    borderRadius: 10,
+    border: '1px solid #eceff3',
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
@@ -618,55 +618,91 @@ const styles = {
     cursor: 'pointer',
   },
   imgWrap: {
-    aspectRatio: '1 / 1',
-    background: '#f3f4f6',
+    aspectRatio: '1 / 0.92',
+    background: '#f8fafc',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   },
   img: { width: '100%', height: '100%', objectFit: 'cover' },
-  cardBody: { padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 4, flex: 1 },
-  unit: { fontSize: 11, color: '#6b7280', fontWeight: 600 },
+  cardBody: {
+    padding: '6px 8px 8px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    flex: 1,
+  },
+  metaRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    minHeight: 28,
+  },
+  unit: {
+    fontSize: 11,
+    color: '#6b7280',
+    fontWeight: 600,
+    lineHeight: 1.2,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   name: {
-    fontSize: 13,
-    fontWeight: 700,
+    fontSize: 12,
+    fontWeight: 600,
     color: '#111',
     lineHeight: 1.25,
-    minHeight: 32,
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
   },
-  brand: { fontSize: 11, color: '#9ca3af' },
-  cardActions: { marginTop: 'auto', paddingTop: 6 },
+  brand: {
+    fontSize: 10,
+    color: '#9ca3af',
+    lineHeight: 1.2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   addBtn: {
-    width: '100%',
+    flexShrink: 0,
     border: `1.5px solid ${green}`,
     background: '#fff',
     color: green,
     fontWeight: 800,
-    borderRadius: 10,
-    padding: '8px 0',
+    borderRadius: 6,
+    padding: '4px 10px',
+    fontSize: 11,
+    letterSpacing: 0.3,
     cursor: 'pointer',
-    letterSpacing: 0.4,
+    lineHeight: 1.2,
   },
   qtyCtrl: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 2,
     background: green,
-    borderRadius: 10,
-    padding: '4px 6px',
+    borderRadius: 6,
+    padding: '1px 2px',
     color: '#fff',
+    flexShrink: 0,
   },
   qtyBtn: {
     border: 'none',
     background: 'transparent',
     color: '#fff',
     fontWeight: 800,
-    fontSize: 16,
-    width: 28,
-    height: 28,
+    fontSize: 14,
+    width: 22,
+    height: 22,
     cursor: 'pointer',
+    lineHeight: 1,
+    padding: 0,
   },
-  qtyNum: { minWidth: 16, textAlign: 'center', fontWeight: 800 },
+  qtyNum: { minWidth: 14, textAlign: 'center', fontWeight: 800, fontSize: 12 },
   empty: {
     textAlign: 'center',
     padding: 40,
