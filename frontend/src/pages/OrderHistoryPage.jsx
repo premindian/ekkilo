@@ -114,7 +114,7 @@ export default function OrderHistoryPage({ onReorder }) {
       (selectedOrder?.order?.payment_status || '').toUpperCase() === 'PAID' ||
       (orders.find((o) => o.id === orderId)?.payment_status || '').toUpperCase() === 'PAID';
     const msg = paid
-      ? `Cancel order #${orderId}?\n\nThis was paid online. After cancel, message Ekkilo with the order number for a UPI refund (manual today).`
+      ? `Cancel order #${orderId}?\n\nThis was paid online. After cancel, open Track and tap Request UPI refund (manual today).`
       : `Cancel order #${orderId}?`;
     if (!window.confirm(msg)) return;
     try {
@@ -128,7 +128,7 @@ export default function OrderHistoryPage({ onReorder }) {
       }
       alert(
         paid
-          ? '✅ Order cancelled. Message Ekkilo with this order number for your UPI refund.'
+          ? '✅ Order cancelled. Open Track and tap Request UPI refund.'
           : '✅ Order cancelled'
       );
       setSelectedOrder(null);
@@ -191,7 +191,7 @@ export default function OrderHistoryPage({ onReorder }) {
                 (selectedOrder.order.payment_status || '').toUpperCase() === 'PAY_AT_STORE'
                   ? '💵 Pay at store — settle with the kirana at pickup/delivery.'
                   : (selectedOrder.order.payment_status || '').toUpperCase() === 'PAID'
-                  ? '✅ Paid online — don’t pay the shop again. Cancel early → message Ekkilo for UPI refund.'
+                  ? '✅ Paid online — don’t pay the shop again. Cancel early → Track → Request UPI refund.'
                   : 'Payment status will update after UPI completes.'}
               </div>
             )}

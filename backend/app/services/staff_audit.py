@@ -96,6 +96,9 @@ async def list_staff_audit_events(
     offset: int = 0,
     action: Optional[str] = None,
     actor_phone: Optional[str] = None,
+    store_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db=None,
 ) -> list[dict[str, Any]]:
     db = db or await get_db()
@@ -112,6 +115,23 @@ async def list_staff_audit_events(
         if tail:
             params.append(f"%{tail}%")
             where.append(f"COALESCE(actor_phone, '') LIKE ${len(params)}")
+    if store_id is not None:
+        try:
+            sid = int(store_id)
+            params.append(sid)
+            where.append(f"store_id = ${len(params)}")
+        except (TypeError, ValueError):
+            pass
+    if date_from:
+        params.append(str(date_from).strip()[:32])
+        where.append(f"created_at >= ${len(params)}::timestamptz")
+    if date_to:
+        # Inclusive end-of-day if date-only (YYYY-MM-DD)
+        raw = str(date_to).strip()[:32]
+        if len(raw) <= 10:
+            raw = f"{raw}T23:59:59.999Z"
+        params.append(raw)
+        where.append(f"created_at <= ${len(params)}::timestamptz")
     params.append(limit)
     lim_i = len(params)
     params.append(offset)

@@ -834,17 +834,27 @@ async def get_sales_report(
     
     start_date = datetime.now() - timedelta(days=days)
     
-    # Daily sales with revenue
+    # Daily sales with revenue (+ online vs pay-at-store split)
     daily_sales = await db.fetch("""
         SELECT 
-            DATE(created_at) as date,
+            DATE(so.created_at) as date,
             COUNT(*) as orders,
-            COALESCE(SUM(total_amount), 0) as sales
-        FROM store_orders
-        WHERE store_id = $1 
-        AND created_at >= $2
-        AND status = 'COMPLETED'
-        GROUP BY DATE(created_at)
+            COALESCE(SUM(so.total_amount), 0) as sales,
+            COALESCE(SUM(
+                CASE WHEN UPPER(COALESCE(fo.payment_status, '')) = 'PAID'
+                THEN so.total_amount ELSE 0 END
+            ), 0) as paid_online,
+            COALESCE(SUM(
+                CASE WHEN UPPER(COALESCE(fo.payment_status, '')) = 'PAY_AT_STORE'
+                  OR LOWER(COALESCE(fo.payment_method, '')) = 'pay_at_store'
+                THEN so.total_amount ELSE 0 END
+            ), 0) as pay_at_store
+        FROM store_orders so
+        LEFT JOIN final_orders fo ON fo.id = so.final_order_id
+        WHERE so.store_id = $1 
+        AND so.created_at >= $2
+        AND so.status = 'COMPLETED'
+        GROUP BY DATE(so.created_at)
         ORDER BY date DESC
     """, store_id, start_date)
     
@@ -852,12 +862,26 @@ async def get_sales_report(
     summary = await db.fetchrow("""
         SELECT 
             COUNT(*) as total_orders,
-            COALESCE(SUM(total_amount), 0) as total_sales,
-            COALESCE(AVG(total_amount), 0) as avg_order
-        FROM store_orders
-        WHERE store_id = $1 
-        AND created_at >= $2
-        AND status = 'COMPLETED'
+            COALESCE(SUM(so.total_amount), 0) as total_sales,
+            COALESCE(AVG(so.total_amount), 0) as avg_order,
+            COALESCE(SUM(
+                CASE WHEN UPPER(COALESCE(fo.payment_status, '')) = 'PAID'
+                THEN so.total_amount ELSE 0 END
+            ), 0) as paid_online_sales,
+            COALESCE(SUM(
+                CASE WHEN UPPER(COALESCE(fo.payment_status, '')) = 'PAY_AT_STORE'
+                  OR LOWER(COALESCE(fo.payment_method, '')) = 'pay_at_store'
+                THEN so.total_amount ELSE 0 END
+            ), 0) as pay_at_store_sales,
+            COALESCE(SUM(
+                CASE WHEN UPPER(COALESCE(fo.payment_status, '')) = 'PAID'
+                THEN 1 ELSE 0 END
+            ), 0) as paid_online_orders
+        FROM store_orders so
+        LEFT JOIN final_orders fo ON fo.id = so.final_order_id
+        WHERE so.store_id = $1 
+        AND so.created_at >= $2
+        AND so.status = 'COMPLETED'
     """, store_id, start_date)
     
     # Top products (simplified - using order_items directly)
@@ -875,12 +899,29 @@ async def get_sales_report(
         ORDER BY quantity DESC
         LIMIT 10
     """, store_id, start_date)
+
+    daily = []
+    for d in daily_sales:
+        row = dict(d)
+        for k in ("sales", "paid_online", "pay_at_store"):
+            if row.get(k) is not None:
+                row[k] = float(row[k])
+        if row.get("date") is not None:
+            row["date"] = str(row["date"])
+        daily.append(row)
     
     return {
         "period_days": days,
         "total_sales": float(summary["total_sales"]) if summary else 0,
         "total_orders": summary["total_orders"] if summary else 0,
         "avg_order": float(summary["avg_order"]) if summary else 0,
-        "daily_breakdown": [dict(d) for d in daily_sales],
+        "paid_online_sales": float(summary["paid_online_sales"]) if summary else 0,
+        "pay_at_store_sales": float(summary["pay_at_store_sales"]) if summary else 0,
+        "paid_online_orders": int(summary["paid_online_orders"] or 0) if summary else 0,
+        "settlement_note": (
+            "Paid online totals are collected by Ekkilo and settled to your store. "
+            "Pay-at-store amounts are collected by you at pickup."
+        ),
+        "daily_breakdown": daily,
         "top_products": [dict(p) for p in top_products]
     }

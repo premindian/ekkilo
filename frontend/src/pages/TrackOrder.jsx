@@ -35,6 +35,8 @@ export default function TrackOrder() {
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [refundMsg, setRefundMsg] = useState('');
 
   const fetchTrack = async ({ trackToken, id } = {}) => {
     const qs = new URLSearchParams();
@@ -92,6 +94,34 @@ export default function TrackOrder() {
       return;
     }
     await fetchTrack({ id });
+  };
+
+  const requestRefund = async () => {
+    if (!token || !orderDetails?.id) {
+      setRefundMsg('Log in to request a refund for this order.');
+      return;
+    }
+    setRefundBusy(true);
+    setRefundMsg('');
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/orders/${orderDetails.id}/refund-request?token=${encodeURIComponent(token)}`,
+        { method: 'POST' }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(formatApiError(data.detail || data.error, 'Could not request refund'));
+      }
+      setRefundMsg(data.message || 'Refund requested.');
+      await fetchTrack({
+        trackToken: params.get('t') || undefined,
+        id: orderDetails.id,
+      });
+    } catch (err) {
+      setRefundMsg(formatApiError(err?.message, 'Could not request refund'));
+    } finally {
+      setRefundBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -267,8 +297,38 @@ export default function TrackOrder() {
               fontSize: 14,
               lineHeight: 1.45,
             }}>
-              <strong>Order cancelled after UPI.</strong> Message Ekkilo with this order number for your refund.
-              Refunds are manual today (not instant auto-refund).
+              {orderDetails.refund_request ? (
+                <>
+                  <strong>Refund requested.</strong> Status: {orderDetails.refund_request.status}.
+                  Ekkilo processes UPI refunds manually (not instant).
+                </>
+              ) : (
+                <>
+                  <strong>Order cancelled after UPI.</strong> Tap below to request your refund —
+                  processed manually by Ekkilo (not instant auto-refund).
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      type="button"
+                      onClick={requestRefund}
+                      disabled={refundBusy || !token}
+                      style={{
+                        background: '#2563eb',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 8,
+                        padding: '10px 14px',
+                        fontWeight: 700,
+                        cursor: refundBusy ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {refundBusy ? 'Requesting…' : 'Request UPI refund'}
+                    </button>
+                  </div>
+                </>
+              )}
+              {refundMsg && (
+                <div style={{ marginTop: 8, fontSize: 13 }}>{refundMsg}</div>
+              )}
             </div>
           )}
 

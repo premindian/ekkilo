@@ -72,6 +72,31 @@ export default function StoreReports() {
             </div>
           </div>
 
+          {/* Settlement — paid online vs pay at store */}
+          <div style={styles.settleBox}>
+            <h2 style={styles.chartTitle}>💳 Settlement (this period)</h2>
+            <p style={styles.settleNote}>
+              {report.settlement_note ||
+                'Paid online is collected by Ekkilo and settled to your store. Pay-at-store is collected by you.'}
+            </p>
+            <div style={styles.settleGrid}>
+              <div style={styles.settleCard}>
+                <div style={styles.settleValue}>
+                  ₹{Number(report.paid_online_sales || 0).toFixed(2)}
+                </div>
+                <div style={styles.settleLabel}>
+                  Paid online ({report.paid_online_orders || 0} orders)
+                </div>
+              </div>
+              <div style={styles.settleCard}>
+                <div style={styles.settleValue}>
+                  ₹{Number(report.pay_at_store_sales || 0).toFixed(2)}
+                </div>
+                <div style={styles.settleLabel}>Pay at store</div>
+              </div>
+            </div>
+          </div>
+
           {/* Daily Sales Chart */}
           {report.daily_breakdown && report.daily_breakdown.length > 0 && (
             <div style={styles.chartSection}>
@@ -205,6 +230,42 @@ const styles = {
   summaryLabel: {
     fontSize: 12,
     color: '#666',
+  },
+  settleBox: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  settleNote: {
+    margin: '0 0 14px',
+    fontSize: 13,
+    color: '#4b5563',
+    lineHeight: 1.45,
+  },
+  settleGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 12,
+  },
+  settleCard: {
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 10,
+    padding: 14,
+    textAlign: 'center',
+  },
+  settleValue: {
+    fontSize: 20,
+    fontWeight: 800,
+    color: '#166534',
+    marginBottom: 4,
+  },
+  settleLabel: {
+    fontSize: 12,
+    color: '#166534',
+    fontWeight: 600,
   },
   chartSection: {
     background: '#fff',

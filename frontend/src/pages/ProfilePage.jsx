@@ -490,8 +490,10 @@ function PreferencesTab({ token }) {
 
       <div style={styles.prefItem}>
         <div>
-          <p style={styles.prefTitle}>Default View Mode</p>
-          <p style={styles.prefDesc}>How stores are displayed by default</p>
+          <p style={styles.prefTitle}>Default Prices mode</p>
+          <p style={styles.prefDesc}>
+            My Kirana · Nearby · Favorites · All Stores — shown first on Prices
+          </p>
         </div>
         <select
           value={prefs?.default_view_mode || 'regular'}

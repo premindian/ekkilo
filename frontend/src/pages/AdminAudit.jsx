@@ -7,12 +7,19 @@ const API_BASE = '';
 export default function AdminAudit() {
   const { token } = useAuth();
   const [events, setEvents] = useState([]);
+  const [refunds, setRefunds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState('');
   const [phone, setPhone] = useState('');
+  const [storeId, setStoreId] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
-    if (token) loadEvents();
+    if (token) {
+      loadEvents();
+      loadRefunds();
+    }
   }, [token]);
 
   const loadEvents = async () => {
@@ -21,6 +28,9 @@ export default function AdminAudit() {
       const params = new URLSearchParams({ token, limit: '150' });
       if (action.trim()) params.set('action', action.trim());
       if (phone.trim()) params.set('phone', phone.trim());
+      if (storeId.trim()) params.set('store_id', storeId.trim());
+      if (dateFrom) params.set('date_from', dateFrom);
+      if (dateTo) params.set('date_to', dateTo);
       const res = await fetch(`${API_BASE}/api/admin/audit?${params}`);
       const data = await res.json();
       setEvents(Array.isArray(data.events) ? data.events : []);
@@ -29,6 +39,18 @@ export default function AdminAudit() {
       setEvents([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadRefunds = async () => {
+    try {
+      const params = new URLSearchParams({ token, limit: '40', status: 'REQUESTED' });
+      const res = await fetch(`${API_BASE}/api/admin/refund-requests?${params}`);
+      const data = await res.json();
+      setRefunds(Array.isArray(data.requests) ? data.requests : []);
+    } catch (e) {
+      console.error(e);
+      setRefunds([]);
     }
   };
 
@@ -53,6 +75,26 @@ export default function AdminAudit() {
         </button>
       </div>
 
+      {refunds.length > 0 && (
+        <div style={styles.refundBox}>
+          <div style={styles.refundTitle}>UPI refund requests ({refunds.length})</div>
+          <p style={styles.refundNote}>
+            Manual today — process in Razorpay / bank, then follow up with the customer.
+          </p>
+          {refunds.map((r) => (
+            <div key={r.id} style={styles.refundRow}>
+              <strong>Order #{r.final_order_id}</strong>
+              {' · '}
+              {r.customer_phone || '—'}
+              {' · '}
+              ₹{Number(r.amount ?? r.order_total ?? 0).toFixed(2)}
+              {r.created_at ? ` · ${new Date(r.created_at).toLocaleString()}` : ''}
+              {r.reason ? ` · ${r.reason}` : ''}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={styles.filters}>
         <input
           placeholder="Filter action (e.g. product, order, user)"
@@ -65,6 +107,26 @@ export default function AdminAudit() {
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           style={styles.input}
+        />
+        <input
+          placeholder="Store ID"
+          value={storeId}
+          onChange={(e) => setStoreId(e.target.value)}
+          style={{ ...styles.input, flex: '0 0 100px', minWidth: 100 }}
+        />
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          style={styles.input}
+          title="From date"
+        />
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          style={styles.input}
+          title="To date"
         />
         <button type="button" onClick={loadEvents} style={styles.refreshBtn}>
           Refresh
@@ -109,7 +171,7 @@ const styles = {
   sub: { margin: '4px 0 0', color: '#6b7280', fontSize: 14 },
   backBtn: { padding: '10px 14px', background: '#f3f4f6', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 },
   filters: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
-  input: { flex: 1, minWidth: 160, padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14 },
+  input: { flex: 1, minWidth: 140, padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14 },
   refreshBtn: { padding: '10px 14px', background: '#667eea', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 },
   empty: { textAlign: 'center', padding: 40, color: '#9ca3af' },
   list: { display: 'flex', flexDirection: 'column', gap: 10 },
@@ -135,4 +197,14 @@ const styles = {
     wordBreak: 'break-word',
     fontFamily: 'ui-monospace, monospace',
   },
+  refundBox: {
+    background: '#eff6ff',
+    border: '1px solid #bfdbfe',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  refundTitle: { fontWeight: 800, color: '#1e3a8a', marginBottom: 4 },
+  refundNote: { margin: '0 0 10px', fontSize: 13, color: '#1e40af' },
+  refundRow: { fontSize: 13, color: '#1e3a8a', padding: '6px 0', borderTop: '1px solid #dbeafe' },
 };

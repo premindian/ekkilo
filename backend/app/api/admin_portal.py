@@ -37,6 +37,9 @@ async def get_staff_audit(
     token: str,
     action: str = None,
     phone: str = None,
+    store_id: int = None,
+    date_from: str = None,
+    date_to: str = None,
     limit: int = 100,
     offset: int = 0,
 ):
@@ -47,8 +50,25 @@ async def get_staff_audit(
         offset=offset,
         action=action,
         actor_phone=phone,
+        store_id=store_id,
+        date_from=date_from,
+        date_to=date_to,
     )
     return {"events": events, "count": len(events)}
+
+
+@router.get("/refund-requests")
+async def get_refund_requests(
+    token: str,
+    status: str = None,
+    limit: int = 50,
+):
+    """Customer UPI refund requests awaiting manual processing."""
+    await check_admin(token)
+    from app.services.refund_requests import list_refund_requests
+
+    rows = await list_refund_requests(limit=limit, status=status)
+    return {"requests": rows, "count": len(rows)}
 
 
 # ============================================

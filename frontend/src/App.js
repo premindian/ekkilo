@@ -361,7 +361,7 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   content: {
-    paddingBottom: 80,
+    paddingBottom: 100,
     width: '100%',
     maxWidth: '100%',
     overflowX: 'hidden',

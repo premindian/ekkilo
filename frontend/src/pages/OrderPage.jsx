@@ -736,6 +736,7 @@ export default function OrderPage({ initialSearchText }) {
           cursor: "pointer",
           fontSize: 12,
         }}
+        className="ekkilo-add-btn"
       >
         {selected ? "Remove" : "Add"}
       </button>
@@ -786,7 +787,27 @@ export default function OrderPage({ initialSearchText }) {
   const activeMode = ORDER_MODES.find((m) => m.id === mode) || ORDER_MODES[0];
 
   return (
-    <div style={container}>
+    <div style={{
+      ...container,
+      paddingBottom: cartItems.length > 0
+        ? "max(120px, calc(96px + env(safe-area-inset-bottom, 0px)))"
+        : 48,
+    }}>
+      <style>{`
+        @keyframes ekkiloPulse {
+          0%, 100% { opacity: 0.55; }
+          50% { opacity: 1; }
+        }
+        @keyframes ekkiloFadeUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .ekkilo-mode-card { transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease; }
+        .ekkilo-mode-card:active { transform: scale(0.98); }
+        .ekkilo-add-btn { transition: background 0.15s ease, transform 0.12s ease; }
+        .ekkilo-add-btn:active { transform: scale(0.96); }
+        .ekkilo-store-card { animation: ekkiloFadeUp 0.28s ease both; }
+      `}</style>
       <div style={pageHero}>
         <div style={heroEyebrow}>Compare & checkout</div>
         <h1 style={heroTitle}>Prices</h1>
@@ -870,6 +891,7 @@ export default function OrderPage({ initialSearchText }) {
               <button
                 key={m.id}
                 type="button"
+                className="ekkilo-mode-card"
                 onClick={() => pickMode(m.id)}
                 style={{
                   ...modeCard,
@@ -933,18 +955,55 @@ export default function OrderPage({ initialSearchText }) {
         </div>
       )}
 
-      {/* LOADING */}
+      {/* LOADING — skeleton cards */}
       {loading && (
-        <div style={{ textAlign: "center", padding: 48, color: "#6b7280" }}>
-          Finding items at local kiranas…
+        <div style={{ padding: `8px ${GUTTER}px 0` }} aria-busy="true" aria-label="Searching stores">
+          <div style={{ textAlign: "center", padding: "12px 0 8px", color: "#6b7280", fontSize: 14 }}>
+            Finding items at local kiranas…
+          </div>
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              style={{
+                ...card,
+                marginTop: 12,
+                animation: "ekkiloPulse 1.2s ease-in-out infinite",
+                animationDelay: `${i * 0.12}s`,
+              }}
+            >
+              <div style={{ height: 18, width: "55%", background: "#e5e7eb", borderRadius: 6, marginBottom: 12 }} />
+              <div style={{ height: 12, width: "35%", background: "#f3f4f6", borderRadius: 6, marginBottom: 16 }} />
+              <div style={{ height: 14, width: "100%", background: "#f3f4f6", borderRadius: 6, marginBottom: 8 }} />
+              <div style={{ height: 14, width: "88%", background: "#f3f4f6", borderRadius: 6, marginBottom: 8 }} />
+              <div style={{ height: 14, width: "70%", background: "#f3f4f6", borderRadius: 6 }} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Search-first empty */}
+      {!loading && !result && (
+        <div style={emptyState}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>🛒</div>
+          <p style={{ fontWeight: 800, color: "#334155", margin: "0 0 6px", fontSize: 17 }}>
+            Search to compare prices
+          </p>
+          <p style={{ fontSize: 14, margin: 0, lineHeight: 1.45, maxWidth: 320 }}>
+            Type items like <strong>milk, atta, oil</strong> — then pick My Kirana, Nearby, Favorites, or All Stores.
+          </p>
         </div>
       )}
 
       {/* NO RESULTS */}
       {!loading && result && stores.length === 0 && (
-        <div style={{ textAlign: "center", padding: 48, color: "#9ca3af" }}>
-          <p style={{ fontWeight: 700, color: "#6b7280" }}>No stores found</p>
-          <p style={{ fontSize: 14 }}>Try a shorter search or change location</p>
+        <div style={emptyState}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>🔍</div>
+          <p style={{ fontWeight: 800, color: "#334155", margin: "0 0 6px", fontSize: 17 }}>
+            No stores found
+          </p>
+          <p style={{ fontSize: 14, margin: 0, lineHeight: 1.45 }}>
+            Try a shorter search, widen the radius, or change location.
+          </p>
         </div>
       )}
 
@@ -978,25 +1037,18 @@ export default function OrderPage({ initialSearchText }) {
           const isRegular =
             store.store?.toLowerCase().trim() === regularStore?.toLowerCase().trim();
           return (
-            <div key={i} style={{
+            <div key={i} className="ekkilo-store-card" style={{
               ...card,
               ...(isRegular
                 ? { border: '2px solid #22c55e', boxShadow: '0 0 0 3px #22c55e22' }
                 : {}),
             }}>
               <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 8,
-                  cursor: 'pointer',
-                  padding: '4px 0',
-                }}
+                style={storeHeaderRow}
                 onClick={() => setSelectedStoreDetails(store)}
               >
                 <div>
-                  <b style={{ fontSize: 16 }}>🏪 {store.store}</b>
+                  <b style={storeNameText}>🏪 {store.store}</b>
                   <div style={{ fontSize: 12, color: isRegular ? '#166534' : '#0e7490', marginTop: 2, fontWeight: isRegular ? 700 : 400 }}>
                     {isRegular ? 'Your kirana · preferred' : 'Also available nearby'}
                   </div>
@@ -1004,13 +1056,16 @@ export default function OrderPage({ initialSearchText }) {
                     <DeliveryChip opt={deliveryOptFor(store)} subtotal={store.total} />
                   </div>
                 </div>
-                {store.distance !== undefined ? (
-                  <span style={{ fontSize: 13, color: '#666', fontWeight: 600 }}>
-                    📍 {store.distance} km
-                  </span>
-                ) : (
-                  <span style={{ fontSize: 13, color: '#999' }}>⏳ Distance...</span>
-                )}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 800, fontSize: 16 }}>₹{format(store.total)}</div>
+                  {store.distance !== undefined ? (
+                    <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+                      📍 {store.distance} km
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>⏳ Distance…</span>
+                  )}
+                </div>
               </div>
 
               {store.items.map((it) => renderSelectableItem(store.store, it, "row"))}
@@ -1038,32 +1093,34 @@ export default function OrderPage({ initialSearchText }) {
         
         if (filteredStores.length === 0 && stores.length > 0) {
           return (
-            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-              <p>😕 None of your favorite stores have these items</p>
-              <p style={{ fontSize: 14 }}>Try Nearby or add more favorites</p>
+            <div style={emptyState}>
+              <p style={{ fontWeight: 800, color: '#334155', margin: '0 0 6px' }}>
+                Favorites don’t have these items
+              </p>
+              <p style={{ fontSize: 14, margin: 0 }}>Try Nearby or add more favorites in Profile.</p>
             </div>
           );
         }
         
         return filteredStores.map((store, idx) => (
-          <div key={idx} style={premiumCard}>
+          <div key={idx} className="ekkilo-store-card" style={card}>
             <div 
-              style={{...headerRow, cursor: 'pointer'}}
+              style={storeHeaderRow}
               onClick={() => setSelectedStoreDetails(store)}
             >
               <div>
-                <b>⭐ {store.store}</b>
+                <b style={storeNameText}>⭐ {store.store}</b>
                 {store.is_best && <span style={bestBadge}>Good match</span>}
                 <div style={{ marginTop: 6 }}>
                   <DeliveryChip opt={deliveryOptFor(store)} subtotal={store.total} />
                 </div>
               </div>
-              <div>
-                ₹{format(store.total)}
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>₹{format(store.total)}</div>
                 <div style={distance}>
                   {store.distance !== undefined 
                     ? `📍 ${store.distance} km` 
-                    : '⏳ Calculating...'}
+                    : '⏳ Calculating…'}
                 </div>
               </div>
             </div>
@@ -1088,9 +1145,9 @@ export default function OrderPage({ initialSearchText }) {
       {!loading && mode==="regular" && (() => {
         if (!regularStore) {
           return (
-            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-              <p>😕 No My Kirana set</p>
-              <p style={{ fontSize: 14 }}>Set your go-to shop in Profile → Settings</p>
+            <div style={emptyState}>
+              <p style={{ fontWeight: 800, color: '#334155', margin: '0 0 6px' }}>No My Kirana set</p>
+              <p style={{ fontSize: 14, margin: 0 }}>Set your go-to shop in Profile → Settings</p>
             </div>
           );
         }
@@ -1102,10 +1159,12 @@ export default function OrderPage({ initialSearchText }) {
         
         if (!myRegularStore && stores.length > 0) {
           return (
-            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-              <p>😕 {regularStore} doesn't have these items</p>
-              <p style={{ fontSize: 14 }}>Try Nearby for items also available around you</p>
-              <button type="button" style={{ ...orderButton, marginTop: 12 }} onClick={() => pickMode("smart")}>
+            <div style={emptyState}>
+              <p style={{ fontWeight: 800, color: '#334155', margin: '0 0 6px' }}>
+                {regularStore} doesn’t have these items
+              </p>
+              <p style={{ fontSize: 14, margin: '0 0 12px' }}>Try Nearby for items also available around you</p>
+              <button type="button" style={{ ...orderButton, marginTop: 4 }} onClick={() => pickMode("smart")}>
                 Open Nearby
               </button>
             </div>
@@ -1115,17 +1174,20 @@ export default function OrderPage({ initialSearchText }) {
         if (!myRegularStore) return null;
         
         return (
-          <div style={{
-            ...premiumCard,
-            border: '2px solid #22c55e',
-            boxShadow: '0 0 0 3px #22c55e22',
-          }}>
+          <div
+            className="ekkilo-store-card"
+            style={{
+              ...card,
+              border: '2px solid #22c55e',
+              boxShadow: '0 0 0 3px #22c55e22',
+            }}
+          >
             <div 
-              style={{...headerRow, cursor: 'pointer'}}
+              style={storeHeaderRow}
               onClick={() => setSelectedStoreDetails(myRegularStore)}
             >
               <div>
-                <b>🏪 {myRegularStore.store}</b>
+                <b style={storeNameText}>🏪 {myRegularStore.store}</b>
                 <div style={{ fontSize: 12, color: '#166534', fontWeight: 700, marginTop: 4 }}>
                   Your kirana · preferred
                 </div>
@@ -1133,12 +1195,12 @@ export default function OrderPage({ initialSearchText }) {
                   <DeliveryChip opt={deliveryOptFor(myRegularStore)} subtotal={myRegularStore.total} />
                 </div>
               </div>
-              <div>
-                ₹{format(myRegularStore.total)}
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>₹{format(myRegularStore.total)}</div>
                 <div style={distance}>
                   {myRegularStore.distance !== undefined 
                     ? `📍 ${myRegularStore.distance} km` 
-                    : '⏳ Calculating...'}
+                    : '⏳ Calculating…'}
                 </div>
               </div>
             </div>
@@ -1163,16 +1225,13 @@ export default function OrderPage({ initialSearchText }) {
 
       {/* 🧩 MANUAL */}
       {!loading && mode==="manual" && Object.entries(result?.store_view || {}).map(([store, items])=>(
-        <div key={store} style={premiumCard}>
+        <div key={store} className="ekkilo-store-card" style={card}>
           <div 
             style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              marginBottom: 12, 
-              paddingBottom: 12, 
+              ...storeHeaderRow,
               borderBottom: '1px solid #f0f0f0',
-              cursor: 'pointer'
+              paddingBottom: 12,
+              marginBottom: 12,
             }}
             onClick={() => {
               const storeData = stores.find(s => s.store?.toLowerCase().trim() === store?.toLowerCase().trim());
@@ -1879,6 +1938,32 @@ const card = {
   boxSizing: "border-box",
 };
 
+const emptyState = {
+  textAlign: "center",
+  padding: "40px 24px",
+  color: "#64748b",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+};
+
+const storeHeaderRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 12,
+  marginBottom: 8,
+  cursor: "pointer",
+  padding: "4px 0",
+};
+
+const storeNameText = {
+  fontSize: 16,
+  fontWeight: 800,
+  color: "#0f172a",
+  lineHeight: 1.25,
+};
+
 const row = {
   display: "flex",
   justifyContent: "space-between",
@@ -1938,8 +2023,9 @@ const bottom = {
   alignItems: "center",
   gap: 12,
   padding: `14px max(${GUTTER}px, calc(50% - 280px))`,
+  paddingBottom: "max(14px, env(safe-area-inset-bottom, 0px))",
   boxShadow: "0 -8px 24px rgba(0,0,0,0.2)",
-  zIndex: 1000,
+  zIndex: 1100,
   minHeight: 70,
   boxSizing: "border-box",
 };

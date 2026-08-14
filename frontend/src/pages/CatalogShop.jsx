@@ -183,6 +183,12 @@ export default function CatalogShop({ onOrder }) {
 
   return (
     <div style={styles.page}>
+      <style>{`
+        @keyframes ekkiloPulse {
+          0%, 100% { opacity: 0.55; }
+          50% { opacity: 1; }
+        }
+      `}</style>
       {/* Hero — Ekkilo, not Blinkit yellow */}
       <div style={styles.hero}>
         <div style={styles.heroTag}>Shop local kiranas</div>
@@ -269,7 +275,17 @@ export default function CatalogShop({ onOrder }) {
           </div>
 
           {loading ? (
-            <div style={styles.empty}>Loading products…</div>
+            <div style={styles.skelGrid} aria-busy="true">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div key={i} style={{ ...styles.card, ...styles.skelCard, animationDelay: `${i * 0.08}s` }}>
+                  <div style={styles.skelImg} />
+                  <div style={styles.cardBody}>
+                    <div style={styles.skelLine} />
+                    <div style={{ ...styles.skelLine, width: '60%' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : loadError ? (
             <div style={styles.empty}>
               <div style={{ fontSize: 40, marginBottom: 8 }}>⚠️</div>
@@ -283,7 +299,14 @@ export default function CatalogShop({ onOrder }) {
           ) : products.length === 0 ? (
             <div style={styles.empty}>
               <div style={{ fontSize: 40, marginBottom: 8 }}>🧺</div>
-              No products here yet. Try another category or search.
+              <div style={{ fontWeight: 800, color: '#334155', marginBottom: 6 }}>
+                {query ? 'No matches' : 'Catalog is still filling up'}
+              </div>
+              <div style={{ maxWidth: 280, margin: '0 auto', lineHeight: 1.45 }}>
+                {query
+                  ? 'Try another category or a shorter search.'
+                  : 'Browse Prices and search milk, atta, oil — or ask admin to import the starter CSV.'}
+              </div>
             </div>
           ) : (
             <div style={styles.grid}>
@@ -438,6 +461,8 @@ const styles = {
     boxSizing: 'border-box',
     background: 'linear-gradient(180deg, #ecfdf5 0%, #f8fafc 28%, #f8fafc 100%)',
     paddingBottom: 140,
+    fontSize: 16,
+    fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
   },
   hero: {
     padding: '16px 16px 8px',
@@ -738,8 +763,28 @@ const styles = {
     right: 0,
     bottom: 0,
     zIndex: 40,
-    padding: '0 10px 10px',
+    padding: '0 10px max(10px, env(safe-area-inset-bottom, 0px))',
     pointerEvents: 'none',
+  },
+  skelGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+    gap: 10,
+  },
+  skelCard: {
+    animation: 'ekkiloPulse 1.2s ease-in-out infinite',
+  },
+  skelImg: {
+    height: 110,
+    background: '#e5e7eb',
+    borderRadius: '12px 12px 0 0',
+  },
+  skelLine: {
+    height: 12,
+    width: '80%',
+    background: '#e5e7eb',
+    borderRadius: 6,
+    marginBottom: 8,
   },
   stickyInner: {
     pointerEvents: 'auto',

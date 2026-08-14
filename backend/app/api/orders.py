@@ -109,6 +109,13 @@ async def _build_track_payload(db, order_id: int):
 
     any_delayed = any(s.get("is_delayed") for s in stores_with_items)
 
+    refund = None
+    try:
+        from app.services.refund_requests import get_refund_for_order
+        refund = await get_refund_for_order(order["id"], db=db)
+    except Exception:
+        refund = None
+
     return {
         "id": order["id"],
         "customer_phone": order["customer_phone"],
@@ -121,6 +128,7 @@ async def _build_track_payload(db, order_id: int):
         "ready_count": int(order["ready_count"] or 0),
         "total_amount": float(order["total_amount"] or 0),
         "has_delay": any_delayed,
+        "refund_request": refund,
         "stores": stores_with_items,
     }
 
@@ -320,6 +328,65 @@ async def cancel_order(order_id: int, token: str):
         pass
 
     return {"status": "cancelled", "order_id": order_id}
+
+
+# -----------------------------
+# 💸 REQUEST UPI REFUND (manual)
+# -----------------------------
+@router.post("/orders/{order_id}/refund-request")
+async def request_refund(order_id: int, token: str, reason: str = None):
+    """Customer requests a UPI refund after paid cancel/reject. Manual today."""
+    db = await get_db()
+    user = await get_current_user(token, db)
+    phone = _normalize_phone(user["phone"])
+
+    order = await db.fetchrow(
+        """
+        SELECT id, status, payment_status, payment_method, total_amount, customer_phone
+        FROM final_orders
+        WHERE id = $1 AND (customer_phone = $2 OR customer_phone = $3)
+        """,
+        order_id,
+        phone,
+        user["phone"],
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    pay = (order.get("payment_status") or "").upper()
+    if pay != "PAID":
+        raise HTTPException(
+            status_code=400,
+            detail="Refund requests are only for orders paid online via UPI",
+        )
+
+    status = (order.get("status") or "").upper()
+    if status not in ("CANCELLED", "REJECTED"):
+        raise HTTPException(
+            status_code=400,
+            detail="Cancel the order first (before Ready), then request a refund",
+        )
+
+    from app.services.refund_requests import create_refund_request
+
+    result = await create_refund_request(
+        final_order_id=order_id,
+        customer_phone=phone,
+        amount=float(order["total_amount"] or 0) if order.get("total_amount") is not None else None,
+        reason=reason,
+        db=db,
+    )
+    return {
+        "ok": True,
+        "order_id": order_id,
+        "already": result.get("already"),
+        "status": result.get("status"),
+        "message": (
+            "Refund already requested — Ekkilo will process it manually."
+            if result.get("already")
+            else "Refund requested. Ekkilo will process your UPI refund manually (not instant)."
+        ),
+    }
 
 
 # -----------------------------
