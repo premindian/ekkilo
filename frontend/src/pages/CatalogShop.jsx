@@ -24,6 +24,9 @@ export default function CatalogShop({ onOrder }) {
   const [isNarrow, setIsNarrow] = useState(
     typeof window !== 'undefined' ? window.innerWidth < 720 : true
   );
+  const [viewportW, setViewportW] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 720
+  );
 
   useEffect(() => {
     loadCategories();
@@ -34,10 +37,25 @@ export default function CatalogShop({ onOrder }) {
   }, [category, query]);
 
   useEffect(() => {
-    const onResize = () => setIsNarrow(window.innerWidth < 720);
+    const onResize = () => {
+      const w = window.innerWidth;
+      setViewportW(w);
+      setIsNarrow(w < 720);
+    };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  const productGridCols =
+    viewportW < 720
+      ? 'repeat(2, minmax(0, 1fr))'
+      : viewportW < 900
+        ? 'repeat(3, minmax(0, 1fr))'
+        : viewportW < 1100
+          ? 'repeat(4, minmax(0, 1fr))'
+          : viewportW < 1400
+            ? 'repeat(5, minmax(0, 1fr))'
+            : 'repeat(6, minmax(0, 1fr))';
 
   const loadCategories = async () => {
     try {
@@ -275,10 +293,10 @@ export default function CatalogShop({ onOrder }) {
           </div>
 
           {loading ? (
-            <div style={styles.skelGrid} aria-busy="true">
-              {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div style={{ ...styles.skelGrid, gridTemplateColumns: productGridCols }} aria-busy="true">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
                 <div key={i} style={{ ...styles.card, ...styles.skelCard, animationDelay: `${i * 0.08}s` }}>
-                  <div style={styles.skelImg} />
+                  <div style={{ ...styles.skelImg, ...(!isNarrow ? styles.imgWrapDesktop : {}) }} />
                   <div style={styles.cardBody}>
                     <div style={styles.skelLine} />
                     <div style={{ ...styles.skelLine, width: '60%' }} />
@@ -309,12 +327,12 @@ export default function CatalogShop({ onOrder }) {
               </div>
             </div>
           ) : (
-            <div style={styles.grid}>
+            <div style={{ ...styles.grid, gridTemplateColumns: productGridCols }}>
               {products.map((p) => {
                 const inCart = cart[p.id];
                 return (
                   <article key={p.id} style={styles.card}>
-                    <div style={styles.imgWrap}>
+                    <div style={{ ...styles.imgWrap, ...(!isNarrow ? styles.imgWrapDesktop : {}) }}>
                       <img
                         src={p.image_url}
                         alt={p.name}
@@ -579,16 +597,20 @@ const styles = {
     marginTop: 8,
     minHeight: 420,
     width: '100%',
-    maxWidth: '100%',
+    maxWidth: 1280,
+    marginLeft: 'auto',
+    marginRight: 'auto',
     boxSizing: 'border-box',
     overflowX: 'hidden',
+    background: '#fff',
+    borderTop: '1px solid #eef2f7',
   },
   sidebar: {
-    width: 84,
+    width: 118,
     flexShrink: 0,
     background: '#fff',
     borderRight: '1px solid #e5e7eb',
-    maxHeight: '70vh',
+    maxHeight: 'calc(100vh - 120px)',
     overflowY: 'auto',
     position: 'sticky',
     top: 0,
@@ -598,62 +620,64 @@ const styles = {
     width: '100%',
     border: 'none',
     background: 'transparent',
-    padding: '12px 6px',
+    padding: '14px 8px',
     cursor: 'pointer',
     borderLeft: '3px solid transparent',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
   sideItemActive: {
     background: '#f0fdf4',
     borderLeft: `3px solid ${green}`,
   },
-  sideEmoji: { fontSize: 20 },
+  sideEmoji: { fontSize: 26 },
   sideText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 600,
     color: '#4b5563',
     textAlign: 'center',
-    lineHeight: 1.15,
+    lineHeight: 1.2,
   },
   main: {
     flex: '1 1 0%',
     minWidth: 0,
-    padding: '6px 8px 16px',
+    padding: '10px 12px 20px',
     boxSizing: 'border-box',
     width: '100%',
     maxWidth: '100%',
+    background: '#fff',
   },
   mainHead: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    marginBottom: 8,
+    marginBottom: 10,
     padding: '0 2px',
     minWidth: 0,
   },
-  mainTitle: { margin: 0, fontSize: 16, fontWeight: 800, color: '#111' },
-  mainMeta: { fontSize: 11, color: '#6b7280' },
+  mainTitle: { margin: 0, fontSize: 18, fontWeight: 800, color: '#111' },
+  mainMeta: { fontSize: 12, color: '#6b7280' },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-    gap: 8,
-    columnGap: 8,
-    rowGap: 10,
+    gap: 12,
+    columnGap: 12,
+    rowGap: 16,
     width: '100%',
     maxWidth: '100%',
     boxSizing: 'border-box',
   },
   card: {
     background: '#fff',
-    borderRadius: 10,
-    border: '1px solid #eceff3',
+    borderRadius: 12,
+    border: '1px solid #eef2f7',
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
     minWidth: 0,
+    width: '100%',
     boxSizing: 'border-box',
   },
   retryBtn: {
@@ -666,18 +690,26 @@ const styles = {
     cursor: 'pointer',
   },
   imgWrap: {
-    aspectRatio: '1 / 0.92',
+    aspectRatio: '1 / 1',
     background: '#f8fafc',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    padding: 8,
   },
-  img: { width: '100%', height: '100%', objectFit: 'cover' },
+  imgWrapDesktop: {
+    height: 118,
+    maxHeight: 118,
+    aspectRatio: 'auto',
+    padding: 10,
+  },
+  img: { width: '100%', height: '100%', objectFit: 'contain' },
   cardBody: {
-    padding: '6px 8px 8px',
+    padding: '4px 8px 10px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 3,
+    gap: 4,
     flex: 1,
   },
   metaRow: {
@@ -685,7 +717,9 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 6,
-    minHeight: 28,
+    minHeight: 26,
+    order: 3,
+    marginTop: 'auto',
   },
   unit: {
     fontSize: 11,
@@ -698,22 +732,25 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   name: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 600,
-    color: '#111',
-    lineHeight: 1.25,
+    color: '#1f2937',
+    lineHeight: 1.3,
     display: '-webkit-box',
     WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
+    minHeight: '2.6em',
+    order: 1,
   },
   brand: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#9ca3af',
     lineHeight: 1.2,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    order: 2,
   },
   addBtn: {
     flexShrink: 0,
@@ -721,9 +758,9 @@ const styles = {
     background: '#fff',
     color: green,
     fontWeight: 800,
-    borderRadius: 6,
-    padding: '4px 10px',
-    fontSize: 11,
+    borderRadius: 8,
+    padding: '5px 12px',
+    fontSize: 12,
     letterSpacing: 0.3,
     cursor: 'pointer',
     lineHeight: 1.2,
@@ -733,7 +770,7 @@ const styles = {
     alignItems: 'center',
     gap: 2,
     background: green,
-    borderRadius: 6,
+    borderRadius: 8,
     padding: '1px 2px',
     color: '#fff',
     flexShrink: 0,
@@ -768,14 +805,15 @@ const styles = {
   },
   skelGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-    gap: 10,
+    gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+    gap: 12,
   },
   skelCard: {
     animation: 'ekkiloPulse 1.2s ease-in-out infinite',
   },
   skelImg: {
-    height: 110,
+    height: 118,
+    maxHeight: 118,
     background: '#e5e7eb',
     borderRadius: '12px 12px 0 0',
   },
