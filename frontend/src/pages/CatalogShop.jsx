@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import BrandLogo from '../components/BrandLogo';
 
 const API_BASE = '';
 
@@ -16,11 +15,15 @@ export default function CatalogShop({ onOrder }) {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [cart, setCart] = useState({}); // id -> { product, qty }
   const [listTarget, setListTarget] = useState('daily'); // daily | monthly
   const [saving, setSaving] = useState(false);
   const [showCart, setShowCart] = useState(false);
   const [toast, setToast] = useState('');
+  const [isNarrow, setIsNarrow] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 720 : true
+  );
 
   useEffect(() => {
     loadCategories();
@@ -29,6 +32,12 @@ export default function CatalogShop({ onOrder }) {
   useEffect(() => {
     loadProducts();
   }, [category, query]);
+
+  useEffect(() => {
+    const onResize = () => setIsNarrow(window.innerWidth < 720);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const loadCategories = async () => {
     try {
@@ -42,17 +51,29 @@ export default function CatalogShop({ onOrder }) {
 
   const loadProducts = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const params = new URLSearchParams();
       if (category && category !== 'all') params.set('category', category);
       if (query) params.set('search', query);
       params.set('limit', '80');
       const res = await fetch(`${API_BASE}/api/catalog/products?${params}`);
+      if (!res.ok) {
+        setProducts([]);
+        setLoadError('Could not load products. Please try again.');
+        return;
+      }
       const data = await res.json();
-      setProducts(Array.isArray(data.items) ? data.items : []);
+      if (!data || !Array.isArray(data.items)) {
+        setProducts([]);
+        setLoadError('Could not load products. Please try again.');
+        return;
+      }
+      setProducts(data.items);
     } catch (e) {
       console.error(e);
       setProducts([]);
+      setLoadError('Could not load products. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -164,10 +185,7 @@ export default function CatalogShop({ onOrder }) {
     <div style={styles.page}>
       {/* Hero — Ekkilo, not Blinkit yellow */}
       <div style={styles.hero}>
-        <div style={styles.heroTop}>
-          <BrandLogo height={36} alt="Ekkilo" />
-          <div style={styles.heroTag}>Shop local kiranas</div>
-        </div>
+        <div style={styles.heroTag}>Shop local kiranas</div>
         <div style={styles.searchWrap}>
           <span style={styles.searchIcon}>🔍</span>
           <input
@@ -213,24 +231,26 @@ export default function CatalogShop({ onOrder }) {
 
       {/* Split: sidebar + grid (Blinkit pattern, Ekkilo colors) */}
       <div style={styles.split}>
-        <aside style={styles.sidebar}>
-          {categories
-            .filter((c) => c.slug !== 'all')
-            .map((c) => (
-              <button
-                key={`side-${c.slug}`}
-                type="button"
-                onClick={() => setCategory(c.slug)}
-                style={{
-                  ...styles.sideItem,
-                  ...(category === c.slug ? styles.sideItemActive : {}),
-                }}
-              >
-                <span style={styles.sideEmoji}>{c.icon}</span>
-                <span style={styles.sideText}>{c.name}</span>
-              </button>
-            ))}
-        </aside>
+        {!isNarrow && (
+          <aside style={styles.sidebar}>
+            {categories
+              .filter((c) => c.slug !== 'all')
+              .map((c) => (
+                <button
+                  key={`side-${c.slug}`}
+                  type="button"
+                  onClick={() => setCategory(c.slug)}
+                  style={{
+                    ...styles.sideItem,
+                    ...(category === c.slug ? styles.sideItemActive : {}),
+                  }}
+                >
+                  <span style={styles.sideEmoji}>{c.icon}</span>
+                  <span style={styles.sideText}>{c.name}</span>
+                </button>
+              ))}
+          </aside>
+        )}
 
         <main style={styles.main}>
           <div style={styles.mainHead}>
@@ -242,6 +262,16 @@ export default function CatalogShop({ onOrder }) {
 
           {loading ? (
             <div style={styles.empty}>Loading products…</div>
+          ) : loadError ? (
+            <div style={styles.empty}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>⚠️</div>
+              {loadError}
+              <div style={{ marginTop: 12 }}>
+                <button type="button" onClick={loadProducts} style={styles.retryBtn}>
+                  Retry
+                </button>
+              </div>
+            </div>
           ) : products.length === 0 ? (
             <div style={styles.empty}>
               <div style={{ fontSize: 40, marginBottom: 8 }}>🧺</div>
@@ -393,6 +423,10 @@ const orange = '#ea580c';
 const styles = {
   page: {
     minHeight: '100vh',
+    width: '100%',
+    maxWidth: '100%',
+    overflowX: 'hidden',
+    boxSizing: 'border-box',
     background: 'linear-gradient(180deg, #ecfdf5 0%, #f8fafc 28%, #f8fafc 100%)',
     paddingBottom: 140,
   },
@@ -402,20 +436,18 @@ const styles = {
     color: '#fff',
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
-  },
-  heroTop: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    gap: 12,
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
   },
   heroTag: {
+    display: 'inline-block',
     fontSize: 12,
     fontWeight: 700,
     background: 'rgba(255,255,255,0.18)',
     padding: '6px 10px',
     borderRadius: 999,
+    marginBottom: 12,
   },
   searchWrap: {
     display: 'flex',
@@ -424,10 +456,15 @@ const styles = {
     background: '#fff',
     borderRadius: 14,
     padding: '4px 4px 4px 12px',
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    minWidth: 0,
   },
   searchIcon: { fontSize: 16 },
   searchInput: {
     flex: 1,
+    minWidth: 0,
     border: 'none',
     outline: 'none',
     fontSize: 15,
@@ -454,7 +491,11 @@ const styles = {
     display: 'flex',
     gap: 8,
     overflowX: 'auto',
+    overflowY: 'hidden',
     padding: '14px 12px 6px',
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
     WebkitOverflowScrolling: 'touch',
   },
   catChip: {
@@ -489,6 +530,10 @@ const styles = {
     gap: 0,
     marginTop: 8,
     minHeight: 420,
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    overflowX: 'hidden',
   },
   sidebar: {
     width: 84,
@@ -499,6 +544,7 @@ const styles = {
     overflowY: 'auto',
     position: 'sticky',
     top: 0,
+    boxSizing: 'border-box',
   },
   sideItem: {
     width: '100%',
@@ -524,13 +570,21 @@ const styles = {
     textAlign: 'center',
     lineHeight: 1.15,
   },
-  main: { flex: 1, padding: '8px 10px 20px', minWidth: 0 },
+  main: {
+    flex: '1 1 0%',
+    minWidth: 0,
+    padding: '8px 10px 20px',
+    boxSizing: 'border-box',
+    width: '100%',
+    maxWidth: '100%',
+  },
   mainHead: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'baseline',
     marginBottom: 10,
     padding: '0 2px',
+    minWidth: 0,
   },
   mainTitle: { margin: 0, fontSize: 18, fontWeight: 800, color: '#111' },
   mainMeta: { fontSize: 12, color: '#6b7280' },
@@ -538,6 +592,9 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: 10,
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
   },
   card: {
     background: '#fff',
@@ -546,6 +603,17 @@ const styles = {
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
+    minWidth: 0,
+    boxSizing: 'border-box',
+  },
+  retryBtn: {
+    border: `1.5px solid ${green}`,
+    background: '#fff',
+    color: green,
+    fontWeight: 700,
+    borderRadius: 10,
+    padding: '8px 16px',
+    cursor: 'pointer',
   },
   imgWrap: {
     aspectRatio: '1 / 1',
