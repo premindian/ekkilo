@@ -329,7 +329,7 @@ async def assert_otp_rate_limit(phone: str, db=None):
 
 
 async def assert_profile_complete(user: dict, db=None):
-    """Require name + pickup area before ordering (reduces fake/prank orders)."""
+    """Require name + a short 'fun check' answer before ordering (reduces fake/prank orders)."""
     db = db or await get_db()
     name = (user.get("name") or "").strip()
     if len(name) < 2:
@@ -351,7 +351,7 @@ async def assert_profile_complete(user: dict, db=None):
     if len(str(area).strip()) < 3:
         raise HTTPException(
             status_code=400,
-            detail="Please set your pickup area in Profile → Preferences before ordering.",
+            detail='Please answer "What\'s funny today?" in Profile → Preferences before ordering.',
         )
 
 

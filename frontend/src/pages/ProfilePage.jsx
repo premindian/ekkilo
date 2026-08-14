@@ -411,13 +411,15 @@ function PreferencesTab({ token }) {
 
       <div style={styles.prefItem}>
         <div style={{ flex: 1, marginRight: 12 }}>
-          <p style={styles.prefTitle}>Pickup area</p>
-          <p style={styles.prefDesc}>Area / landmark for pickup (required to order)</p>
+          <p style={styles.prefTitle}>{"What's funny today?"}</p>
+          <p style={styles.prefDesc}>
+            One quick line — anything funny or interesting. Helps us know a real person is ordering (not a bot).
+          </p>
           <input
             value={prefs?.pickup_area || ''}
             onChange={(e) => setPrefs({ ...prefs, pickup_area: e.target.value })}
             onBlur={(e) => updatePref('pickup_area', e.target.value.trim())}
-            placeholder="e.g. MVP Colony, Vizag"
+            placeholder='e.g. "My kid hid the remote in the rice bag"'
             style={{ ...styles.select, width: '100%', marginTop: 8 }}
           />
         </div>
