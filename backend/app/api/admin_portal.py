@@ -3,7 +3,7 @@ from fastapi.responses import PlainTextResponse
 from app.db.database import get_db
 from app.api.auth import get_current_user
 from app.services.product_images import file_to_data_url, validate_image_url
-from app.services.product_import import build_template_csv, parse_csv_text, import_products
+from app.services.product_import import build_template_csv, parse_csv_text, import_products, seed_starter_catalog
 from app.services.staff_audit import log_staff_action, list_staff_audit_events
 from datetime import datetime, timedelta
 
@@ -513,6 +513,27 @@ async def import_products_csv(token: str, file: UploadFile = File(...)):
         entity_type="catalog",
         details={
             "filename": file.filename,
+            "created": result.get("created"),
+            "skipped": result.get("skipped"),
+            "failed_count": result.get("failed_count"),
+            "total_rows": result.get("total_rows"),
+        },
+        db=db,
+    )
+    return result
+
+
+@router.post("/products/seed-starter")
+async def seed_starter_products(token: str):
+    """One-click: load built-in starter kirana SKUs (skips duplicates)."""
+    admin = await check_admin(token)
+    db = await get_db()
+    result = await seed_starter_catalog(db)
+    await log_staff_action(
+        actor=admin,
+        action="product.seed_starter",
+        entity_type="catalog",
+        details={
             "created": result.get("created"),
             "skipped": result.get("skipped"),
             "failed_count": result.get("failed_count"),

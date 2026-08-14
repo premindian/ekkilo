@@ -40,6 +40,7 @@ async def lifespan(app: FastAPI):
         from app.services.catalog import ensure_catalog_schema
         from app.services.staff_audit import ensure_staff_audit_schema
         from app.services.refund_requests import ensure_refund_requests_schema
+        from app.services.product_import import seed_starter_catalog
         db = await get_db()
         await ensure_order_schema(db)
         await ensure_whatsapp_messages_schema(db)
@@ -47,6 +48,14 @@ async def lifespan(app: FastAPI):
         await ensure_staff_audit_schema(db)
         await ensure_refund_requests_schema(db)
         print("✅ Order + WhatsApp + Catalog + Audit + Refund schema verified")
+        try:
+            seeded = await seed_starter_catalog(db)
+            print(
+                f"🧺 Starter catalog: +{seeded.get('created', 0)} "
+                f"(skipped {seeded.get('skipped', 0)})"
+            )
+        except Exception as se:
+            print(f"⚠️ Starter catalog seed skipped: {se}")
     except Exception as e:
         print(f"⚠️ Schema ensure failed: {e}")
 

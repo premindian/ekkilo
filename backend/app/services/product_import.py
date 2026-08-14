@@ -108,6 +108,24 @@ def build_template_csv(include_samples: bool = True) -> str:
     return buf.getvalue()
 
 
+def sample_rows_as_dicts() -> List[Dict[str, Any]]:
+    """Parse SAMPLE_ROWS into import_products-ready dicts."""
+    csv_text = build_template_csv(include_samples=True)
+    rows, _errs = parse_csv_text(csv_text)
+    return rows
+
+
+async def seed_starter_catalog(db=None) -> Dict[str, Any]:
+    """Idempotent: insert starter SKUs; skip near-duplicates already in catalog."""
+    from app.db.database import get_db as _get_db
+
+    db = db or await _get_db()
+    rows = sample_rows_as_dicts()
+    result = await import_products(db, rows)
+    result["source"] = "starter_samples"
+    return result
+
+
 def _norm_header(h: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", (h or "").strip().lower()).strip("_")
 

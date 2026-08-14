@@ -190,6 +190,26 @@ export default function AdminProducts() {
     }
   };
 
+  const seedStarter = async () => {
+    if (!window.confirm('Load built-in starter SKUs? Existing products are skipped.')) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/products/seed-starter?token=${encodeURIComponent(token)}`,
+        { method: 'POST' }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Seed failed');
+      setImportResult(data);
+      loadProducts();
+    } catch (e) {
+      alert(e.message || 'Seed failed');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const thumb = (url) => {
     if (!url) return null;
     return (
@@ -233,6 +253,14 @@ export default function AdminProducts() {
           )}
         </div>
         <div style={styles.importActions}>
+          <button
+            type="button"
+            onClick={seedStarter}
+            disabled={importing}
+            style={styles.addBtn}
+          >
+            {importing ? 'Loading…' : 'Load starter catalog'}
+          </button>
           <button type="button" onClick={() => downloadTemplate(true)} style={styles.templateBtn}>
             Download starter CSV
           </button>
