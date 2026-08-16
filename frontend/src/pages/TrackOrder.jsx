@@ -32,6 +32,7 @@ export default function TrackOrder() {
   const initialToken = params.get('t') || '';
   const initialId = params.get('order_id') || params.get('order') || '';
   const justPaid = params.get('paid') === '1';
+  const justFailed = params.get('failed') === '1';
   const [orderId, setOrderId] = useState(initialId);
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -39,6 +40,7 @@ export default function TrackOrder() {
   const [refundBusy, setRefundBusy] = useState(false);
   const [refundMsg, setRefundMsg] = useState('');
   const [showPaidBanner, setShowPaidBanner] = useState(justPaid);
+  const [showFailedBanner, setShowFailedBanner] = useState(justFailed);
 
   const fetchTrack = async ({ trackToken, id } = {}) => {
     const qs = new URLSearchParams();
@@ -149,7 +151,9 @@ export default function TrackOrder() {
       'COMPLETED': '✓',
       'NO_SHOW': '👻',
       'REJECTED': '🚫',
-      'CANCELLED': '❌'
+      'CANCELLED': '❌',
+      'PENDING_PAYMENT': '⏳',
+      'PAYMENT_FAILED': '💔',
     };
     return icons[status] || '🔄';
   };
@@ -204,6 +208,38 @@ export default function TrackOrder() {
               cursor: 'pointer',
               fontWeight: 800,
               color: '#047857',
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {showFailedBanner && (
+        <div
+          style={{
+            margin: '12px 16px 0',
+            padding: '12px 14px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 12,
+            color: '#991b1b',
+            fontSize: 14,
+            fontWeight: 600,
+            lineHeight: 1.4,
+          }}
+        >
+          ❌ UPI payment failed. No money captured — stores were not notified. Try again from Prices or use Pay at store.
+          <button
+            type="button"
+            onClick={() => setShowFailedBanner(false)}
+            style={{
+              float: 'right',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              fontWeight: 800,
+              color: '#b91c1c',
             }}
           >
             ×
@@ -273,6 +309,9 @@ export default function TrackOrder() {
                     ? '💵 Pay at store on pickup'
                     : orderDetails.payment_status === 'PAID'
                     ? '✅ Paid online'
+                    : orderDetails.payment_status === 'FAILED' ||
+                      orderDetails.order_status === 'PAYMENT_FAILED'
+                    ? '❌ UPI payment failed — stores not notified'
                     : orderDetails.payment_status === 'PENDING' ||
                       orderDetails.order_status === 'PENDING_PAYMENT'
                     ? '⏳ UPI payment pending — stores not notified yet'
@@ -285,8 +324,26 @@ export default function TrackOrder() {
             </div>
           </div>
 
+          {(orderDetails.payment_status === 'FAILED' ||
+            orderDetails.order_status === 'PAYMENT_FAILED') && (
+            <div style={{
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 20,
+              color: '#991b1b',
+              fontSize: 14,
+              lineHeight: 1.45,
+            }}>
+              <strong>Payment failed.</strong> Nothing was charged. Kiranas were not notified.
+              Go back to Prices and place again, or choose Pay at store.
+            </div>
+          )}
+
           {(orderDetails.payment_status === 'PENDING' ||
-            orderDetails.order_status === 'PENDING_PAYMENT') && (
+            orderDetails.order_status === 'PENDING_PAYMENT') &&
+            orderDetails.payment_status !== 'FAILED' && (
             <div style={{
               background: '#fff7ed',
               border: '1px solid #fed7aa',

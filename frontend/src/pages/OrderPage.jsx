@@ -784,16 +784,36 @@ export default function OrderPage({ initialSearchText }) {
       });
 
       try {
-        rzp.on("payment.failed", function () {
+        rzp.on("payment.failed", function (resp) {
           if (finished) return;
-          (async () => {
-            const paid = await pollPaid(orderId);
-            if (paid) finishPaid(paid.track_token || trackToken);
-            else {
-              setPlacing(false);
-              setPayStatus("");
-            }
-          })();
+          finished = true;
+          const reason =
+            resp?.error?.description ||
+            resp?.error?.reason ||
+            "payment_failed";
+          fetch(`${API_BASE}/api/payments/failed?token=${encodeURIComponent(token)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              final_order_id: orderId,
+              reason,
+              razorpay_payment_id: resp?.error?.metadata?.payment_id,
+            }),
+          }).catch(() => {});
+          try {
+            sessionStorage.removeItem(PENDING_PAY_KEY);
+          } catch (e) {
+            /* ignore */
+          }
+          setPlacing(false);
+          setPayStatus("");
+          window.setTimeout(() => {
+            window.location.assign(
+              trackToken
+                ? `/track?t=${encodeURIComponent(trackToken)}&failed=1`
+                : `/track?order_id=${orderId}&failed=1`
+            );
+          }, 100);
         });
       } catch (e) {
         /* older checkout.js */

@@ -222,6 +222,79 @@ async def _activate_paid_order(
     }
 
 
+async def _mark_payment_failed(
+    db,
+    order: dict,
+    reason: str = None,
+    rz_payment: str = None,
+) -> dict:
+    """
+    Mark UPI checkout as failed. Never downgrade PAID.
+    Cancels held store lines so they don't look like live orders.
+    """
+    final_order_id = order["id"]
+    pay = (order.get("payment_status") or "").upper()
+    if pay == "PAID":
+        return {
+            "status": "already_paid",
+            "final_order_id": final_order_id,
+            "track_token": order.get("track_token"),
+        }
+    if pay == "FAILED":
+        return {
+            "status": "already_failed",
+            "final_order_id": final_order_id,
+            "track_token": order.get("track_token"),
+        }
+
+    await db.execute(
+        """
+        UPDATE final_orders
+        SET payment_status = 'FAILED',
+            status = CASE
+              WHEN UPPER(COALESCE(status, '')) IN ('PENDING_PAYMENT', 'CREATED', 'PENDING')
+              THEN 'PAYMENT_FAILED'
+              ELSE status
+            END,
+            payment_id = COALESCE(payment_id, $2),
+            updated_at = NOW()
+        WHERE id = $1
+          AND UPPER(COALESCE(payment_status, '')) <> 'PAID'
+        """,
+        final_order_id,
+        rz_payment,
+    )
+    await db.execute(
+        """
+        UPDATE store_orders
+        SET status = 'CANCELLED', updated_at = NOW()
+        WHERE final_order_id = $1 AND status = 'AWAITING_PAYMENT'
+        """,
+        final_order_id,
+    )
+    fresh = await db.fetchrow(
+        "SELECT payment_status, status, track_token FROM final_orders WHERE id = $1",
+        final_order_id,
+    )
+    print(f"💔 Payment FAILED for order #{final_order_id}: {reason or 'n/a'}")
+    return {
+        "status": "failed",
+        "final_order_id": final_order_id,
+        "payment_status": (fresh or {}).get("payment_status") or "FAILED",
+        "order_status": (fresh or {}).get("status"),
+        "track_token": (fresh or order).get("track_token"),
+        "reason": reason,
+    }
+
+
+def _find_order_from_rz_entity(entity: dict):
+    notes = entity.get("notes") or {}
+    final_order_id = notes.get("final_order_id")
+    rz_order = entity.get("order_id") or entity.get("id")
+    rz_payment = entity.get("id")
+    return final_order_id, rz_order, rz_payment
+
+
 @router.post("/payments/verify")
 async def verify_payment(data: dict, background_tasks: BackgroundTasks, token: str = None):
     """
@@ -274,16 +347,52 @@ async def verify_payment(data: dict, background_tasks: BackgroundTasks, token: s
     return await _activate_paid_order(db, dict(order), rz_payment, rz_order, background_tasks)
 
 
+@router.post("/payments/failed")
+async def report_payment_failed(data: dict, token: str = None):
+    """
+    Client reports Razorpay payment.failed (test: failure@razorpay).
+    Body: final_order_id, reason?, razorpay_payment_id?
+    """
+    session_token = token or (data or {}).get("token")
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Login required")
+
+    db = await get_db()
+    await ensure_payment_schema(db)
+    user = await get_current_user(session_token, db)
+
+    final_order_id = (data or {}).get("final_order_id")
+    try:
+        final_order_id = int(final_order_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid order id")
+
+    order = await db.fetchrow("SELECT * FROM final_orders WHERE id = $1", final_order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if phone_tail(order["customer_phone"]) != phone_tail(user["phone"]):
+        raise HTTPException(status_code=403, detail="Not your order")
+
+    return await _mark_payment_failed(
+        db,
+        dict(order),
+        reason=(data or {}).get("reason") or "client_payment_failed",
+        rz_payment=(data or {}).get("razorpay_payment_id"),
+    )
+
+
 @router.post("/payments/razorpay-webhook")
 async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks):
     """
-    Razorpay Dashboard → Webhooks → payment.captured
+    Razorpay Dashboard → Webhooks
     URL: https://YOUR_HOST/api/payments/razorpay-webhook
-    Secret: set RAZORPAY_WEBHOOK_SECRET in Render (same as dashboard).
+    Events: payment.captured, payment.failed (optional: order.paid)
+    Secret: RAZORPAY_WEBHOOK_SECRET
     """
     import os
     import hmac
     import hashlib
+    import json
 
     raw = await request.body()
     secret = (os.getenv("RAZORPAY_WEBHOOK_SECRET") or "").strip()
@@ -294,54 +403,75 @@ async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks):
             raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
     try:
-        import json
-
         payload = json.loads(raw.decode("utf-8") or "{}")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
     event = (payload.get("event") or "").strip()
-    if event not in ("payment.captured", "order.paid"):
-        return {"status": "ignored", "event": event}
-
-    entity = ((payload.get("payload") or {}).get("payment") or {}).get("entity") or {}
-    if event == "order.paid":
-        entity = ((payload.get("payload") or {}).get("order") or {}).get("entity") or entity
-
-    rz_order = entity.get("order_id") or entity.get("id")
-    rz_payment = entity.get("id") if event == "payment.captured" else entity.get("id")
-    if event == "payment.captured":
-        rz_payment = entity.get("id")
-        rz_order = entity.get("order_id")
-    notes = entity.get("notes") or {}
-    final_order_id = notes.get("final_order_id")
-
     db = await get_db()
     await ensure_payment_schema(db)
 
-    order = None
-    if final_order_id:
-        try:
-            order = await db.fetchrow(
-                "SELECT * FROM final_orders WHERE id = $1", int(final_order_id)
-            )
-        except (TypeError, ValueError):
-            order = None
-    if not order and rz_order:
-        order = await db.fetchrow(
-            "SELECT * FROM final_orders WHERE razorpay_order_id = $1", rz_order
-        )
-    if not order:
-        return {"status": "order_not_found", "razorpay_order_id": rz_order}
+    if event in ("payment.captured", "order.paid"):
+        entity = ((payload.get("payload") or {}).get("payment") or {}).get("entity") or {}
+        if event == "order.paid":
+            entity = ((payload.get("payload") or {}).get("order") or {}).get("entity") or entity
+        final_order_id, rz_order, rz_payment = _find_order_from_rz_entity(entity)
+        if event == "payment.captured":
+            rz_payment = entity.get("id")
+            rz_order = entity.get("order_id")
 
-    result = await _activate_paid_order(
-        db,
-        dict(order),
-        str(rz_payment or order.get("payment_id") or ""),
-        str(rz_order or order.get("razorpay_order_id") or ""),
-        background_tasks,
-    )
-    return {"status": result.get("status"), "final_order_id": order["id"]}
+        order = None
+        if final_order_id:
+            try:
+                order = await db.fetchrow(
+                    "SELECT * FROM final_orders WHERE id = $1", int(final_order_id)
+                )
+            except (TypeError, ValueError):
+                order = None
+        if not order and rz_order:
+            order = await db.fetchrow(
+                "SELECT * FROM final_orders WHERE razorpay_order_id = $1", rz_order
+            )
+        if not order:
+            return {"status": "order_not_found", "razorpay_order_id": rz_order}
+
+        result = await _activate_paid_order(
+            db,
+            dict(order),
+            str(rz_payment or order.get("payment_id") or ""),
+            str(rz_order or order.get("razorpay_order_id") or ""),
+            background_tasks,
+        )
+        return {"status": result.get("status"), "final_order_id": order["id"]}
+
+    if event == "payment.failed":
+        entity = ((payload.get("payload") or {}).get("payment") or {}).get("entity") or {}
+        final_order_id, rz_order, rz_payment = _find_order_from_rz_entity(entity)
+        rz_payment = entity.get("id")
+        rz_order = entity.get("order_id")
+        err = (entity.get("error_description") or entity.get("error_reason") or "payment.failed")
+
+        order = None
+        if final_order_id:
+            try:
+                order = await db.fetchrow(
+                    "SELECT * FROM final_orders WHERE id = $1", int(final_order_id)
+                )
+            except (TypeError, ValueError):
+                order = None
+        if not order and rz_order:
+            order = await db.fetchrow(
+                "SELECT * FROM final_orders WHERE razorpay_order_id = $1", rz_order
+            )
+        if not order:
+            return {"status": "order_not_found", "razorpay_order_id": rz_order}
+
+        result = await _mark_payment_failed(
+            db, dict(order), reason=str(err), rz_payment=str(rz_payment or "")
+        )
+        return {"status": result.get("status"), "final_order_id": order["id"]}
+
+    return {"status": "ignored", "event": event}
 
 
 @router.get("/payments/status/{final_order_id}")
@@ -363,11 +493,13 @@ async def payment_status(final_order_id: int, token: str):
         raise HTTPException(status_code=404, detail="Order not found")
     if phone_tail(order["customer_phone"]) != phone_tail(user["phone"]):
         raise HTTPException(status_code=403, detail="Not your order")
+    pay = (order.get("payment_status") or "UNPAID").upper()
     return {
         "final_order_id": order["id"],
-        "payment_status": (order.get("payment_status") or "UNPAID").upper(),
+        "payment_status": pay,
         "payment_method": order.get("payment_method"),
         "status": order.get("status"),
         "track_token": order.get("track_token"),
-        "paid": (order.get("payment_status") or "").upper() == "PAID",
+        "paid": pay == "PAID",
+        "failed": pay == "FAILED",
     }
