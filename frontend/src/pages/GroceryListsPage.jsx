@@ -129,11 +129,12 @@ export default function GroceryListsPage({ onSelectList }) {
   const addItem = async () => {
     if (!input.trim() || !listId || busy) return;
     const product_name = input.trim();
-    const isDuplicate = items.some(
+    const existing = items.find(
       (i) => i.product_name.toLowerCase().trim() === product_name.toLowerCase()
     );
-    if (isDuplicate) {
-      alert(`"${product_name}" is already in your list!`);
+    if (existing) {
+      await setItemQty(existing, formatQty(existing.quantity) + 1);
+      setInput('');
       return;
     }
 
@@ -141,7 +142,7 @@ export default function GroceryListsPage({ onSelectList }) {
       const res = await fetch(`${API_BASE}/api/grocery-lists/${listId}/items?token=${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_name, quantity: 1, unit: 'item' })
+        body: JSON.stringify({ product_name, quantity: 1, unit: 'pcs' })
       });
       if (res.ok) {
         const newItem = await res.json();
@@ -173,6 +174,40 @@ export default function GroceryListsPage({ onSelectList }) {
       }
     } catch (err) {
       alert('Failed to delete');
+    }
+  };
+
+  const formatQty = (q) => {
+    const n = Number(q);
+    if (!Number.isFinite(n) || n <= 0) return 1;
+    return Number.isInteger(n) ? n : Math.round(n * 100) / 100;
+  };
+
+  const setItemQty = async (item, nextQty) => {
+    if (!listId || busy || !item?.id) return;
+    const qty = formatQty(nextQty);
+    if (qty <= 0) {
+      await deleteItem(item.id);
+      return;
+    }
+    // Optimistic UI
+    setItems((prev) =>
+      prev.map((i) => (i.id === item.id ? { ...i, quantity: qty } : i))
+    );
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/grocery-lists/${listId}/items/${item.id}?token=${token}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quantity: qty, unit: item.unit || 'pcs' }),
+        }
+      );
+      if (!res.ok) throw new Error('update failed');
+    } catch (err) {
+      // Reload to sync
+      await loadItems(listId, listName);
+      alert('Could not update quantity');
     }
   };
 
@@ -291,15 +326,66 @@ export default function GroceryListsPage({ onSelectList }) {
           ) : (
             items.map((item) => (
               <div key={item.id} style={s.item}>
-                <div style={s.itemName}>{item.product_name}</div>
-                <button
-                  onClick={() => deleteItem(item.id)}
-                  style={s.deleteBtn}
-                  disabled={busy}
-                  aria-label={`Remove ${item.product_name}`}
-                >
-                  ×
-                </button>
+                <div style={s.itemMain}>
+                  <div style={s.itemName}>{item.product_name}</div>
+                  {item.unit && item.unit !== 'pcs' && item.unit !== 'item' && item.unit !== 'unit' ? (
+                    <div style={s.itemMeta}>{item.unit}</div>
+                  ) : null}
+                </div>
+                <div style={s.itemRight}>
+                  <div style={s.qtyCtrl}>
+                    <button
+                      type="button"
+                      style={s.qtyBtn}
+                      disabled={busy}
+                      onClick={() => setItemQty(item, formatQty(item.quantity) - 1)}
+                      aria-label="Decrease quantity"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={formatQty(item.quantity)}
+                      disabled={busy}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '') return;
+                        const n = Number(v);
+                        if (!Number.isFinite(n)) return;
+                        setItems((prev) =>
+                          prev.map((i) => (i.id === item.id ? { ...i, quantity: n } : i))
+                        );
+                      }}
+                      onBlur={(e) => setItemQty(item, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      style={s.qtyInput}
+                      aria-label={`Quantity for ${item.product_name}`}
+                    />
+                    <button
+                      type="button"
+                      style={s.qtyBtn}
+                      disabled={busy}
+                      onClick={() => setItemQty(item, formatQty(item.quantity) + 1)}
+                      aria-label="Increase quantity"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => deleteItem(item.id)}
+                    style={s.deleteBtn}
+                    disabled={busy}
+                    aria-label={`Remove ${item.product_name}`}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -309,7 +395,7 @@ export default function GroceryListsPage({ onSelectList }) {
           <button onClick={quickOrder} style={s.orderBtn} disabled={busy}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <BrandLogo variant="icon" height={18} alt="" />
-              Order All ({items.length} items)
+              Find kirana prices ({items.length} items)
             </span>
           </button>
         )}
@@ -444,8 +530,51 @@ const s = {
   list: { display: 'flex', flexDirection: 'column', gap: 8 },
   empty: { textAlign: 'center', padding: 40, color: '#999' },
   emptyIcon: { fontSize: 40, marginBottom: 8 },
-  item: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: 14, borderRadius: 10, border: '1px solid #eee' },
-  itemName: { fontSize: 15, fontWeight: 500 },
+  item: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    background: '#fff',
+    padding: '12px 14px',
+    borderRadius: 10,
+    border: '1px solid #eee',
+  },
+  itemMain: { minWidth: 0, flex: 1 },
+  itemName: { fontSize: 15, fontWeight: 600, color: '#111' },
+  itemMeta: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  itemRight: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+  qtyCtrl: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 2,
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 8,
+    padding: '2px 4px',
+  },
+  qtyBtn: {
+    border: 'none',
+    background: 'transparent',
+    color: '#16a34a',
+    fontWeight: 800,
+    fontSize: 16,
+    width: 28,
+    height: 28,
+    cursor: 'pointer',
+    lineHeight: 1,
+    padding: 0,
+  },
+  qtyInput: {
+    width: 40,
+    border: 'none',
+    background: 'transparent',
+    textAlign: 'center',
+    fontWeight: 800,
+    fontSize: 14,
+    color: '#14532d',
+    padding: 0,
+  },
   deleteBtn: { background: 'none', border: 'none', fontSize: 22, color: '#999', cursor: 'pointer' },
   orderBtn: { width: '100%', marginTop: 20, padding: 16, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: 'pointer' },
   modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
