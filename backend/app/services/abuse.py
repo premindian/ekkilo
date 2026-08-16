@@ -7,6 +7,7 @@ No-show ladder (soft — not a harsh 2-strike ban):
   3rd        → 7-day cool-down
   4th+       → blocked (admin can unblock)
 """
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -14,15 +15,31 @@ from fastapi import HTTPException, Request
 from app.db.database import get_db
 from app.utils.phone import normalize_phone, phone_tail
 
-# Tunable limits
-OTP_MAX_PER_WINDOW = 3
-OTP_WINDOW_MINUTES = 10
 
-ORDER_MAX_PER_PHONE = 3
-ORDER_PHONE_WINDOW_MINUTES = 15
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(str(os.getenv(name, str(default))).strip())
+    except (TypeError, ValueError):
+        return default
 
-ORDER_MAX_PER_IP = 5
-ORDER_IP_WINDOW_MINUTES = 60
+
+def _env_flag(name: str) -> bool:
+    return (os.getenv(name) or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+# Tunable limits (override via Render env without redeploying code changes)
+OTP_MAX_PER_WINDOW = _env_int("OTP_MAX_PER_WINDOW", 3)
+OTP_WINDOW_MINUTES = _env_int("OTP_WINDOW_MINUTES", 10)
+
+ORDER_MAX_PER_PHONE = _env_int("ORDER_MAX_PER_PHONE", 8)
+ORDER_PHONE_WINDOW_MINUTES = _env_int("ORDER_PHONE_WINDOW_MINUTES", 15)
+
+# Shared home/office Wi‑Fi + failed UPI retries burn this quickly in test
+ORDER_MAX_PER_IP = _env_int("ORDER_MAX_PER_IP", 40)
+ORDER_IP_WINDOW_MINUTES = _env_int("ORDER_IP_WINDOW_MINUTES", 60)
+
+# Skip IP order cap (still keeps phone + blocklist). Set ABUSE_RELAXED=true on Render for testing.
+ABUSE_RELAXED = _env_flag("ABUSE_RELAXED") or _env_flag("DEV_MODE")
 
 # Soft no-show ladder
 NO_SHOW_COOLDOWN_2_HOURS = 48
@@ -417,8 +434,9 @@ async def assert_first_order_caps(phone: str, stores: list, db=None):
 
 async def assert_order_rate_limit(phone: str, ip: str = None, db=None):
     """
-    Max ORDER_MAX_PER_PHONE orders / 15 min per phone,
-    and ORDER_MAX_PER_IP orders / hour per IP.
+    Max ORDER_MAX_PER_PHONE meaningful orders / window per phone
+    (ignores abandoned/failed UPI checkouts),
+    and ORDER_MAX_PER_IP order attempts / window per IP (skipped if ABUSE_RELAXED).
     """
     try:
         db = db or await get_db()
@@ -426,14 +444,22 @@ async def assert_order_rate_limit(phone: str, ip: str = None, db=None):
         phone = normalize_phone(phone)
         tail = phone_tail(phone)
 
-        phone_count = await db.fetchval("""
+        # Don't punish failed/abandoned UPI test attempts on the same phone
+        phone_count = await db.fetchval(
+            """
             SELECT COUNT(*) FROM final_orders
             WHERE (
                 customer_phone = $1
                 OR RIGHT(REGEXP_REPLACE(COALESCE(customer_phone, ''), '[^0-9]', '', 'g'), 10) = $2
             )
             AND created_at > NOW() - ($3::text || ' minutes')::interval
-        """, phone, tail, str(ORDER_PHONE_WINDOW_MINUTES))
+            AND UPPER(COALESCE(status, '')) NOT IN ('PENDING_PAYMENT', 'PAYMENT_FAILED', 'CANCELLED')
+            AND UPPER(COALESCE(payment_status, '')) NOT IN ('FAILED', 'EXPIRED')
+            """,
+            phone,
+            tail,
+            str(ORDER_PHONE_WINDOW_MINUTES),
+        )
 
         if (phone_count or 0) >= ORDER_MAX_PER_PHONE:
             raise HTTPException(
@@ -441,13 +467,20 @@ async def assert_order_rate_limit(phone: str, ip: str = None, db=None):
                 detail=f"Too many orders from this number. Please wait {ORDER_PHONE_WINDOW_MINUTES} minutes.",
             )
 
+        if ABUSE_RELAXED:
+            return
+
         if ip and ip != "unknown":
-            ip_count = await db.fetchval("""
+            ip_count = await db.fetchval(
+                """
                 SELECT COUNT(*) FROM abuse_events
                 WHERE event_type = 'order'
                   AND ip = $1
                   AND created_at > NOW() - ($2::text || ' minutes')::interval
-            """, ip, str(ORDER_IP_WINDOW_MINUTES))
+                """,
+                ip,
+                str(ORDER_IP_WINDOW_MINUTES),
+            )
             if (ip_count or 0) >= ORDER_MAX_PER_IP:
                 raise HTTPException(
                     status_code=429,

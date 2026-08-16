@@ -23,3 +23,9 @@ services:
         sync: false
       - key: BREAK_GLASS_SECRET
         sync: false
+      - key: ABUSE_RELAXED
+        value: "true"
+      - key: ORDER_MAX_PER_IP
+        value: "40"
+      - key: ORDER_MAX_PER_PHONE
+        value: "8"
