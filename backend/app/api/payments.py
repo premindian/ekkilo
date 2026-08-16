@@ -1,5 +1,5 @@
 """Payment verify + activate paid orders (Razorpay UPI)."""
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 from app.db.database import get_db
 from app.api.auth import get_current_user
@@ -148,6 +148,80 @@ We will notify you when ready 🚀
     background_tasks.add_task(send_message, phone, customer_message, row["id"])
 
 
+async def _activate_paid_order(
+    db,
+    order: dict,
+    rz_payment: str,
+    rz_order: str,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Idempotent: mark PAID, confirm, notify stores/customer once."""
+    from app.services.order_status import set_final_order_status
+
+    final_order_id = order["id"]
+    if (order.get("payment_status") or "").upper() == "PAID":
+        return {
+            "status": "already_paid",
+            "final_order_id": final_order_id,
+            "track_token": order.get("track_token"),
+        }
+
+    await db.execute(
+        """
+        UPDATE final_orders
+        SET payment_status = 'PAID',
+            payment_method = COALESCE(payment_method, 'upi'),
+            payment_id = $2,
+            razorpay_order_id = COALESCE(razorpay_order_id, $3),
+            paid_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1 AND UPPER(COALESCE(payment_status, '')) <> 'PAID'
+        """,
+        final_order_id,
+        rz_payment,
+        rz_order,
+    )
+
+    # Re-check in case of race
+    fresh = await db.fetchrow("SELECT * FROM final_orders WHERE id = $1", final_order_id)
+    if (fresh.get("payment_status") or "").upper() != "PAID":
+        # Lost race to another writer that didn't set PAID — force once
+        await db.execute(
+            """
+            UPDATE final_orders
+            SET payment_status = 'PAID',
+                payment_method = COALESCE(payment_method, 'upi'),
+                payment_id = COALESCE(payment_id, $2),
+                razorpay_order_id = COALESCE(razorpay_order_id, $3),
+                paid_at = COALESCE(paid_at, NOW()),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            final_order_id,
+            rz_payment,
+            rz_order,
+        )
+        fresh = await db.fetchrow("SELECT * FROM final_orders WHERE id = $1", final_order_id)
+
+    # Only notify when store lines were still held for payment (idempotent vs webhook+verify)
+    awaiting = await db.fetchval(
+        """
+        SELECT COUNT(*) FROM store_orders
+        WHERE final_order_id = $1 AND status = 'AWAITING_PAYMENT'
+        """,
+        final_order_id,
+    )
+    await set_final_order_status(final_order_id, "CONFIRMED", db=db)
+    if int(awaiting or 0) > 0:
+        await queue_order_notifications(final_order_id, background_tasks, db=db)
+
+    return {
+        "status": "paid",
+        "final_order_id": final_order_id,
+        "track_token": (fresh or order).get("track_token"),
+    }
+
+
 @router.post("/payments/verify")
 async def verify_payment(data: dict, background_tasks: BackgroundTasks, token: str = None):
     """
@@ -197,32 +271,77 @@ async def verify_payment(data: dict, background_tasks: BackgroundTasks, token: s
     if not verify_payment_signature(rz_order, rz_payment, rz_sig):
         raise HTTPException(status_code=400, detail="Invalid payment signature")
 
-    from app.services.order_status import set_final_order_status
+    return await _activate_paid_order(db, dict(order), rz_payment, rz_order, background_tasks)
 
-    await db.execute("""
-        UPDATE final_orders
-        SET payment_status = 'PAID',
-            payment_method = COALESCE(payment_method, 'upi'),
-            payment_id = $2,
-            razorpay_order_id = COALESCE(razorpay_order_id, $3),
-            paid_at = NOW(),
-            updated_at = NOW()
-        WHERE id = $1
-    """, final_order_id, rz_payment, rz_order)
 
-    await set_final_order_status(final_order_id, "CONFIRMED", db=db)
-    await queue_order_notifications(final_order_id, background_tasks, db=db)
+@router.post("/payments/razorpay-webhook")
+async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks):
+    """
+    Razorpay Dashboard → Webhooks → payment.captured
+    URL: https://YOUR_HOST/api/payments/razorpay-webhook
+    Secret: set RAZORPAY_WEBHOOK_SECRET in Render (same as dashboard).
+    """
+    import os
+    import hmac
+    import hashlib
 
-    # Re-read track token in case it was set later
-    fresh = await db.fetchrow(
-        "SELECT track_token FROM final_orders WHERE id = $1", final_order_id
+    raw = await request.body()
+    secret = (os.getenv("RAZORPAY_WEBHOOK_SECRET") or "").strip()
+    if secret:
+        got = (request.headers.get("X-Razorpay-Signature") or "").strip()
+        expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        if not got or not hmac.compare_digest(expected, got):
+            raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    try:
+        import json
+
+        payload = json.loads(raw.decode("utf-8") or "{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event = (payload.get("event") or "").strip()
+    if event not in ("payment.captured", "order.paid"):
+        return {"status": "ignored", "event": event}
+
+    entity = ((payload.get("payload") or {}).get("payment") or {}).get("entity") or {}
+    if event == "order.paid":
+        entity = ((payload.get("payload") or {}).get("order") or {}).get("entity") or entity
+
+    rz_order = entity.get("order_id") or entity.get("id")
+    rz_payment = entity.get("id") if event == "payment.captured" else entity.get("id")
+    if event == "payment.captured":
+        rz_payment = entity.get("id")
+        rz_order = entity.get("order_id")
+    notes = entity.get("notes") or {}
+    final_order_id = notes.get("final_order_id")
+
+    db = await get_db()
+    await ensure_payment_schema(db)
+
+    order = None
+    if final_order_id:
+        try:
+            order = await db.fetchrow(
+                "SELECT * FROM final_orders WHERE id = $1", int(final_order_id)
+            )
+        except (TypeError, ValueError):
+            order = None
+    if not order and rz_order:
+        order = await db.fetchrow(
+            "SELECT * FROM final_orders WHERE razorpay_order_id = $1", rz_order
+        )
+    if not order:
+        return {"status": "order_not_found", "razorpay_order_id": rz_order}
+
+    result = await _activate_paid_order(
+        db,
+        dict(order),
+        str(rz_payment or order.get("payment_id") or ""),
+        str(rz_order or order.get("razorpay_order_id") or ""),
+        background_tasks,
     )
-
-    return {
-        "status": "paid",
-        "final_order_id": final_order_id,
-        "track_token": (fresh or order).get("track_token"),
-    }
+    return {"status": result.get("status"), "final_order_id": order["id"]}
 
 
 @router.get("/payments/status/{final_order_id}")

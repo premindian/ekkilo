@@ -31,12 +31,14 @@ export default function TrackOrder() {
   // Private WhatsApp/share links use ?t=...; logged-in users may use ?order_id=
   const initialToken = params.get('t') || '';
   const initialId = params.get('order_id') || params.get('order') || '';
+  const justPaid = params.get('paid') === '1';
   const [orderId, setOrderId] = useState(initialId);
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [refundBusy, setRefundBusy] = useState(false);
   const [refundMsg, setRefundMsg] = useState('');
+  const [showPaidBanner, setShowPaidBanner] = useState(justPaid);
 
   const fetchTrack = async ({ trackToken, id } = {}) => {
     const qs = new URLSearchParams();
@@ -176,6 +178,38 @@ export default function TrackOrder() {
           Home
         </button>
       </div>
+
+      {showPaidBanner && (
+        <div
+          style={{
+            margin: '12px 16px 0',
+            padding: '12px 14px',
+            background: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            borderRadius: 12,
+            color: '#065f46',
+            fontSize: 14,
+            fontWeight: 600,
+            lineHeight: 1.4,
+          }}
+        >
+          ✅ Payment confirmed. Stores have been notified — show this screen at pickup.
+          <button
+            type="button"
+            onClick={() => setShowPaidBanner(false)}
+            style={{
+              float: 'right',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              fontWeight: 800,
+              color: '#047857',
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Track Order Form */}
       <div style={styles.trackCard}>
