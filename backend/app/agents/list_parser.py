@@ -114,7 +114,17 @@ class ListParser:
         # If user typed "milk rice" (no commas), greedily split into catalog items
         raw_items = []
         for seg in segments:
-            if ("," not in text and " and " not in text.lower()
+            has_count_marker = bool(
+                re.search(
+                    r"(?:^|\s)(?:\d+(?:\.\d+)?\s*(?:x|×)|(?:x|×)\s*\d+(?:\.\d+)?)\b",
+                    seg,
+                    flags=re.IGNORECASE,
+                )
+            )
+            # Keep "3 x Amul Butter 100g" intact so pack size isn't split away from qty
+            if has_count_marker:
+                raw_items.append(seg)
+            elif ("," not in text and " and " not in text.lower()
                     and "&" not in text and len(seg.split()) > 1):
                 raw_items.extend(_greedy_split_products(seg, known_products))
             else:
@@ -138,25 +148,63 @@ class ListParser:
             if not item:
                 continue
 
-            # extract quantity + unit (supports kg, g, l, ml, pcs)
-            match = re.search(r"(\d+(?:\.\d+)?)\s*(kg|g|l|ml|pcs)?", item)
+            qty = None
+            unit = None
 
-            if match:
-                qty = float(match.group(1))
+            # Prefer explicit pack-count markers so "Amul Butter 100g x 3" → qty 3
+            # (not 100 from the pack size embedded in the name).
+            count_match = re.search(
+                r"(?:^|\s)(?:x|×)\s*(\d+(?:\.\d+)?)\s*$|(?:^|\s)(\d+(?:\.\d+)?)\s*(?:x|×)\s+",
+                item,
+            )
+            if count_match:
+                qty_raw = count_match.group(1) or count_match.group(2)
+                qty = float(qty_raw)
                 if qty == int(qty):
                     qty = int(qty)
-                unit = match.group(2) or "unit"
-                name = item.replace(match.group(0), "").strip()
+                unit = "pcs"
+                item = (item[: count_match.start()] + " " + item[count_match.end() :]).strip()
+                item = re.sub(r"\s+", " ", item)
+
+            # Trailing bare count after a product phrase: "banana 3", "aashirvaad atta 5kg 2"
+            if qty is None:
+                trailing = re.search(r"^(.*\D)\s+(\d+(?:\.\d+)?)\s*$", item)
+                if trailing:
+                    head = trailing.group(1).strip()
+                    # Only treat as order qty if the head already has a pack size OR is a known multi-word product
+                    if re.search(r"\d+(?:\.\d+)?\s*(kg|g|l|ml|pcs|ltr|liter|litre)\b", head) or len(head.split()) >= 1:
+                        qty = float(trailing.group(2))
+                        if qty == int(qty):
+                            qty = int(qty)
+                        unit = "pcs"
+                        item = head
+
+            # Pack-size / amount in the remaining text (e.g. "2kg sugar", "milk 1l")
+            if qty is None:
+                match = re.search(r"(\d+(?:\.\d+)?)\s*(kg|g|l|ml|pcs|ltr|liter|litre)?\b", item)
+                if match:
+                    qty = float(match.group(1))
+                    if qty == int(qty):
+                        qty = int(qty)
+                    raw_unit = (match.group(2) or "").lower()
+                    if raw_unit in ("ltr", "liter", "litre"):
+                        raw_unit = "l"
+                    unit = raw_unit or "unit"
+                    name = item.replace(match.group(0), "").strip()
+                else:
+                    name = item.strip()
+                    product_only, _ = extract_brand(name)
+                    default = DEFAULTS.get(product_only) or DEFAULTS.get(name)
+                    if default:
+                        qty = default["qty"]
+                        unit = default["unit"]
+                    else:
+                        qty = 1
+                        unit = "unit"
             else:
                 name = item.strip()
-                product_only, _ = extract_brand(name)
-                default = DEFAULTS.get(product_only) or DEFAULTS.get(name)
-                if default:
-                    qty = default["qty"]
-                    unit = default["unit"]
-                else:
-                    qty = 1
-                    unit = "unit"
+                if not unit:
+                    unit = "pcs"
 
             product_name, preferred_brand = extract_brand(name)
             if not product_name:

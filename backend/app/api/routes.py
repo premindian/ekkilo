@@ -537,6 +537,22 @@ async def search_products(data: dict):
         for item_opt in store_items.values():
             item_opt.pop("_rank_price", None)
 
+    matched_products = data.get("matched_products") or []
+    matched_meta = {
+        (m.get("name") or "").strip().lower(): m for m in matched_products if m.get("name")
+    }
+    unavailable_items = []
+    for item, options in price_matrix.items():
+        if options:
+            continue
+        meta = matched_meta.get((item or "").strip().lower()) or {}
+        unavailable_items.append({
+            "name": item,
+            "qty": meta.get("qty", 1),
+            "unit": meta.get("unit") or "pcs",
+            "reason": "No store nearby is carrying this right now",
+        })
+
     # -----------------------------
     # ✅ FINAL RESPONSE
     # -----------------------------
@@ -545,7 +561,10 @@ async def search_products(data: dict):
         "total": optimized_total,
         "savings": savings,
         "comparison": comparison,
-        "store_view": store_view
+        "store_view": store_view,
+        "unavailable_items": unavailable_items,
+        "parsed_items": data.get("parsed_items") or [],
+        "matched_products": matched_products,
     }
     
 # OLD STORE PRODUCT UPDATE ROUTE REMOVED

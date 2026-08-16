@@ -358,9 +358,13 @@ async def quick_order_from_list(list_id: int, token: str):
     if not items:
         raise HTTPException(status_code=400, detail="List is empty")
     
-    # Build search query
+    # Build search query — "N x name" so pack sizes in names don't steal qty
     search_text = ", ".join([
-        f"{item['product_name']} {item['quantity']}{item['unit']}"
+        (
+            f"{int(item['quantity']) if float(item['quantity'] or 1) == int(float(item['quantity'] or 1)) else item['quantity']} x {item['product_name']}"
+            if float(item["quantity"] or 1) > 1
+            else item["product_name"]
+        )
         for item in items
     ])
     

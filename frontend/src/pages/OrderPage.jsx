@@ -345,6 +345,9 @@ export default function OrderPage({ initialSearchText }) {
   };
 
   const stores = Array.isArray(result?.stores) ? result.stores : [];
+  const unavailableItems = Array.isArray(result?.unavailable_items)
+    ? result.unavailable_items
+    : [];
   const favoriteStores = Array.isArray(favorites) ? favorites : [];
 
   // 🧠 SMART SPLIT
@@ -1020,15 +1023,50 @@ export default function OrderPage({ initialSearchText }) {
         </div>
       )}
 
+      {/* Items requested but not stocked by any store */}
+      {!loading && result && unavailableItems.length > 0 && (
+        <div
+          style={{
+            margin: `12px ${GUTTER}px`,
+            padding: "12px 14px",
+            background: "#fff7ed",
+            border: "1px solid #fed7aa",
+            borderRadius: 12,
+          }}
+        >
+          <div style={{ fontWeight: 800, color: "#9a3412", marginBottom: 6, fontSize: 14 }}>
+            Not at nearby stores ({unavailableItems.length})
+          </div>
+          <div style={{ fontSize: 13, color: "#9a3412", lineHeight: 1.45, marginBottom: 8 }}>
+            These matched your search but no kirana in range has them listed yet — ask the shop to add them, or try another area.
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, color: "#7c2d12", fontSize: 13, lineHeight: 1.5 }}>
+            {unavailableItems.map((it) => (
+              <li key={it.name}>
+                <strong>{it.name}</strong>
+                {Number(it.qty) > 1 ? ` × ${it.qty}` : ""}
+                {it.reason ? ` — ${it.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* NO RESULTS */}
       {!loading && result && stores.length === 0 && (
         <div style={emptyState}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>🔍</div>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>
+            {unavailableItems.length > 0 ? "🧺" : "🔍"}
+          </div>
           <p style={{ fontWeight: 800, color: "#334155", margin: "0 0 6px", fontSize: 17 }}>
-            No stores found
+            {unavailableItems.length > 0
+              ? "No store has these items yet"
+              : "No stores found"}
           </p>
           <p style={{ fontSize: 14, margin: 0, lineHeight: 1.45 }}>
-            Try a shorter search, widen the radius, or change location.
+            {unavailableItems.length > 0
+              ? "Your list is recognized — stores need to add inventory (or widen radius / change location)."
+              : "Try a shorter search, widen the radius, or change location."}
           </p>
         </div>
       )}

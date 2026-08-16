@@ -82,24 +82,31 @@ class Pricing:
                 # 🔥 STOCK HANDLING (SAFE)
                 is_available = (r.get("stock", 0) or 0) > 0
 
-                # 🔥 USER REQUIRED QTY → BASE UNIT
-                required_qty = self.convert_to_base(
-                    p.get("qty", 1),
-                    p.get("unit"),
-                    base_unit
-                )
+                user_unit = (p.get("unit") or "").lower()
+                count_units = {"pcs", "pc", "item", "items", "unit", "pack", "packs", "x", "dozen"}
 
-                # 🔥 PACK SIZE → BASE UNIT
-                pack_size = self.convert_to_base(
-                    float(r.get("size") or 1),  # Convert Decimal to float
-                    r.get("unit"),
-                    base_unit
-                )
+                # Shop cart qty means "number of packs/pieces", not grams of the pack size in the name
+                if user_unit in count_units or user_unit == "":
+                    packs = max(1, int(math.ceil(float(p.get("qty") or 1))))
+                else:
+                    # 🔥 USER REQUIRED QTY → BASE UNIT
+                    required_qty = self.convert_to_base(
+                        p.get("qty", 1),
+                        p.get("unit"),
+                        base_unit
+                    )
 
-                if pack_size <= 0:
-                    continue
+                    # 🔥 PACK SIZE → BASE UNIT
+                    pack_size = self.convert_to_base(
+                        float(r.get("size") or 1),  # Convert Decimal to float
+                        r.get("unit"),
+                        base_unit
+                    )
 
-                packs = math.ceil(required_qty / pack_size)
+                    if pack_size <= 0:
+                        continue
+
+                    packs = math.ceil(required_qty / pack_size)
 
                 unit_price = float(r.get("price", 0))
                 total_price = packs * unit_price

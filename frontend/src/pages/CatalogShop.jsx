@@ -164,7 +164,7 @@ export default function CatalogShop({ onOrder }) {
           body: JSON.stringify({
             product_name: p.name,
             quantity: row.qty || 1,
-            unit: p.unit || 'item',
+            unit: 'pcs',
           }),
         });
       }
@@ -189,9 +189,10 @@ export default function CatalogShop({ onOrder }) {
     }
     const text = cartItems
       .map((row) => {
-        const n = row.product.name;
-        const q = row.qty > 1 ? ` ${row.qty}` : '';
-        return `${n}${q}`;
+        const n = (row.product.name || '').trim();
+        const q = Number(row.qty) || 1;
+        // Explicit "N x name" so pack sizes in the name (100g, 5kg) don't steal qty
+        return q > 1 ? `${q} x ${n}` : n;
       })
       .join(', ');
     if (onOrder) onOrder(text);
