@@ -585,14 +585,31 @@ export default function OrderPage({ initialSearchText }) {
       setCart({});
       setCheckout(null);
       setPayStatus("");
-      const track = window.confirm(`${message}\n\nOpen tracking page now?`);
-      if (track) {
-        navigate(
-          trackToken
-            ? `/track?t=${encodeURIComponent(trackToken)}`
-            : `/track?order_id=${orderId}`
-        );
+      setPlacing(false);
+      // Prefer soft navigate — window.confirm inside Razorpay handler breaks their modal
+      try {
+        window.alert(message);
+      } catch (e) {
+        /* ignore */
       }
+      navigate(
+        trackToken
+          ? `/track?t=${encodeURIComponent(trackToken)}`
+          : `/track?order_id=${orderId}`
+      );
+    };
+
+    const pollPaid = async (orderId) => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/payments/status/${orderId}?token=${encodeURIComponent(token)}`
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.paid) return data;
+      } catch (e) {
+        /* ignore */
+      }
+      return null;
     };
 
     const openRazorpay = (orderId, trackToken, payment) => {
@@ -602,6 +619,22 @@ export default function OrderPage({ initialSearchText }) {
         return;
       }
       setPayStatus("Waiting for UPI payment…");
+
+      let finished = false;
+      const finishPaid = (tok, msg) => {
+        if (finished) return;
+        finished = true;
+        // Defer so Razorpay can close its modal before we tear down React state
+        window.setTimeout(() => {
+          goTrack(
+            orderId,
+            tok || trackToken,
+            msg ||
+              `✅ Paid · Order #${orderId}\nStores have been notified.\nYou'll get a WhatsApp confirmation.`
+          );
+        }, 50);
+      };
+
       const rzp = new window.Razorpay({
         key: payment.key_id,
         amount: payment.amount,
@@ -614,43 +647,82 @@ export default function OrderPage({ initialSearchText }) {
           name: user?.name || "",
         },
         theme: { color: "#22c55e" },
-        handler: async (response) => {
+        handler: function (response) {
+          // Keep this non-async so Razorpay doesn't treat a rejected Promise as failure
           setPayStatus("Verifying payment…");
-          try {
-            const verifyRes = await fetch(
-              `${API_BASE}/api/payments/verify?token=${encodeURIComponent(token)}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  final_order_id: orderId,
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                }),
+          (async () => {
+            try {
+              const verifyRes = await fetch(
+                `${API_BASE}/api/payments/verify?token=${encodeURIComponent(token)}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    final_order_id: orderId,
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                  }),
+                }
+              );
+              const verifyData = await verifyRes.json().catch(() => ({}));
+              if (verifyRes.ok) {
+                finishPaid(
+                  verifyData.track_token || trackToken,
+                  `✅ Paid · Order #${orderId}\nStores have been notified.\nYou'll get a WhatsApp confirmation.`
+                );
+                return;
               }
-            );
-            const verifyData = await verifyRes.json().catch(() => ({}));
-            if (!verifyRes.ok) {
-              alert(`❌ Payment verify failed: ${verifyData.detail || verifyRes.statusText}`);
+
+              // Verify API failed but money may already be captured — poll status
+              const paid = await pollPaid(orderId);
+              if (paid) {
+                finishPaid(
+                  paid.track_token || trackToken,
+                  `✅ Paid · Order #${orderId}\nStores were notified (payment already confirmed).`
+                );
+                return;
+              }
+
+              alert(
+                `❌ Payment verify failed: ${
+                  typeof verifyData.detail === "string"
+                    ? verifyData.detail
+                    : verifyRes.statusText
+                }\n\nIf money was deducted, open Track for Order #${orderId} or WhatsApp us.`
+              );
               setPayStatus("");
               setPlacing(false);
-              return;
+            } catch (err) {
+              const paid = await pollPaid(orderId);
+              if (paid) {
+                finishPaid(
+                  paid.track_token || trackToken,
+                  `✅ Paid · Order #${orderId}\nStores were notified.`
+                );
+                return;
+              }
+              alert(
+                `❌ Payment verify failed. If money was deducted, check Track for Order #${orderId}.`
+              );
+              setPayStatus("");
+              setPlacing(false);
             }
-            setPlacing(false);
-            goTrack(
-              orderId,
-              verifyData.track_token || trackToken,
-              `✅ Paid · Order #${orderId}\nStores have been notified.\nYou'll get a WhatsApp confirmation.`
-            );
-          } catch (err) {
-            alert("❌ Payment verify failed. Contact support with your Order ID.");
-            setPayStatus("");
-            setPlacing(false);
-          }
+          })();
         },
         modal: {
-          ondismiss: () => {
+          ondismiss: async () => {
+            if (finished) return;
+            setPayStatus("Checking payment status…");
+            // User closed modal — payment may still have succeeded
+            const paid = await pollPaid(orderId);
+            if (paid) {
+              finishPaid(
+                paid.track_token || trackToken,
+                `✅ Paid · Order #${orderId}\nStores have been notified.`
+              );
+              return;
+            }
             setPlacing(false);
             setPayStatus("");
             alert(
@@ -660,6 +732,19 @@ export default function OrderPage({ initialSearchText }) {
           },
         },
       });
+
+      rzp.on("payment.failed", async () => {
+        if (finished) return;
+        // Rare race: bank fails on UI but our verify already ran
+        const paid = await pollPaid(orderId);
+        if (paid) {
+          finishPaid(paid.track_token || trackToken);
+          return;
+        }
+        setPlacing(false);
+        setPayStatus("");
+      });
+
       rzp.open();
     };
 

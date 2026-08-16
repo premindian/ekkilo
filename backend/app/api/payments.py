@@ -213,8 +213,42 @@ async def verify_payment(data: dict, background_tasks: BackgroundTasks, token: s
     await set_final_order_status(final_order_id, "CONFIRMED", db=db)
     await queue_order_notifications(final_order_id, background_tasks, db=db)
 
+    # Re-read track token in case it was set later
+    fresh = await db.fetchrow(
+        "SELECT track_token FROM final_orders WHERE id = $1", final_order_id
+    )
+
     return {
         "status": "paid",
         "final_order_id": final_order_id,
+        "track_token": (fresh or order).get("track_token"),
+    }
+
+
+@router.get("/payments/status/{final_order_id}")
+async def payment_status(final_order_id: int, token: str):
+    """Customer poll: did UPI land? Used when Razorpay UI errors after a successful pay."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Login required")
+    db = await get_db()
+    await ensure_payment_schema(db)
+    user = await get_current_user(token, db)
+    order = await db.fetchrow(
+        """
+        SELECT id, payment_status, payment_method, track_token, status, customer_phone
+        FROM final_orders WHERE id = $1
+        """,
+        final_order_id,
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if phone_tail(order["customer_phone"]) != phone_tail(user["phone"]):
+        raise HTTPException(status_code=403, detail="Not your order")
+    return {
+        "final_order_id": order["id"],
+        "payment_status": (order.get("payment_status") or "UNPAID").upper(),
+        "payment_method": order.get("payment_method"),
+        "status": order.get("status"),
         "track_token": order.get("track_token"),
+        "paid": (order.get("payment_status") or "").upper() == "PAID",
     }
